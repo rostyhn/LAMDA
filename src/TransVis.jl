@@ -144,18 +144,20 @@ end
 
 function go() 
 
-    fig = Figure()
+    plotWindow = Figure()
+    molWindow = Figure()
+
    
-    lsceneLeft = LScene(fig[1:3, 1:3], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
-    lsceneRight = LScene(fig[1:3, 4:6], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
+    lsceneLeft = LScene(molWindow[1:3, 1:3], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
+    lsceneRight = LScene(molWindow[1:3, 4:6], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
     #lscenec = LScene(fig[1:2, 7:9], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
     #lscene2 = LScene(fig[3:4, 1:3], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
     
-    axI1 = Axis(fig[5:6, 1:4], xlabel = "Atom Number", ylabel = "Invariant 1")
-    axI2 = Axis(fig[7:8, 1:4], xlabel = "Atom Number", ylabel = "Invariant 2")
-    axI3 = Axis(fig[9:10, 1:4], xlabel = "Atom Number", ylabel = "Invariant 3")
+    axI1 = Axis(plotWindow[1:2, 1:4], xlabel = "Atom Number", ylabel = "Invariant 1")
+    axI2 = Axis(plotWindow[3:4, 1:4], xlabel = "Atom Number", ylabel = "Invariant 2")
+    axI3 = Axis(plotWindow[5:6, 1:4], xlabel = "Atom Number", ylabel = "Invariant 3")
 
-    axDR = Axis(fig[5:10, 5:6],  title = "t-SNE")
+    axDR = Axis(plotWindow[1:6, 5:7],  title = "t-SNE")
     #axDR = LScene(fig[5:10, 5:6], show_axis=false, scenekw = (backgroundcolor = :white, clear = true))
 
     # axI1 = PolarAxis(fig[4:5, 1:6], title = "Transition Invariants")
@@ -197,7 +199,6 @@ function go()
         transitionLabels[name] = value
     end
 
-    #test = Pickle.npyload("/Users/Bote/Documents/ASU/state_data/1_positions.pickle")
 
 
  
@@ -277,18 +278,18 @@ function go()
             end
             unique = unique +1
     
-            currentDM = distanceMatrices[currentState]
-            nextDM = distanceMatrices[nextState]
+            # currentDM = distanceMatrices[currentState]
+            # nextDM = distanceMatrices[nextState]
     
-            maxDM = max.(currentDM, nextDM)
-            differenceDM = nextDM .- currentDM
-            signature = differenceDM ./ maxDM
+            # maxDM = max.(currentDM, nextDM)
+            # differenceDM = nextDM .- currentDM
+            # signature = differenceDM ./ maxDM
     
-            #signature = exp.(signature)
+            # #signature = exp.(signature)
     
-            for j in 1:length(signature[:,1])
-                signature[j,j] = 0
-            end
+            # for j in 1:length(signature[:,1])
+            #     signature[j,j] = 0
+            # end
     
     
             aPos1 = atomPositions[currentState]
@@ -412,7 +413,7 @@ function go()
     lines!.( axI3, Ref(atoms), values(transitionInvariants3), alpha=0.01 )
 
 
-   featureVectorMatrix = zeros( length( values(transitionInvariants1)),length( values(transitionInvariants1)|> first ) *1 )
+   featureVectorMatrix = zeros( length( values(transitionInvariants1)),length( values(transitionInvariants1)|> first ) * 3 )
    labels = zeros( length( values(transitionInvariants1)) )
 
 
@@ -426,34 +427,42 @@ function go()
 
         col = 1
         for invariant in invariants1
-            featureVectorMatrix[row, col] = invariant
+            featureVectorMatrix[row, col] = invariant |> abs
             col = col +1
         end
 
-        # col = length( values(transitionInvariants1)|> first ) + 1
-        # for invariant in transitionInvariants2[transition]
-        #     featureVectorMatrix[row, col] = invariant
-        #     col = col +1
-        # end
+        col = length( values(transitionInvariants1)|> first ) + 1
+        for invariant in transitionInvariants2[transition]
+            featureVectorMatrix[row, col] = invariant |> abs
+            col = col +1
+        end
 
-        # col = length( values(transitionInvariants1)|> first )*2 + 1
-        # for invariant in transitionInvariants3[transition]
-        #     featureVectorMatrix[row, col] = invariant
-        #     col = col +1
-        # end
+        col = length( values(transitionInvariants1)|> first )*2 + 1
+        for invariant in transitionInvariants3[transition]
+            featureVectorMatrix[row, col] = invariant |> abs
+            col = col +1
+        end
 
+
+        #@show transition
+        splitToStates = split(transition, ">")
+        flippedName = splitToStates[2]*">"*splitToStates[1]
+
+       # @show flippedName
 
         if haskey(transitionLabels, transition)
             labels[row] = transitionLabels[transition]
-       else
-            labels[row] = -1
-       end
+        elseif haskey(transitionLabels, flippedName)
+            labels[row] = transitionLabels[flippedName]
+        else
+            @show "Transition Label not found for " * transition 
+        end
 
        row = row + 1
 
    end
    
-   @show featureVectorMatrix[100,:]
+   #@show featureVectorMatrix[100,:]
 
 #    transitionAdjacencyMatrix = zeros( length(mapIdxToName), length(mapIdxToName)  ) 
 
@@ -478,11 +487,14 @@ function go()
 
    selectedTransition = Observable{String}("1>3")
 
+   rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
+   featureVectorMatrix = featureVectorMatrix |> rescale
+
    #tsne(X, ndim, reduce_dims, max_iter, perplexit; [keyword arguments])
-   @time Y = tsne(featureVectorMatrix[:,:], 2, 20, 2000, 40.0; );
+   @time Y = tsne(featureVectorMatrix[:,:], 2, 20, 20, 40.0; );
    tsnePlot = scatter!(axDR, Y, color=labels, colormap = (:viridis, 1.0))
 
-   on(events(fig).mousebutton, priority = 2) do event
+   on(events(plotWindow).mousebutton, priority = 2) do event
     if event.button == Mouse.left && event.action == Mouse.press
         # Delete marker
         plt, i = pick(axDR)  
@@ -620,7 +632,7 @@ end
    # @show transitionSequence
 
     sliderTransition = SliderGrid(
-        fig[4, 1:6],
+        molWindow[4, 1:6],
         (label= "Transition", range = [1:length(transitionSequence);],
         startvalue = 1,format = x -> string(transitionSequence[x]))
     )
@@ -663,11 +675,16 @@ end
     #  stem!( axI1, Ref(atoms), values(transitionInvariants1), alpha=0.7 )
 
 
-    link_cameras_lscene(fig)
+    link_cameras_lscene(molWindow)
 
 
+    screen1 = GLMakie.Screen()
+    #screen2 = GLMakie.Screen()
+
+    display(screen1, molWindow)
+    #display(screen2, plotWindow)
     #DataInspector(fig)
-    fig
+    #fig
 end
 
 end # module TransVis
