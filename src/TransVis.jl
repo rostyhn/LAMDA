@@ -1,17 +1,15 @@
 module TransVis
 
 using Pickle
-using LinearAlgebra
 using GLMakie
-using GeometryBasics
+#using GeometryBasics
 using Makie
-using Statistics
-using UMAP
 using NearestNeighbors
 using Base.Threads
-using Distances
+#using Distances
 using JLD2
 using CodecZlib
+using LinearAlgebra
 using TSne
 
 
@@ -479,16 +477,10 @@ function go()
 
 
 
-
-   #@show size(featureVectorMatrix) 
-   #@time embedding = umap(transitionAdjacencyMatrix, 2; metric=:precomputed)
-   #@time embedding = umap(transpose(featureVectorMatrix), 2, n_neighbors=15, metric=SqEuclidean())
-   #scatter!(axDR, embedding, color=labels, colormap = (:viridis, 1.0))
-
    selectedTransition = Observable{String}("1>3")
 
-   rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
-   featureVectorMatrix = featureVectorMatrix |> rescale
+   #rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
+   #featureVectorMatrix = featureVectorMatrix |> rescale
 
    #tsne(X, ndim, reduce_dims, max_iter, perplexit; [keyword arguments])
    @time Y = tsne(featureVectorMatrix[:,:], 2, 20, 20, 40.0; );
