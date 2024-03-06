@@ -47,11 +47,6 @@ end
 
 
 
-
-
-# function computeWeight()
-
-# end
 function angle(a, b)
     return acosd(clamp(a⋅b/(norm(a)*norm(b)), -1, 1))
 end
@@ -130,17 +125,13 @@ function go()
      stateDataPath = "/Users/Bote/Documents/ASU/state_data copy/"
      sequencePath = "/Users/Bote/Documents/ASU/state_data copy/seq.txt"
      transitionPath = "/Users/Bote/Documents/ASU/nano_pt_labels.pickle"
-    # sequence = readlines("/Users/Bote/Documents/ASU/state_data copy/seq.txt")
-
-    # transitionLabelData = Pickle.npyload("/Users/Bote/Documents/ASU/nano_pt_labels.pickle")
 
     combinedData = getDataSets(stateDataPath, sequencePath, transitionPath)
     
     transitionInvariants1 = combinedData["transitionInvariants1"] 
     transitionInvariants2 = combinedData["transitionInvariants2"] 
     transitionInvariants3= combinedData["transitionInvariants3"] 
-    #atomPositions = combinedData["atomPositions"]  
-    #distanceMatrices = combinedData["distanceMatrices"] 
+
     transitionRefPositions = combinedData["transitionRefPositions"]  
     transitionLabels = combinedData["transitionLabels"] 
 
@@ -149,14 +140,6 @@ function go()
     atoms = [1:1:length(values(transitionInvariants1) |> first);]
 
  #   balltree = BallTree(data, Minkowski(3.5); reorder = false)
-
-
-   @show length(atoms) 
-   @show length(values(transitionInvariants1))
-
-    # stem!.( axI1, Ref(atoms), values(transitionInvariants1), alpha=0.7 )
-    # stem!.( axI2, Ref(atoms), values(transitionInvariants2), alpha=0.7 )
-    # stem!.( axI3, Ref(atoms), values(transitionInvariants3), alpha=0.7 )
 
     lines!.( axI1, Ref(atoms), values(transitionInvariants1), alpha=0.01 )        
     lines!.( axI2, Ref(atoms), values(transitionInvariants2), alpha=0.01 )
@@ -214,18 +197,6 @@ function go()
    
    #@show featureVectorMatrix[100,:]
 
-#    transitionAdjacencyMatrix = zeros( length(mapIdxToName), length(mapIdxToName)  ) 
-
-
-#     Threads.@threads for k in 1:length(mapIdxToName)
-#         for j in 1:(k-1) 
-#             if k == j
-#                 continue
-#             end
-#             @inbounds transitionAdjacencyMatrix[j,k] =   Cityblock()(featureVectorMatrix[k, :], featureVectorMatrix[j, :])
-#         end
-#     end
-#     transitionAdjacencyMatrix = Symmetric(transitionAdjacencyMatrix)
 
 
 
@@ -262,104 +233,6 @@ function go()
 end
 
 
-   #@show labels
-   #@show length(labels)
-
-
-
-
-    # for i in 1:20
-    #     @show invariant1[i]
-    #     @show invariant2[i]
-    #     @show invariant3[i]
-    #     @show fracAniso[i]/10.
-    #     @show "----------------"
-    # end
-
-   # maxEV =  [ maximum(eigenSystem.values) |> sqrt for eigenSystem in eigenSystems ]
-
-    #@show fracAniso[1]
-
-   # @show size(stretchedBases[1][1][1])
-    # testIdx = 130
-
-    # @show norm(stretchedBases[testIdx][1,:] )
-    # @show norm(stretchedBases[testIdx][2,:] )
-    # @show norm(stretchedBases[testIdx][3,:] )
-    # @show norm(stretchedBases[testIdx][1,:] )*norm(stretchedBases[testIdx][2,:] )*norm(stretchedBases[testIdx][3,:] )
-
-
-    # rots = Vector{Quaternion}( undef, length(aPos1[:,1]))
-    # sizes = Vector{Point3f0}(undef, length(aPos1[:,1]))
-
-    # for i in 1:length(rots)
-
-    #     sizes[i] = Point3f0( eigenSystems[i].values[1],  eigenSystems[i].values[2], eigenSystems[i].values[3])
-
-    #     rot = zeros(3,3)
-    #     ev1 = eigenSystems[i].vectors[:,1]
-    #     ev2 = eigenSystems[i].vectors[:,2]
-    #     ev3 = eigenSystems[i].vectors[:,3] 
-
-    #     if abs(norm(ev1) - 1) > 0.000001
-    #         @show "SHIT"
-    #     end
-    #     if abs(norm(ev2) - 1) > 0.000001
-    #         @show "SHIT"
-    #     end
-    #     if abs(norm(ev3) - 1) > 0.000001
-    #         @show "SHIT"
-    #     end
-
-    #     # ensure we have a right hand system
-    #     if( signbit( ev3 ⋅ cross( ev1, ev2 ) ) )
-    #         ev3 = ev3 .* -1
-    #     end
-
-    #     rot[1, 1] = ev1[1] #ev1( 0 );
-    #     rot[2, 1] = ev1[2] #ev1( 1 );
-    #     rot[3, 1] = ev1[3] #ev1( 2 );
-    #     rot[1, 2] = ev2[1] #ev2( 0 );
-    #     rot[2, 2] = ev2[2] #ev2( 1 );
-    #     rot[3, 2] = ev2[3] #ev2( 2 );
-    #     rot[1, 3] = ev3[1] #ev3( 0 );
-    #     rot[2, 3] = ev3[2] #ev3( 1 );
-    #     rot[3, 3] = ev3[3] #ev3( 2 );
-    #     #@show QuatRotation(rot) 
-
-    #     rots[i] = normalize( quat_from_rotmatrix(rot) )
-    # end
-
-   # rots = normalize.(rand(Quaternion, length(positions)))
-
-
-    #transformedMeshes = [  mesh for mesh in baseSphereMeshes]
-
-
-   # transformationMatrix =  GLMakie.rotationmatrix_y(pi/4) * GLMakie.scalematrix(Vec3f0(1, 1, 2))
-   
-   # p = meshscatter!(lscenea, aPos1,markersize=invariant1 , color=invariant1, colormap=:PuRd)
-    #p2 = meshscatter!(lsceneb, aPos1,markersize=invariant3, color=invariant3, colormap=:PuRd)
-    # = meshscatter!(lscenec, aPos1,markersize=invariant3 .* 0.2, color=invariant3)
-    #p3 = meshscatter!(lscenec, aPos1,markersize=fracAniso, color = fracAniso)
-
-    # arrowDir = [ Vec3f(eigenSystems[i].vectors[:,1] .* eigenSystems[i].values[1] ) for i in 1:length(stretchedBases)]
-    # arrowDir2 = [ Vec3f(eigenSystems[i].vectors[:,2] .* eigenSystems[i].values[2] ) for i in 1:length(stretchedBases)]
-    # arrowDir3 = [ Vec3f(eigenSystems[i].vectors[:,3] .* eigenSystems[i].values[3] ) for i in 1:length(stretchedBases)]
-
-    # arrowPos = [ Point3f(aPos1[i,1],aPos1[i,2],aPos1[i,3] ) for i in 1:length(aPos1[:,1])]
-
-    #@show eigenSystems[1].values[:]
-
-    # arrows!(lscenec, arrowPos, arrowDir; color=:red, alpha=0.5, markersize= eigenSystems[i].values[1] )
-    # arrows!(lscenec, arrowPos, arrowDir2; color=:red, alpha=0.5, markersize= eigenSystems[i].values[2]  )
-    # arrows!(lscenec, arrowPos, arrowDir3; color=:red, alpha=0.5, markersize= eigenSystems[i].values[3]  )
-
-
-    # meshscatter!(lsceneFA, aPos1,color = fracAniso, markersize = sizes .* fracAniso, rotations = rots, colormap=:PuRd )
-
-
-
     sequence = getSequence(sequencePath)
 
     transitionSequence = Vector{String}()
@@ -371,10 +244,7 @@ end
         push!(transitionSequence, transitionName)
 
     end
- #   @show transitionRange = [1:length(transitionSequence);]
 
-
-   # @show transitionSequence
 
     sliderTransition = SliderGrid(
         molWindow[4, 1:6],
@@ -382,21 +252,9 @@ end
         startvalue = 1,format = x -> string(transitionSequence[x]))
     )
     currentTransition = lift(sliderTransition.sliders[1].value) do val
-       # @show transitionSequence[val]
         return transitionSequence[val]
      end
     
-
-    #  class = lift( sliderTransition.sliders[1].value ) do val
-    #     return transitionLabels[transitionSequence[val]]
-    #  end
-
-
-    #@show lines[1]
-
-    #@show transitionRefPositions[transitionSequence[1]]
-
-     #lines!(lsceneDistances, lift(x->x, lines), color=bondDiff, colormap=:balance, colorrange=(-maxDiff,maxDiff))
 
      scatter!(lsceneLeft, lift(x->transitionRefPositions[x], currentTransition) ;markersize=lift(x->abs.(transitionInvariants1[x]) * 70, currentTransition),
       color=lift(x->transitionInvariants1[x], currentTransition), colormap=:bwr, colorrange=(-0.4,0.4))
@@ -413,23 +271,16 @@ end
      stem!( axI3, atoms, lift(x->transitionInvariants3[x], selectedTransition))
      stem!( axI3, atoms, lift(x->transitionInvariants3[x], currentTransition))
 
-     #scatter!(axDR , lift(x->Y[mapNameToIdx[x],:], selectedTransition), color=:black, marker = Circle)
-     
-
-    #  stem!( axI1, Ref(atoms), values(transitionInvariants1), alpha=0.7 )
-    #  stem!( axI1, Ref(atoms), values(transitionInvariants1), alpha=0.7 )
-
 
     link_cameras_lscene(molWindow)
 
 
     screen1 = GLMakie.Screen()
-    #screen2 = GLMakie.Screen()
+    screen2 = GLMakie.Screen()
 
     display(screen1, molWindow)
-    #display(screen2, plotWindow)
-    #DataInspector(fig)
-    #fig
+    display(screen2, plotWindow)
 end
+
 
 end # module TransVis
