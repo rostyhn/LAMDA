@@ -5,9 +5,9 @@ using Pickle
 using JLD2
 using CodecZlib
 
-#GUI
-using Gtk4
-using Gtk4Makie
+# #GUI
+# using Gtk4
+# using Gtk4Makie
 
 #Vis
 using GLMakie
@@ -20,6 +20,7 @@ using LinearAlgebra
 using TSne
 #using GeometryBasics
 using Base.Threads
+using Statistics
 
 include("io.jl")
 include("processing.jl")
@@ -32,9 +33,9 @@ function link_cameras_lscene(f; step = 0.01)
     scenes = filter(x -> x isa LScene, f.content)
     cameras = map(x -> cameracontrols(x.scene), scenes)
 
-    for i ∈ 1:length(cameras)
+    for i in eachindex(cameras)
         on(cameras[i].eyeposition) do eye
-            for j ∈ 1:length(cameras)
+            for j in eachindex(cameras)
                 i == j && continue
                 if sum(abs, eye - cameras[j].eyeposition[]) > step
                     update_cam!(scenes[j].scene, cameras[i])
@@ -110,6 +111,7 @@ end
 
 function go()
 
+    GLMakie.closeall() #close all windows for rerun!
 
     plotWindow = Figure()
     molWindow = Figure()
@@ -151,9 +153,9 @@ function go()
 
     #   balltree = BallTree(data, Minkowski(3.5); reorder = false)
 
-    lines!.(axI1, Ref(atoms), values(transitionInvariants1), alpha = 0.01)
-    lines!.(axI2, Ref(atoms), values(transitionInvariants2), alpha = 0.01)
-    lines!.(axI3, Ref(atoms), values(transitionInvariants3), alpha = 0.01)
+    # lines!.(axI1, Ref(atoms), values(transitionInvariants1), alpha = 0.01)
+    # lines!.(axI2, Ref(atoms), values(transitionInvariants2), alpha = 0.01)
+    # lines!.(axI3, Ref(atoms), values(transitionInvariants3), alpha = 0.01)
 
 
     featureVectorMatrix = zeros(
@@ -226,23 +228,24 @@ function go()
         if event.button == Mouse.left && event.action == Mouse.press
             # Delete marker
             plt, i = pick(axDR)
+  
             if plt == tsnePlot
                 # deleteat!(positions[], i)
                 selectedTransition[] = mapIdxToName[i]
                 notify(selectedTransition)
-                @show plt
-                @show i
-                @show selectedTransition[]
-                @show mapNameToIdx[mapIdxToName[i]]
+                # @show plt
+                # @show i
+                # @show selectedTransition[]
+                # @show mapNameToIdx[mapIdxToName[i]]
 
-                @show Y[mapNameToIdx[mapIdxToName[i]], :]
+                # @show Y[mapNameToIdx[mapIdxToName[i]], :]
                 #scatter!(axDR , Y[mapNameToIdx[mapIdxToName[i]],:], color=:black)
                 return Consume(true)
             end
             return Consume(false)
 
         end
-        # return Consume(false)
+         return Consume(false)
     end
 
 
@@ -271,6 +274,17 @@ function go()
     currentTransition = lift(sliderTransition.sliders[1].value) do val
         return transitionSequence[val]
     end
+
+
+    transitionRefSize = SliderGrid(
+        molWindow[4, 1:6],
+        (
+            label = "Transition",
+            range = [1:length(transitionSequence);],
+            startvalue = 1,
+            format = x -> string(transitionSequence[x]),
+        ),
+    )
 
 
     scatter!(
@@ -309,6 +323,18 @@ function go()
 
     display(screen1, molWindow)
     display(screen2, plotWindow)
+
+
+        #animation stuff
+        # fps = 30
+       # nframes = 120
+    
+        # keep function alive while program is running
+        # while true || !nothing(screen2)
+        #     sleep(1 / (fps * abs(speedFactor[])))
+        # end
+    
+
 end
 
 
