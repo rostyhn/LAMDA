@@ -21,6 +21,7 @@ using TSne
 #using GeometryBasics
 using Base.Threads
 using Statistics
+using ProgressMeter
 
 include("io.jl")
 include("processing.jl")
@@ -113,25 +114,35 @@ function go()
 
     GLMakie.closeall() #close all windows for rerun!
 
-    plotWindow = Figure()
-    molWindow = Figure()
+    plotWindow = Figure( size=(600,400))
+    molWindow = Figure( size=(600,400))
 
 
-    lsceneLeft = LScene(
+    lscenePre = LScene(
         molWindow[1:3, 1:3],
         show_axis = false,
-        scenekw = (backgroundcolor = :whitesmoke, clear = true),
+        scenekw = (backgroundcolor = :white, clear = true),
     )
-    lsceneRight = LScene(
-        molWindow[1:3, 4:6],
+    lscenePost = LScene(
+        molWindow[4:6, 1:3],
         show_axis = false,
-        scenekw = (backgroundcolor = :whitesmoke, clear = true),
+        scenekw = (backgroundcolor = :white, clear = true),
     )
+    
+    lsceneRight = LScene(
+        molWindow[1:5, 4:6],
+        show_axis = false,
+        scenekw = (backgroundcolor = :white, clear = true),
+    )
+
+
 
     axI1 = Axis(plotWindow[1:2, 1:4], xlabel = "Atom Number", ylabel = "Invariant 1")
     axI2 = Axis(plotWindow[3:4, 1:4], xlabel = "Atom Number", ylabel = "Invariant 2")
     axI3 = Axis(plotWindow[5:6, 1:4], xlabel = "Atom Number", ylabel = "Invariant 3")
     axDR = Axis(plotWindow[1:6, 5:7], title = "t-SNE")
+
+
 
 
     stateDataPath = "/Users/Bote/Documents/ASU/state_data copy/"
@@ -261,9 +272,8 @@ function go()
 
     end
 
-
     sliderTransition = SliderGrid(
-        molWindow[4, 1:6],
+        molWindow[7, 1:6],
         (
             label = "Transition",
             range = [1:length(transitionSequence);],
@@ -271,39 +281,59 @@ function go()
             format = x -> string(transitionSequence[x]),
         ),
     )
+
+    transitionGlyphSizeSlider = Slider(molWindow[1:4, 7], range = 0.1:0.01:2, horizontal = false, startvalue = 1)
+
+
+
     currentTransition = lift(sliderTransition.sliders[1].value) do val
         return transitionSequence[val]
     end
 
+    currentStatePair = lift(sliderTransition.sliders[1].value) do val
+        transString = transitionSequence[val]
+        return split( transString, ">" )
+    end
 
-    transitionRefSize = SliderGrid(
-        molWindow[4, 1:6],
-        (
-            label = "Transition",
-            range = [1:length(transitionSequence);],
-            startvalue = 1,
-            format = x -> string(transitionSequence[x]),
-        ),
-    )
+
+
+
+    transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
+        return val
+    end
+
+
+    atomPositions = combinedData["atomPositions"]
 
 
     scatter!(
-        lsceneLeft,
-        lift(x -> transitionRefPositions[x], currentTransition);
-        markersize = lift(x -> abs.(transitionInvariants1[x]) * 70, currentTransition),
-        color = lift(x -> transitionInvariants1[x], currentTransition),
+        lscenePre,
+        lift(x -> atomPositions[x[1]], currentStatePair);
+        markersize = 10,
+        color = :gray,
+        colormap = :bwr,
+        colorrange = (-0.4, 0.4),
+    )
+    scatter!(
+        lscenePost,
+        lift(x ->  atomPositions[x[2]], currentStatePair);
+        markersize = 10,
+        color = :gray,
         colormap = :bwr,
         colorrange = (-0.4, 0.4),
     )
 
-    scatter!(
+    glyps = meshscatter!(
         lsceneRight,
         lift(x -> transitionRefPositions[x], selectedTransition);
-        markersize = lift(x -> abs.(transitionInvariants1[x]) * 70, selectedTransition),
+        markersize = lift(x -> x, transitionGlyphSize),
         color = lift(x -> transitionInvariants1[x], selectedTransition),
         colormap = :bwr,
         colorrange = (-0.4, 0.4),
     )
+    Colorbar(molWindow[6,4:6], glyps, vertical = false)
+
+
 
     stem!(axI1, atoms, lift(x -> transitionInvariants1[x], selectedTransition))
     stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))

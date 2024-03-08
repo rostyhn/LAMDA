@@ -5,12 +5,12 @@ function getDataSets(
 )::Dict{String,Dict}
 
     combinedData = Dict{String,Dict}() # combined set
-    transitionInvariants1 = Dict{String,Vector}()
-    transitionInvariants2 = Dict{String,Vector}()
-    transitionInvariants3 = Dict{String,Vector}()
-    atomPositions = Dict{String,Matrix}()
-    distanceMatrices = Dict{String,Matrix}()
-    transitionRefPositions = Dict{String,Vector}()
+    transitionInvariants1 = Dict{String,Vector{Float64}}()
+    transitionInvariants2 = Dict{String,Vector{Float64}}()
+    transitionInvariants3 = Dict{String,Vector{Float64}}()
+    atomPositions = Dict{String,Matrix{Float64}}()
+    distanceMatrices = Dict{String,Matrix{Float64}}()
+    transitionRefPositions = Dict{String, Vector{Point3f}}()
     transitionLabels = Dict{String,Int64}()
 
 
@@ -84,7 +84,11 @@ function getDataSets(
         distanceMatrices = loadDistanceMatricesFromData(stateDataPath)
         atomPositions = loadAtomPositionsFromData(stateDataPath)
 
-        (transitionInvariants1, transitionInvariants2, transitionInvariants3) =
+        atomPositions = alignAtomPositions(atomPositions |> keys |> first, atomPositions)
+
+        #@show transitionRefPositions
+
+        (transitionRefPositions, transitionInvariants1, transitionInvariants2, transitionInvariants3) =
             computeTransitionInvariants(sequence, atomPositions, distanceMatrices)
 
         println("Storing  data.... $(rootPath)/cache/$(sequenceHash).jld2")
@@ -130,7 +134,10 @@ function getDataSets(
     combinedData["transitionInvariants3"] = transitionInvariants3
     combinedData["atomPositions"] = atomPositions
     combinedData["distanceMatrices"] = distanceMatrices
+    @show "start"
     combinedData["transitionRefPositions"] = transitionRefPositions
+    @show "end"
+
     combinedData["transitionLabels"] = transitionLabels
 
     return combinedData
@@ -190,4 +197,48 @@ end
 
 function getSequence(sqeuencePath::String)
     return readlines(sqeuencePath)
+end
+
+function alignAtomPositions( referenceState::String, atomPositions::Dict{String,Matrix{Float64}})::Dict{String,Matrix{Float64}}
+
+    alignedAtomPositions = Dict{String, Matrix{Float64}}()
+
+    referencePositions = atomPositions[referenceState]
+    alignedAtomPositions[referenceState] = referencePositions
+
+    for (stateName, positions) in atomPositions
+
+        if stateName == referenceState
+            continue
+        end
+
+        #s2 changes  s1 stays
+        x = positions
+        xp = referencePositions
+
+        s = mean(x, dims=1)
+        sp = mean(xp, dims=1)
+
+        xs = x .- s
+        xps = xp .- sp
+        
+        # @show size(xs)
+        # @show size(xps)
+
+        xx = transpose(xs) * xs   
+        xpx = transpose(xps) * xs 
+
+        # @show size(xx)
+        # @show size(xpx)
+
+        xxi = inv(xx)
+        R = xpx * xxi
+
+        # @show size(transpose(R * transpose(xs)) )
+        # @show size(transpose(sp))
+
+        alignedAtomPositions[stateName] = transpose(R * transpose(xs))  .+ sp
+    end
+
+    return alignedAtomPositions
 end

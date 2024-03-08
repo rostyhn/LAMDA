@@ -1,19 +1,20 @@
 
 
-
 function computeTransitionInvariants(
     sequence::Vector{String},
     atomPositions::Dict{String,Matrix{Float64}},
     distanceMatrices::Dict{String,Matrix{Float64}},
-)::Tuple{Dict{String,Vector}}
+)::Tuple{Dict{String, Vector{Point3f}},Dict{String,Vector{Float64}},Dict{String,Vector{Float64}},Dict{String,Vector{Float64}}}
 
 
     transitionInvariants1 = Dict{String,Vector}()
     transitionInvariants2 = Dict{String,Vector}()
     transitionInvariants3 = Dict{String,Vector}()
 
+    transitionReferencePosition = Dict{String, Vector}()
+
     unique = 1
-    @time for sequenceStep = 1:(length(sequence)-1)
+    @showprogress for sequenceStep = 1:(length(sequence)-1)
 
         currentState = sequence[sequenceStep]
         nextState = sequence[sequenceStep+1]
@@ -29,10 +30,8 @@ function computeTransitionInvariants(
         aPos2 = atomPositions[nextState]
 
 
-        transitionRefPositions[transitionName] = [
-            Makie.Point3f.(aPos1[i, 1], aPos1[i, 2], aPos1[i, 3]) for
-            i = 1:length(aPos1[:, 1])
-        ]
+        transitionReferencePosition[transitionName] = [ Makie.Point3f.( aPos1[i, 1], aPos1[i, 2], aPos1[i, 3] ) for i in 1:length(aPos1[:,1])]
+        
 
         weights = 1 ./ ((distanceMatrices[currentState] + distanceMatrices[nextState]) ./ 2)
 
@@ -96,6 +95,6 @@ function computeTransitionInvariants(
 
     println("Found * $(unique) * unique transitions")
 
-    return transitionInvariants1, transitionInvariants2, transitionInvariants3
+    return transitionReferencePosition, transitionInvariants1, transitionInvariants2, transitionInvariants3
 
 end
