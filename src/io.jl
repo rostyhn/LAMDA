@@ -12,6 +12,9 @@ function getDataSets(
     distanceMatrices = Dict{String,Matrix{Float64}}()
     transitionRefPositions = Dict{String, Vector{Point3f}}()
     transitionLabels = Dict{String,Int64}()
+    #eigenvalues = Dict{String, Vector{Vec3f}}
+    stretchedPrincipalAxes = Dict{String, Vector{Vector{Vec3f}}}()
+
 
 
     transitionLabelData = Pickle.npyload(transitionLabelPath)
@@ -77,6 +80,13 @@ function getDataSets(
             file["transitionInvariants3"]
         end
 
+        @time stretchedPrincipalAxes = JLD2.jldopen(
+            "$(rootPath)/cache/stretchedPrincipalAxes_$(sequenceHash).jld2";
+            compress = true,
+        ) do file
+            file["stretchedPrincipalAxes"]
+        end
+
         println("loading successfull")
     else
         println("No precomputed data found! Computing now...")
@@ -88,8 +98,12 @@ function getDataSets(
 
         #@show transitionRefPositions
 
-        (transitionRefPositions, transitionInvariants1, transitionInvariants2, transitionInvariants3) =
+        (transitionRefPositions, transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes) =
             computeTransitionInvariants(sequence, atomPositions, distanceMatrices)
+
+ 
+        #@show typeof(stretchedPrincipalAxes)
+       # @show keys(stretchedPrincipalAxes)
 
         println("Storing  data.... $(rootPath)/cache/$(sequenceHash).jld2")
 
@@ -123,6 +137,11 @@ function getDataSets(
             true;
             transitionInvariants3,
         )
+        @time JLD2.jldsave(
+            "$(rootPath)/cache/stretchedPrincipalAxes_$(sequenceHash).jld2",
+            true;
+            stretchedPrincipalAxes,
+        )
 
         println("Storing successfull")
     end
@@ -139,6 +158,7 @@ function getDataSets(
     @show "end"
 
     combinedData["transitionLabels"] = transitionLabels
+    combinedData["stretchedPrincipalAxes"] = stretchedPrincipalAxes
 
     return combinedData
 end

@@ -4,7 +4,8 @@ function computeTransitionInvariants(
     sequence::Vector{String},
     atomPositions::Dict{String,Matrix{Float64}},
     distanceMatrices::Dict{String,Matrix{Float64}},
-)::Tuple{Dict{String, Vector{Point3f}},Dict{String,Vector{Float64}},Dict{String,Vector{Float64}},Dict{String,Vector{Float64}}}
+)::Tuple{Dict{String, Vector{Point3f}},Dict{String,Vector{Float64}},Dict{String,Vector{Float64}},
+Dict{String,Vector{Float64}}, Dict{String, Vector{Vector{Vec3f}}}}
 
 
     transitionInvariants1 = Dict{String,Vector}()
@@ -12,6 +13,8 @@ function computeTransitionInvariants(
     transitionInvariants3 = Dict{String,Vector}()
 
     transitionReferencePosition = Dict{String, Vector}()
+
+    stretchedPrincipalAxes = Dict{String, Vector{Vector{Vec3f}}}()
 
     unique = 1
     @showprogress for sequenceStep = 1:(length(sequence)-1)
@@ -68,10 +71,16 @@ function computeTransitionInvariants(
         eigenSystems = eigen.(E)
 
         getStretchedEigVec(eigenSys) = [
-            eigenSys.values[1] * eigenSys.vectors[:, 1],
-            eigenSys.values[2] * eigenSys.vectors[:, 2],
-            eigenSys.values[3] * eigenSys.vectors[:, 3],
+            sqrt( 2 * eigenSys.values[1] + 1.0) * eigenSys.vectors[:, 1],
+            sqrt( 2 * eigenSys.values[2] + 1.0) * eigenSys.vectors[:, 2],
+            sqrt( 2 * eigenSys.values[3] + 1.0) * eigenSys.vectors[:, 3],
         ]
+
+        stretchedPrincipalAxes[transitionName] = [ Vec3f.(getStretchedEigVec(eigSys)) for eigSys in eigenSystems]
+
+        # @show sqrt( 2 * eigenSystems[1].values[1] + 1.0)
+        # @show sqrt( 2 *eigenSystems[2] + 1.0)
+        # @show sqrt( 2 *eigenSystems[1]+ 1.0)
 
         deviator = E .- (1 / 3 * tr.(E) .* Ref(I))
         eigenSystemsDeviator = eigen.(deviator)
@@ -95,6 +104,6 @@ function computeTransitionInvariants(
 
     println("Found * $(unique) * unique transitions")
 
-    return transitionReferencePosition, transitionInvariants1, transitionInvariants2, transitionInvariants3
+    return transitionReferencePosition, transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes
 
 end

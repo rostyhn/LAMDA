@@ -12,6 +12,7 @@ using CodecZlib
 #Vis
 using GLMakie
 using Makie
+using GeometryBasics
 
 #Processing and Helpers
 using NearestNeighbors
@@ -30,10 +31,172 @@ include("processing.jl")
 export go
 
 
+function transformSQPoint(  principarStretches::Vector{GeometryBasics.Vec{3, Float32}}, point::Point3f )
+
+    # @show point[1]
+    # @show principarStretches[1]
+
+    # @show norm(principarStretches[1])
+
+    return Point3f( 3 * point[1], 
+    0.2 * point[2], 
+    0.2 * point[3])
+
+    # return Point3f( norm(principarStretches[1]) * point[1], 
+    #         norm(principarStretches[2]) * point[2], 
+    #         norm(principarStretches[3]) * point[3])
+
+end
+
+function signPow(base, exponent)::Float64
+    return sign(base)* abs(base)^exponent
+end
+
+function qz( phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Float64  )
+    x = signPow( cos(theta), alpha ) *  signPow(sin(phi), beta) 
+    y = signPow( sin(theta), alpha ) *  signPow( sin(phi), beta) 
+    z = signPow( cos(phi), beta )
+
+    return Point3f(x,y,z)
+end 
+
+function qx( phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Float64  )
+    x = signPow( cos(phi), beta ) 
+    y = -signPow( sin(theta), alpha ) *  signPow( sin(phi), beta )
+    z = signPow( cos(theta), alpha) *  signPow( sin(phi), beta)
+    return Point3f(x,y,z)
+
+end 
+
+function superquadric(scale::Float64, scene ,position::Point3f ,principalStretches::Vector{GeometryBasics.Vec{3, Float32}}, K2::Float64, K3::Float64, sharpness::Float64, resolution=0.2 )
+    points = Vector{Point3f}()
+
+    #K2 is the volume perserving fractionalAnisotropy
+    #K3 is the mode defining the type of anisotropy: -1 planar to 1 linear
+
+    @show scale
+
+
+    stretchRatio1 = norm(principalStretches[3])
+    stretchRatio2 = norm(principalStretches[2])
+    stretchRatio3 = norm(principalStretches[1])
+
+    #debug
+    # stretchRatio1 = 5.
+    # stretchRatio2 = 1.
+    # stretchRatio3 = 1.
+
+    stretchDirection1 = principalStretches[3] / stretchRatio1
+    stretchDirection2 = principalStretches[2] / stretchRatio2
+    stretchDirection3 = principalStretches[1] / stretchRatio3
+
+
+    cl = (stretchRatio1 - stretchRatio2) / (stretchRatio1 + stretchRatio2 + stretchRatio3)   #linear anisotopy
+    cp = 2*(stretchRatio2 - stretchRatio3) /  (stretchRatio1 + stretchRatio2 + stretchRatio3) # planar anisotropy
+    cs =  3*stretchRatio3 / (stretchRatio1 + stretchRatio2 + stretchRatio3)
+
+    # @show cl
+    # @show cp
+    # @show cs
+    @show stretchRatio1 * stretchRatio1 * stretchRatio1
+
+    @show cs
+
+    phiRange = [0:resolution:pi;]  #vertical: south -> north
+    push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
+    thetaRange = [0:resolution:2*pi;] #horizontal: west -> east
+
+
+    if cl >= cp
+        alpha = signPow((1 - cp), sharpness)
+        beta = signPow((1 - cl),sharpness)
+
+        for phi in phiRange
+            for theta in thetaRange
+                push!(points, qx( phi, theta, alpha, beta, K2 ))
+            end
+        end
+    else
+        alpha = (1 - cl)^sharpness
+        beta = (1 - cp)^sharpness
+
+        for phi in phiRange
+            for theta in thetaRange
+                push!(points, qz( phi, theta, alpha, beta, K2 ) )
+            end
+        end
+    end
+
+
+    scaleMatrix = zeros(3,3)
+    scaleMatrix[1,1] = stretchRatio1
+    scaleMatrix[2,2] = stretchRatio2
+    scaleMatrix[3,3] = stretchRatio3
+
+    scaleMatrix = scaleMatrix*scale
+
+    rotationMatrix = zeros(3,3)
+    rotationMatrix[:,1] = stretchDirection1 
+    rotationMatrix[:,2] = stretchDirection2
+    rotationMatrix[:,3] = stretchDirection3 
+
+    if  det(rotationMatrix) < 0
+        rotationMatrix[:,1] = -1 * rotationMatrix[:,1]
+    end
+
+    transform = rotationMatrix * scaleMatrix
+
+    #meshscatter!( scene, position[1],position[2],position[3]; color= :black)
+    #meshscatter!( scene, position[1] + 5*stretchDirection1[1], position[2]+5*stretchDirection1[2], position[3]+5*stretchDirection1[3]; color= :black)
+   # @show scaleMatrix
+   # @show points[1]
+    points = Point3f.(  Ref(transform) .* points ) .+  Ref(position)
+   # @show points[1]
+
+    #scatter!(scene, points)
+    
+    nPhi = length(phiRange)
+    nTheta = length(thetaRange)
+
+    indices = Vector{Tuple{UInt32,UInt32,UInt32}}() # triangles over the points
+
+    for y in 1:(nPhi-1)
+        for x in 1:nTheta
+
+            #@show "???"
+            p11 = x + nTheta*(y - 1)
+            p21 = x < nTheta ? (x+1) + nTheta*(y -1) : 1+ nTheta*(y - 1) 
+            p31 = x + nTheta*(y)
+
+            p12 = x < nTheta ? (x+1) + nTheta*(y -1) : 1+ nTheta*(y - 1) 
+            p22 =  x < nTheta ? (x+1) + nTheta*y : 1+ nTheta*y # index 
+            p32 = x + nTheta*(y) 
+
+            push!(indices, (p11, p31, p21))
+            push!(indices, (p32, p22, p12 ))
+
+        end
+    end
+
+    # if K3 >=0 #linear
+    #     points = [ p[1]*exp(abs(K2)) for p in points]
+    # else #planar
+    #     points = [ p[2]*exp(abs(K2)) for p in points]
+    #     points = [ p[3]*exp(abs(K2)) for p in points]
+    # end
+
+    triFaces = TriangleFace.(indices)
+
+    # Create the Mesh
+     mesh = GeometryBasics.Mesh(points, triFaces)
+
+    return mesh
+end
+
 function link_cameras_lscene(f; step = 0.01)
     scenes = filter(x -> x isa LScene, f.content)
     cameras = map(x -> cameracontrols(x.scene), scenes)
-
+ 
     for i in eachindex(cameras)
         on(cameras[i].eyeposition) do eye
             for j in eachindex(cameras)
@@ -158,6 +321,7 @@ function go()
     transitionRefPositions = combinedData["transitionRefPositions"]
     transitionLabels = combinedData["transitionLabels"]
 
+    stretchedPrincipalAxes = combinedData["stretchedPrincipalAxes"]
 
 
     atoms = [1:1:length(values(transitionInvariants1) |> first);]
@@ -226,8 +390,6 @@ function go()
 
 
 
-    selectedTransition = Observable{String}("1>3")
-
     #rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
     #featureVectorMatrix = featureVectorMatrix |> rescale
 
@@ -242,22 +404,15 @@ function go()
   
             if plt == tsnePlot
                 # deleteat!(positions[], i)
-                selectedTransition[] = mapIdxToName[i]
-                notify(selectedTransition)
-                # @show plt
-                # @show i
-                # @show selectedTransition[]
-                # @show mapNameToIdx[mapIdxToName[i]]
-
-                # @show Y[mapNameToIdx[mapIdxToName[i]], :]
-                #scatter!(axDR , Y[mapNameToIdx[mapIdxToName[i]],:], color=:black)
+                currentTransition[] = mapIdxToName[i]
+                notify(currentTransition)
                 return Consume(true)
             end
             return Consume(false)
-
         end
          return Consume(false)
     end
+
 
 
     sequence = getSequence(sequencePath)
@@ -295,7 +450,7 @@ function go()
         return split( transString, ">" )
     end
 
-
+    
 
 
     transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
@@ -323,25 +478,46 @@ function go()
         colorrange = (-0.4, 0.4),
     )
 
-    glyps = meshscatter!(
-        lsceneRight,
-        lift(x -> transitionRefPositions[x], selectedTransition);
-        markersize = lift(x -> x, transitionGlyphSize),
-        color = lift(x -> transitionInvariants1[x], selectedTransition),
-        colormap = :bwr,
-        colorrange = (-0.4, 0.4),
-    )
+    testCase = stretchedPrincipalAxes["1>3"] 
+
+    # glyps = meshscatter!(
+    #     lsceneRight,
+    #     lift(x -> transitionRefPositions[x], currentTransition);
+    #     markersize = lift(x -> x, transitionGlyphSize),
+    #     marker=superquadric( testCase[1],  0.99, 1.0 ,0.3),
+    #     color = lift(x -> transitionInvariants1[x], currentTransition),
+    #     colormap = :bwr,
+    #     colorrange = (-0.4, 0.4),
+    # )
+    
+
+    glyps = mesh!( 
+        lsceneRight, 
+        lift((x,y) -> superquadric.(y, Ref(lsceneRight), transitionRefPositions[x] ,stretchedPrincipalAxes[x],  transitionInvariants2[x], -1.0 ,3.0)[:], currentTransition, transitionGlyphSize),
+         transparency=false, 
+         color = lift(x -> transitionInvariants1[x], currentTransition),
+         colormap = :bwr,
+         colorrange = (-0.4, 0.4),
+         fxaa = true,
+          )
     Colorbar(molWindow[6,4:6], glyps, vertical = false)
 
 
 
-    stem!(axI1, atoms, lift(x -> transitionInvariants1[x], selectedTransition))
+    
+    #@show typeof(testCase)
+   # @show keys(stretchedPrincipalAxes)
+
+    #meshscatter!( lsceneRight, lift(x -> transitionRefPositions[x], currentTransition);markersize = lift(x -> x, transitionGlyphSize) , marker=superquadric( testCase[1],  0.99, 1.0 ,0.3) )
+
+
+    stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))
     stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))
 
-    stem!(axI2, atoms, lift(x -> transitionInvariants2[x], selectedTransition))
+    stem!(axI2, atoms, lift(x -> transitionInvariants2[x], currentTransition))
     stem!(axI2, atoms, lift(x -> transitionInvariants2[x], currentTransition))
 
-    stem!(axI3, atoms, lift(x -> transitionInvariants3[x], selectedTransition))
+    stem!(axI3, atoms, lift(x -> transitionInvariants3[x], currentTransition))
     stem!(axI3, atoms, lift(x -> transitionInvariants3[x], currentTransition))
 
 
