@@ -23,6 +23,11 @@ using TSne
 using Base.Threads
 using Statistics
 using ProgressMeter
+using Ripserer
+using PersistenceDiagrams
+using UMAP
+using MultivariateStats
+using KernelDensity
 
 include("io.jl")
 include("processing.jl")
@@ -31,21 +36,18 @@ include("processing.jl")
 export go
 
 
-function transformSQPoint(  principarStretches::Vector{GeometryBasics.Vec{3, Float32}}, point::Point3f )
 
-    # @show point[1]
-    # @show principarStretches[1]
+function getIndexFromSQMesh( i::Int64, resolution::Float64 )
 
-    # @show norm(principarStretches[1])
+    #number of points in sq mesh
+    #[0:resolution:pi;]
+    #push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
+    thetaRange = [0:resolution:2*pi;] #
 
-    return Point3f( 3 * point[1], 
-    0.2 * point[2], 
-    0.2 * point[3])
-
-    # return Point3f( norm(principarStretches[1]) * point[1], 
-    #         norm(principarStretches[2]) * point[2], 
-    #         norm(principarStretches[3]) * point[3])
-
+    numberY = trunc(Int, pi/resolution) + 2
+    numberX = trunc(Int, 2*pi/resolution ) +1
+    number = numberX * numberY
+    return trunc(Int, i / number) + 1
 end
 
 function signPow(base, exponent)::Float64
@@ -68,14 +70,11 @@ function qx( phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Fl
 
 end 
 
-function superquadric(scale::Float64, scene ,position::Point3f ,principalStretches::Vector{GeometryBasics.Vec{3, Float32}}, K2::Float64, K3::Float64, sharpness::Float64, resolution=0.2 )
+function superquadric(scale::Float64 ,position::Point3f ,principalStretches::Vector{GeometryBasics.Vec{3, Float32}}, K1::Float64, K3::Float64, sharpness::Float64, resolution=0.2 )
     points = Vector{Point3f}()
 
     #K2 is the volume perserving fractionalAnisotropy
     #K3 is the mode defining the type of anisotropy: -1 planar to 1 linear
-
-    @show scale
-
 
     stretchRatio1 = norm(principalStretches[3])
     stretchRatio2 = norm(principalStretches[2])
@@ -98,9 +97,9 @@ function superquadric(scale::Float64, scene ,position::Point3f ,principalStretch
     # @show cl
     # @show cp
     # @show cs
-    @show stretchRatio1 * stretchRatio1 * stretchRatio1
+    #@show stretchRatio1 * stretchRatio1 * stretchRatio1
 
-    @show cs
+    #@show cs
 
     phiRange = [0:resolution:pi;]  #vertical: south -> north
     push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
@@ -113,7 +112,7 @@ function superquadric(scale::Float64, scene ,position::Point3f ,principalStretch
 
         for phi in phiRange
             for theta in thetaRange
-                push!(points, qx( phi, theta, alpha, beta, K2 ))
+                push!(points, qx( phi, theta, alpha, beta, K1 ))
             end
         end
     else
@@ -122,7 +121,7 @@ function superquadric(scale::Float64, scene ,position::Point3f ,principalStretch
 
         for phi in phiRange
             for theta in thetaRange
-                push!(points, qz( phi, theta, alpha, beta, K2 ) )
+                push!(points, qz( phi, theta, alpha, beta, K1 ) )
             end
         end
     end
@@ -144,7 +143,7 @@ function superquadric(scale::Float64, scene ,position::Point3f ,principalStretch
         rotationMatrix[:,1] = -1 * rotationMatrix[:,1]
     end
 
-    transform = rotationMatrix * scaleMatrix
+    transform = rotationMatrix * scaleMatrix 
 
     #meshscatter!( scene, position[1],position[2],position[3]; color= :black)
     #meshscatter!( scene, position[1] + 5*stretchDirection1[1], position[2]+5*stretchDirection1[2], position[3]+5*stretchDirection1[3]; color= :black)
@@ -224,53 +223,6 @@ function fractionalAnisotropy(ev::Vector{Float64})
     return sqrt(3.0 / 2.0) * a
 end
 
-#Runs the logic
-# function activate(app)
-
-#     print( "Using $(Threads.nthreads()) threads\n")
-
-#     screen = Gtk4Makie.GTKScreen(resolution=(800, 800),title="TransVis",app=app)
-
-
-#     plotWindow = Figure()
-#     molWindow = Figure()
-
-
-#     lsceneLeft = LScene(molWindow[1:3, 1:3], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
-#     lsceneRight = LScene(molWindow[1:3, 4:6], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
-#     #lscenec = LScene(fig[1:2, 7:9], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
-#     #lscene2 = LScene(fig[3:4, 1:3], show_axis=false, scenekw = (backgroundcolor = :whitesmoke, clear = true))
-
-#     axI1 = Axis(plotWindow[1:2, 1:4], xlabel = "Atom Number", ylabel = "Invariant 1")
-#     axI2 = Axis(plotWindow[3:4, 1:4], xlabel = "Atom Number", ylabel = "Invariant 2")
-#     axI3 = Axis(plotWindow[5:6, 1:4], xlabel = "Atom Number", ylabel = "Invariant 3")
-
-#     axDR = Axis(plotWindow[1:6, 5:7],  title = "t-SNE")
-#     #axDR = LScene(fig[5:10, 5:6], show_axis=false, scenekw = (backgroundcolor = :white, clear = true))
-
-#     # axI1 = PolarAxis(fig[4:5, 1:6], title = "Transition Invariants")
-#     # axI2 = PolarAxis(fig[6:7, 1:6], title = "Transition Invariants")
-#     # axI3 = PolarAxis(fig[8:9, 1:6], title = "Transition Invariants")
-
-
-
-
-#     display(screen, lines(rand(10)))
-#     ax=current_axis()
-#     f=current_figure()
-
-#     g=grid(screen)
-
-#     #g[1,2]=GtkButton("Generate new random plot")
-
-#     #function gen_cb(b)
-#     #    empty!(ax)
-#     #    lines!(ax,rand(10))
-#     #end
-
-#     signal_connect(gen_cb,g[1,2],"clicked")
-# end
-
 
 
 function go()
@@ -292,19 +244,25 @@ function go()
         scenekw = (backgroundcolor = :white, clear = true),
     )
     
-    lsceneRight = LScene(
-        molWindow[1:5, 4:6],
+    lsceneRightVolume = LScene(
+        molWindow[1:6, 4:6],
         show_axis = false,
         scenekw = (backgroundcolor = :white, clear = true),
     )
+    # lsceneRightAtoms = LScene(
+    #     molWindow[4:6, 4:6],
+    #     show_axis = false,
+    #     scenekw = (backgroundcolor = :white, clear = true),
+    # )
 
 
 
-    axI1 = Axis(plotWindow[1:2, 1:4], xlabel = "Atom Number", ylabel = "Invariant 1")
-    axI2 = Axis(plotWindow[3:4, 1:4], xlabel = "Atom Number", ylabel = "Invariant 2")
-    axI3 = Axis(plotWindow[5:6, 1:4], xlabel = "Atom Number", ylabel = "Invariant 3")
+    axI1 = Axis(plotWindow[1:2, 1:4], xlabel = "Atom Number", ylabel = "K1")
+    axI2 = Axis(plotWindow[3:4, 1:4], xlabel = "Atom Number", ylabel = "K2")
+    axI3 = Axis(plotWindow[5:6, 1:4], xlabel = "Atom Number", ylabel = "mode(E)")
     axDR = Axis(plotWindow[1:6, 5:7], title = "t-SNE")
 
+    transitionGlyphSizeSlider = Slider(molWindow[4:6, 7], range = 0.1:0.01:4, horizontal = false, startvalue = 1)
 
 
 
@@ -321,7 +279,128 @@ function go()
     transitionRefPositions = combinedData["transitionRefPositions"]
     transitionLabels = combinedData["transitionLabels"]
 
+    distanceMatrices = combinedData["distanceMatrices"]
+
     stretchedPrincipalAxes = combinedData["stretchedPrincipalAxes"]
+
+
+    atomPositions = combinedData["atomPositions"]
+
+
+    #get min max of all transition invariants 1
+    minInvariant1 = 1.0e10
+    maxInvariant2 = -1.0e10
+    @time for (key, value) in transitionInvariants1
+        for invariant1 in value
+            if minInvariant1 > invariant1
+                minInvariant1 = invariant1 
+            end
+            if maxInvariant2 < invariant1
+                maxInvariant2 = invariant1
+            end
+        end
+    end
+    println( "invariant range:  $(minInvariant1) -  $(maxInvariant2)")
+
+    invariant1MaxRange = max( abs(minInvariant1), abs(maxInvariant2))
+
+    #get min max coordinates of atoms for bounding box
+    minX = 1.0e10
+    minY = 1.0e10
+    minZ = 1.0e10
+    maxX = -1.0e10
+    maxY = -1.0e10
+    maxZ = -1.0e10
+    @time for (key, positions) in atomPositions
+        for row in 1:length(positions[:,1])
+            if minX > positions[row,1]
+                minX = positions[row,1] 
+            end
+            if maxX < positions[row,1]
+                maxX = positions[row,1] 
+            end
+            if minY > positions[row,2]
+                minY = positions[row,2] 
+            end
+            if maxY < positions[row,2]
+                maxY = positions[row,2] 
+            end
+            if minZ > positions[row,3]
+                minZ = positions[row,3] 
+            end
+            if maxZ < positions[row,3]
+                maxZ = positions[row,3] 
+            end
+        end
+    end
+
+    volumeResolution = 0.2
+
+    sampleRangeX = [minX-2*volumeResolution:volumeResolution:maxX+2*volumeResolution;]
+    sampleRangeY = [minY-2*volumeResolution:volumeResolution:maxY+2*volumeResolution;]
+    sampleRangeZ = [minZ-2*volumeResolution:volumeResolution:maxZ+2*volumeResolution;]
+
+    @show length(sampleRangeX)
+    @show length(sampleRangeY)
+    @show length(sampleRangeZ)
+
+
+    kernelWidth = 1.0
+
+    volumeData = zeros(length(sampleRangeX),length(sampleRangeY),length(sampleRangeZ))
+    @show "volume comp time"
+    @time Threads.@threads for i in 1:length(volumeData[:,1,1]) # x
+        for j in 1:length(volumeData[1,:,1]) # y
+            for k in 1:length(volumeData[1,1,:]) # z
+                point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
+                aPositions =  Point3f.(atomPositions["1"][:,1], atomPositions["1"][:,2],atomPositions["1"][:,3]) 
+                kValue = sum(kernelFunction.(Ref(point),aPositions, kernelWidth ) .* transitionInvariants1["1>3"] ) 
+                volumeData[i,j,k] = kValue
+
+            end
+        end
+    end
+    # extremes = extrema( volumeData )
+    # maxvariation = max(extremes|>first, extremes|>last)
+    # volumeData = volumeData ./ maxvariation
+
+    volumeAbsMax = max(abs(minimum(volumeData)), abs(maximum(volumeData)))
+
+    #volumeData = Float32.((volumeData .- minimum(volumeData)) ./ (maximum(volumeData) - minimum(volumeData)))
+
+    @show volumeData[1,1,1]
+    transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
+        return val
+    end
+
+
+    cmap = resample_cmap(:bam, 100; alpha =([(-0.99):0.02:(0.99);] ./0.1).^6)
+    @show  "cmap Range"
+    @show length(cmap)
+   # r = 15:30
+
+    
+
+
+
+    vol = volume!( lsceneRightVolume, sampleRangeX, sampleRangeY,sampleRangeZ, volumeData;
+      colormap = cmap,
+      algorithm = :absorption,
+      #isorange = 0.000001,
+      #isovalue = 0.0,
+      #colorscale = abs,
+      #absorption= lift(x->x, transitionGlyphSize),
+      transparency = true,
+      shading=NoShading,
+      colorrange = (-volumeAbsMax,volumeAbsMax),
+       )
+
+    Colorbar(molWindow[6,4:6], vol, vertical = false)
+
+
+  
+
+
 
 
     atoms = [1:1:length(values(transitionInvariants1) |> first);]
@@ -335,7 +414,7 @@ function go()
 
     featureVectorMatrix = zeros(
         length(values(transitionInvariants1)),
-        length(values(transitionInvariants1) |> first) * 3,
+        length(values(transitionInvariants1) |> first) * 1,
     )
     labels = zeros(length(values(transitionInvariants1)))
 
@@ -354,17 +433,17 @@ function go()
             col = col + 1
         end
 
-        col = length(values(transitionInvariants1) |> first) + 1
-        for invariant in transitionInvariants2[transition]
-            featureVectorMatrix[row, col] = invariant |> abs
-            col = col + 1
-        end
+        # col = length(values(transitionInvariants1) |> first) + 1
+        # for invariant in transitionInvariants2[transition]
+        #     featureVectorMatrix[row, col] = invariant |> abs
+        #     col = col + 1
+        # end
 
-        col = length(values(transitionInvariants1) |> first) * 2 + 1
-        for invariant in transitionInvariants3[transition]
-            featureVectorMatrix[row, col] = invariant |> abs
-            col = col + 1
-        end
+        # col = length(values(transitionInvariants1) |> first) * 2 + 1
+        # for invariant in transitionInvariants3[transition]
+        #     featureVectorMatrix[row, col] = invariant |> abs
+        #     col = col + 1
+        # end
 
 
         #@show transition
@@ -387,15 +466,71 @@ function go()
 
     #@show featureVectorMatrix[100,:]
 
+    #build distance distanceMatrices
+    invariantDistances = zeros(length(transitionInvariants1["1>3"]), length(transitionInvariants1["1>3"]) ) #nAtoms x nAtoms
+    invariantDistances = Vector{Matrix}(undef, length(transitionInvariants1))
+    @time for (key, value) in transitionInvariants1
+        invariantDistances[ mapNameToIdx[key] ] = computeDistances(value)
+    end
+
+    maxMoment = 10
+    invariantMomentFeatures = zeros(length(transitionInvariants1), maxMoment)
+    @time for (key, value) in transitionInvariants1
+        row = mapNameToIdx[key]
+        for moment in 1:maxMoment
+            invariantMomentFeatures[row, moment] = computeMoment(value, moment)
+        end
+    end
 
 
+    @show size(transitionRefPositions["1>3"])
+    @show size(transitionInvariants1["1>3"])
 
-    #rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
-    #featureVectorMatrix = featureVectorMatrix |> rescale
+    pcaInput = zeros(4, length(transitionRefPositions["1>3"]))
+    for i in 1:length(transitionRefPositions["1>3"])
+        pcaInput[1, i] = transitionRefPositions["1>3"][i][1] 
+        pcaInput[2, i] = transitionRefPositions["1>3"][i][2] 
+        pcaInput[3, i] = transitionRefPositions["1>3"][i][3] 
+        pcaInput[4, i] = transitionInvariants1["1>3"][i]
+    end
+
+   # @show size(pcaInput)
+   # @show pca = fit(PCA, pcaInput;maxoutdim=3)
+    
+
+    #@time invariantDistances = computeDistances(transitionInvariants1["1>3"])
+#    @show length(invariantDistances)
+    @show "compting PD"
+    #@time persistenceDiagrams =  ripserer.(invariantDistances[1:200], dim_max = 2)
+    
+    #momentMaps = moment_map.(persistenceDiagrams, 4)
+    #momentMatrix =  reduce(vcat,transpose.(momentMaps))
+
+    #pdDistanceMatrix = computePersistenceDistances(persistenceDiagrams)
+    #@show "done"
+    #@time  
+
+    #plot!( axI3, persistenceDiagrams )
+
+    rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
+    featureVectorMatrix = featureVectorMatrix |> rescale
+
+    #invariantMomentFeatures = rescale(invariantMomentFeatures; )
+
 
     #tsne(X, ndim, reduce_dims, max_iter, perplexit; [keyword arguments])
-    @time Y = tsne(featureVectorMatrix[:, :], 2, 20, 20, 40.0;)
-    tsnePlot = scatter!(axDR, Y, color = labels, colormap = (:viridis, 1.0))
+    #@time Y = tsne(featureVectorMatrix[:, :], 2, 20, 400, 50.0;)
+    #@time Y = tsne(invariantMomentFeatures, 2, 20, 1000, 30.0; )
+    #@time Y = umap(pdDistanceMatrix, 2; metric=:precomputed, n_neighbors=20)
+    #@time Y = umap(transpose(momentMatrix), 2; metric=Cityblock(), n_neighbors=50)
+
+
+    #tsnePlot = scatter!(axDR, Y, color = labels, colormap = (:viridis, 0.5))
+    #tsnePlot = scatter!(axDR, invariantMomentFeatures[:,3:4], color = labels, colormap = (:viridis, 0.5))
+
+    #@time embedding = ManifoldLearning.fit(DiffMap, transpose(featureVectorMatrix[:, :]);maxoutdim=3,t=2, α=0.0, ɛ=1.0)
+    #Y = predict(embedding) 
+    #tsnePlot = scatter!(axDR, Y, color = labels, colormap = (:viridis, 1.0))
 
     on(events(plotWindow).mousebutton, priority = 2) do event
         if event.button == Mouse.left && event.action == Mouse.press
@@ -415,9 +550,12 @@ function go()
 
 
 
+
     sequence = getSequence(sequencePath)
 
     transitionSequence = Vector{String}()
+
+    selectedAtom = Observable{Int64}(0)
 
     for sequenceStep = 1:(length(sequence)-1)
         currentState = sequence[sequenceStep]
@@ -437,7 +575,6 @@ function go()
         ),
     )
 
-    transitionGlyphSizeSlider = Slider(molWindow[1:4, 7], range = 0.1:0.01:2, horizontal = false, startvalue = 1)
 
 
 
@@ -450,15 +587,30 @@ function go()
         return split( transString, ">" )
     end
 
-    
+    # lineSets = Dict{String, Vector{Tuple{Point3f,Point3f}}}()
+    # @time for (key,value) in distanceMatrices
+    #     points = Vector{Tuple{Point3f,Point3f }}()
+    #     for i in 1:length(value[1,:])
+    #         for j in 1:(i-1) 
+    #             push!(points, (Point3f(atomPositions[key][i,:]), Point3f(atomPositions[key][j,:])))
+    #         end
+    #     end
+    #     lineSets[key] = points
+    # end
+
+    # currentLines = lift(sliderTransition.sliders[1].value ) do val
+    #     transString = transitionSequence[val]
+    #     prePost = split( transString, ">" )
+    #     return lineSets[prePost[1]]
+    # end
+
+    #linesegments!( lsceneRight, currentLines, alpha=0.3)
 
 
-    transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
-        return val
-    end
+
+   
 
 
-    atomPositions = combinedData["atomPositions"]
 
 
     scatter!(
@@ -466,7 +618,7 @@ function go()
         lift(x -> atomPositions[x[1]], currentStatePair);
         markersize = 10,
         color = :gray,
-        colormap = :bwr,
+        colormap = :bam,
         colorrange = (-0.4, 0.4),
     )
     scatter!(
@@ -474,7 +626,7 @@ function go()
         lift(x ->  atomPositions[x[2]], currentStatePair);
         markersize = 10,
         color = :gray,
-        colormap = :bwr,
+        colormap = :bam,
         colorrange = (-0.4, 0.4),
     )
 
@@ -489,19 +641,47 @@ function go()
     #     colormap = :bwr,
     #     colorrange = (-0.4, 0.4),
     # )
+
+   
     
+    glyphResolution = 0.1
 
     glyps = mesh!( 
-        lsceneRight, 
-        lift((x,y) -> superquadric.(y, Ref(lsceneRight), transitionRefPositions[x] ,stretchedPrincipalAxes[x],  transitionInvariants2[x], -1.0 ,3.0)[:], currentTransition, transitionGlyphSize),
+        lsceneRightVolume, 
+        lift((x,y) -> superquadric.(y, transitionRefPositions[x] ,stretchedPrincipalAxes[x],  transitionInvariants2[x], -1.0 ,3.0, glyphResolution)[:], currentTransition, transitionGlyphSize),
          transparency=false, 
-         color = lift(x -> transitionInvariants1[x], currentTransition),
-         colormap = :bwr,
-         colorrange = (-0.4, 0.4),
-         fxaa = true,
+         color = :white,
+         #color = lift(x -> transitionInvariants1[x], currentTransition),
+         #colormap = :bam,
+         #colorrange = (-invariant1MaxRange, invariant1MaxRange),
+         fxaa = false,
+         alpha = 1.0,
+         visible = false,
           )
-    Colorbar(molWindow[6,4:6], glyps, vertical = false)
+    #Colorbar(molWindow[6,4:6], glyps, vertical = false)
 
+
+    on(events(lsceneRightVolume).mousebutton, priority = 2) do event
+        if event.button == Mouse.left && event.action == Mouse.pressed
+            # Delete marker
+            plt, i = pick(glyps)
+            # @show plt
+            # @show glyps
+            # #@show plt.plots
+            # @show glyps.plots[1]
+
+            if plt == glyps.plots[1]
+                #@show i
+                #@show 
+                idx = getIndexFromSQMesh(i, glyphResolution)
+                selectedAtom[] = idx
+            
+                return Consume(false)
+            end
+            return Consume(false)
+        end
+         return Consume(false)
+    end
 
 
     
@@ -512,14 +692,13 @@ function go()
 
 
     stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))
-    stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))
 
     stem!(axI2, atoms, lift(x -> transitionInvariants2[x], currentTransition))
-    stem!(axI2, atoms, lift(x -> transitionInvariants2[x], currentTransition))
 
-    stem!(axI3, atoms, lift(x -> transitionInvariants3[x], currentTransition))
-    stem!(axI3, atoms, lift(x -> transitionInvariants3[x], currentTransition))
+    #stem!(axI3, atoms, lift(x -> transitionInvariants3[x], currentTransition))
+    stem!(axI3, invariantMomentFeatures[:,3])
 
+    
 
     link_cameras_lscene(molWindow)
 

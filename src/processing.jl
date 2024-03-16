@@ -1,4 +1,94 @@
 
+function kernelFunction(point::Point3f, atomPosition::Point3f ,width::Float64 )::Float32
+    scale = 1/((2pi)^(3/2) * width^3 )
+    return scale * exp( -1* (norm(point - atomPosition)^2)/(2*width^2) )
+end 
+
+# Moment feature map
+function moment_map(diagram, max_level, H::Int64)
+
+
+    # For H0, just compute lifetime moments
+    if H==0
+        numMoments = max_level
+        mu = zeros(numMoments)
+        #y = persistenceDiagram[:,2] - persistenceDiagram[:,1]
+        y = persistence.(diagram[H+1])
+        pop!(y)
+        #@show last(y)
+        for i = 1:max_level
+            mu[i] = sum((y.^i))/sqrt(factorial(i))
+        end
+        return mu
+    else
+        numMoments = Int(max_level*(max_level+1)/2)
+        mu = zeros(numMoments)
+
+         mcount = 1
+         x = birth.(diagram[H+1])
+         y = persistence.(diagram[H+1])
+
+        for i = 1:max_level
+            for j = 1:i
+                mu[mcount] = sum((x.^(i-j)).*(y.^j))*sqrt(binomial(i,j)/factorial(i))
+                mcount += 1
+            end
+        end
+        
+        return mu
+    end
+end
+
+function moment_map( diagram, max_level )
+    M0 = moment_map(diagram, max_level, 0)
+    M1 = moment_map(diagram, max_level, 1)
+    M2 = moment_map(diagram, max_level, 2)
+    return vcat(M0, M1, M2)
+end
+
+# function moment_map_normalized( diagram, max_level )
+#     subsample=200
+#     N = 200
+
+#     M0 = moment_map(diagram.*(sf^(1/3), max_level, 0)/sf
+#     M1 = moment_map(diagram.*(sf^(1/3)), max_level, 1)/sf
+#     # M2 = moment_map(diagram.*(sf^(1/3)), max_level, 2)/sf
+#     return vcat(M0, M1)
+# end
+
+function computeMoment( values::Vector{Float64}, moment::Int64 )
+    meanValue = mean(values)
+
+    if moment == 1
+        return meanValue
+    end
+
+    valAboutMean = values .- meanValue
+    return sum( valAboutMean.^moment )/length(values) 
+end
+
+function computePersistenceDistances( persistenceDiagrams::Vector )::Matrix{Float64}
+    out = zeros(length(persistenceDiagrams),length(persistenceDiagrams) )
+    @showprogress Threads.@threads for k in 1:length(persistenceDiagrams)
+        @inbounds out[k,k] = 0.0
+        for j in 1:(k-1) 
+            @inbounds out[j,k] = Wasserstein()(persistenceDiagrams[j], persistenceDiagrams[k])
+        end
+    end
+    return Symmetric(out)
+end
+
+function computeDistances( invariants::Vector{Float64} )::Matrix{Float64}
+    out = zeros(length(invariants),length(invariants) )
+    Threads.@threads for k in 1:length(invariants)
+        @inbounds out[k,k] = 0.0
+        for j in 1:(k-1) 
+            @inbounds out[j,k] = abs(invariants[j] - invariants[k])
+        end
+    end
+    return Symmetric(out)
+end
+
 
 function computeTransitionInvariants(
     sequence::Vector{String},
