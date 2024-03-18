@@ -345,57 +345,38 @@ function go()
     @show length(sampleRangeZ)
 
 
+    @show "computing kd trees"
+    transitionKDTree = Dict{String, KDTree}()
+    @time for (key, value) in transitionRefPositions
+        transitionKDTree[key] = KDTree(value)
+    end
+
     kernelWidth = 1.0
 
-    volumeData = zeros(length(sampleRangeX),length(sampleRangeY),length(sampleRangeZ))
-    @show "volume comp time"
-    @time Threads.@threads for i in 1:length(volumeData[:,1,1]) # x
-        for j in 1:length(volumeData[1,:,1]) # y
-            for k in 1:length(volumeData[1,1,:]) # z
-                point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
-                aPositions =  Point3f.(atomPositions["1"][:,1], atomPositions["1"][:,2],atomPositions["1"][:,3]) 
-                kValue = sum(kernelFunction.(Ref(point),aPositions, kernelWidth ) .* transitionInvariants1["1>3"] ) 
-                volumeData[i,j,k] = kValue
+    volumeData = Observable(zeros(length(sampleRangeX),length(sampleRangeY),length(sampleRangeZ)) )
 
-            end
-        end
-    end
+    volumeAbsMax = Observable(1.0)
+
+    #@show "volume comp time"
+    # currentTransition = lift(sliderTransition.sliders[1].value) do val
+    #     return transitionSequence[val]
+    # end
+
+
     # extremes = extrema( volumeData )
     # maxvariation = max(extremes|>first, extremes|>last)
     # volumeData = volumeData ./ maxvariation
 
-    volumeAbsMax = max(abs(minimum(volumeData)), abs(maximum(volumeData)))
 
     #volumeData = Float32.((volumeData .- minimum(volumeData)) ./ (maximum(volumeData) - minimum(volumeData)))
 
-    @show volumeData[1,1,1]
+#    @show volumeData[1,1,1]
     transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
         return val
     end
 
 
-    cmap = resample_cmap(:bam, 100; alpha =([(-0.99):0.02:(0.99);] ./0.1).^6)
-    @show  "cmap Range"
-    @show length(cmap)
-   # r = 15:30
-
-    
-
-
-
-    vol = volume!( lsceneRightVolume, sampleRangeX, sampleRangeY,sampleRangeZ, volumeData;
-      colormap = cmap,
-      algorithm = :absorption,
-      #isorange = 0.000001,
-      #isovalue = 0.0,
-      #colorscale = abs,
-      #absorption= lift(x->x, transitionGlyphSize),
-      transparency = true,
-      shading=NoShading,
-      colorrange = (-volumeAbsMax,volumeAbsMax),
-       )
-
-    Colorbar(molWindow[6,4:6], vol, vertical = false)
+ 
 
 
   
@@ -607,8 +588,22 @@ function go()
     #linesegments!( lsceneRight, currentLines, alpha=0.3)
 
 
-
-   
+    on(currentTransition) do val
+        Threads.@threads for i in eachindex(sampleRangeX) # x
+            for j in eachindex(sampleRangeY) # y
+                for k in eachindex(sampleRangeZ) # z
+                    point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
+                    knn, dists =  NearestNeighbors.knn(transitionKDTree[val], point, 5)
+                    kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[val][knn], kernelWidth ) .* transitionInvariants1[val][knn] ) 
+                    volumeData[][i,j,k] = kValue
+                end
+            end
+        end
+        volumeAbsMax[] = max(abs(minimum(volumeData[])), abs(maximum(volumeData[])))
+        #@show volumeAbsMax[]
+        notify(volumeAbsMax)
+        notify(volumeData)
+    end
 
 
 
@@ -659,6 +654,31 @@ function go()
          visible = false,
           )
     #Colorbar(molWindow[6,4:6], glyps, vertical = false)
+
+    cmap = resample_cmap(:bam, 100; alpha =([(-0.99):0.02:(0.99);] ./0.1).^6)
+    @show  "cmap Range"
+    @show length(cmap)
+   # r = 15:30
+
+    
+    vol = volume!( lsceneRightVolume, sampleRangeX, sampleRangeY,sampleRangeZ, 
+      lift(x->x,volumeData);
+      colormap = cmap,
+      algorithm = :absorption,
+      #isorange = 0.000001,
+      #isovalue = 0.0,
+      #colorscale = abs,
+      #absorption= lift(x->x, transitionGlyphSize),
+      fxaa = false,
+      transparency = true,
+      shading=NoShading,
+      colorrange = lift(x->(-x,x),volumeAbsMax),
+      visible = true,
+
+       )
+
+    Colorbar(molWindow[6,4:6], vol, vertical = false)
+
 
 
     on(events(lsceneRightVolume).mousebutton, priority = 2) do event

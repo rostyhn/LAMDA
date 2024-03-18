@@ -1,7 +1,10 @@
+function squaredNorm(a::Point3f )::Float32
+   return a[1]*a[1] + a[2]*a[2] + a[3]*a[3]
+end
 
 function kernelFunction(point::Point3f, atomPosition::Point3f ,width::Float64 )::Float32
     scale = 1/((2pi)^(3/2) * width^3 )
-    return scale * exp( -1* (norm(point - atomPosition)^2)/(2*width^2) )
+    return scale * exp( -1* (squaredNorm(point - atomPosition))/(2*width^2) )
 end 
 
 # Moment feature map
