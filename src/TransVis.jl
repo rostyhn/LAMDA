@@ -25,9 +25,8 @@ using Statistics
 using ProgressMeter
 using Ripserer
 using PersistenceDiagrams
-using UMAP
-using MultivariateStats
-using KernelDensity
+#using UMAP
+#using MultivariateStats
 
 include("io.jl")
 include("processing.jl")
