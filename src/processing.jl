@@ -42,6 +42,11 @@ function moment_map(diagram, max_level, H::Int64)
     end
 end
 
+function invLerp(a,b,v)
+    return (v - a) / (b - a)
+end
+
+
 function moment_map( diagram, max_level )
     M0 = moment_map(diagram, max_level, 0)
     M1 = moment_map(diagram, max_level, 1)

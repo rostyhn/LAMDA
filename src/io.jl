@@ -2,6 +2,7 @@ function getDataSets(
     stateDataPath::String,
     sqeuencePath::String,
     transitionLabelPath::String,
+    bondWeightPath::String,
 )::Dict{String,Dict}
 
     combinedData = Dict{String,Dict}() # combined set
@@ -87,13 +88,21 @@ function getDataSets(
             file["stretchedPrincipalAxes"]
         end
 
+        @time bondWeights = JLD2.jldopen(
+            "$(rootPath)/cache/bondWeights_$(sequenceHash).jld2";
+            compress = true,
+        ) do file
+            file["bondWeights"]
+        end
+
+
         println("loading successfull")
     else
         println("No precomputed data found! Computing now...")
         println("Reading dataset....")
         distanceMatrices = loadDistanceMatricesFromData(stateDataPath)
         atomPositions = loadAtomPositionsFromData(stateDataPath)
-
+        bondWeights = loadBondWeightsFromData(bondWeightPath)
         atomPositions = alignAtomPositions(atomPositions |> keys |> first, atomPositions)
 
         #@show transitionRefPositions
@@ -142,6 +151,12 @@ function getDataSets(
             true;
             stretchedPrincipalAxes,
         )
+  
+        @time JLD2.jldsave(
+            "$(rootPath)/cache/bondWeights_$(sequenceHash).jld2",
+            true;
+            bondWeights,
+        )
 
         println("Storing successfull")
     end
@@ -157,6 +172,7 @@ function getDataSets(
     combinedData["transitionRefPositions"] = transitionRefPositions
     @show "end"
 
+    combinedData["bondWeights"] = bondWeights
     combinedData["transitionLabels"] = transitionLabels
     combinedData["stretchedPrincipalAxes"] = stretchedPrincipalAxes
 
@@ -201,6 +217,14 @@ function loadDistanceMatricesFromData(stateDataPath::String)::Dict{String,Matrix
     return distanceMatrices
 end
 
+function loadBondWeightsFromData(path::String)::Dict{String, Matrix{Float64}}
+    bw = Pickle.npyload(open(path))
+    # for now we assume that it's a dense representation
+    # TODO: add ability to read sparse format matrices
+    f((k,v)) = string(k) => Matrix{Float64}(v)
+    
+    return Dict(Iterators.map(f, pairs(bw)))
+end
 
 function addPositionsToDict(dict::Dict{String,Matrix}, pathToFile::String, fileName::String)
     stateId = SubString(fileName, 1:((findfirst("_", fileName)|>first)-1))
