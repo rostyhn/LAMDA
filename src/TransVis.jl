@@ -558,7 +558,7 @@ function go()
         return split(transString, ">")
     end
 
-    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Any}}}()
+    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}}, Vector{Float64}}}()
     @time for (key, value) in distanceMatrices
         points = Vector{Tuple{Point3f,Point3f}}()
         weights = Vector{Float64}()
@@ -572,17 +572,21 @@ function go()
             end
         end
         max_weight = maximum(max, weights)
-        colors = map(x -> (:blue, invLerp(0, max_weight, x)), weights)
+        colors = map(x -> invLerp(0, max_weight, x), weights)
         lineSets[key] = (points, colors)
     end
 
     linesegments!(lscenePre,
         lift(x -> lineSets[x[1]][1], currentStatePair),
-        color=lift(x -> lineSets[x[1]][2], currentStatePair))
+        color=lift(x -> lineSets[x[1]][2], currentStatePair),
+        colorrange=(0.0, 1.0),
+        colormap=:heat)
 
     linesegments!(lscenePost,
         lift(x -> lineSets[x[2]][1], currentStatePair),
-        color=lift(x -> lineSets[x[2]][2], currentStatePair))
+        color=lift(x -> lineSets[x[2]][2], currentStatePair),
+        colorrange=(0.0, 1.0),
+        colormap=:heat)
 
     on(currentTransition) do val
         Threads.@threads for i in eachindex(sampleRangeX) # x
@@ -605,7 +609,7 @@ function go()
     scatter!(
         lscenePre,
         lift(x -> atomPositions[x[1]], currentStatePair);
-        markersize=10,
+        markersize=25,
         color=:gray,
         colormap=:bam,
         colorrange=(-0.4, 0.4),
@@ -613,7 +617,7 @@ function go()
     scatter!(
         lscenePost,
         lift(x -> atomPositions[x[2]], currentStatePair);
-        markersize=10,
+        markersize=25,
         color=:gray,
         colormap=:bam,
         colorrange=(-0.4, 0.4),
