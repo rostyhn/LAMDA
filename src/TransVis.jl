@@ -558,34 +558,38 @@ function go()
         return split(transString, ">")
     end
 
-    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}}, Vector{Float64}}}()
+    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Float64}}}()
     @time for (key, value) in distanceMatrices
         points = Vector{Tuple{Point3f,Point3f}}()
         weights = Vector{Float64}()
         for i in 1:length(value[1, :])
-            for j in 1:(i-1)
+            for j in 1:i
                 bw = bondWeights[key][i, j]
-                if bw > 0
+                if bw > 0.0
                     push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
                     push!(weights, bw)
                 end
             end
         end
         max_weight = maximum(max, weights)
-        colors = map(x -> invLerp(0, max_weight, x), weights)
+        colors = map(x -> invLerp(0.0, max_weight, x), weights)
         lineSets[key] = (points, colors)
     end
 
     linesegments!(lscenePre,
         lift(x -> lineSets[x[1]][1], currentStatePair),
         color=lift(x -> lineSets[x[1]][2], currentStatePair),
+        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
+        lowclip=:black,
         colorrange=(0.0, 1.0),
         colormap=:heat)
 
     linesegments!(lscenePost,
         lift(x -> lineSets[x[2]][1], currentStatePair),
         color=lift(x -> lineSets[x[2]][2], currentStatePair),
+        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         colorrange=(0.0, 1.0),
+        lowclip=:black,
         colormap=:heat)
 
     on(currentTransition) do val
@@ -613,6 +617,7 @@ function go()
         color=:gray,
         colormap=:bam,
         colorrange=(-0.4, 0.4),
+        inspector_label=(self, idx, pos) -> string("Atom ", idx)
     )
     scatter!(
         lscenePost,
@@ -621,7 +626,11 @@ function go()
         color=:gray,
         colormap=:bam,
         colorrange=(-0.4, 0.4),
+        inspector_label=(self, idx, pos) -> string("Atom ", idx)
     )
+
+    DataInspector(lscenePre)
+    DataInspector(lscenePost)
 
     testCase = stretchedPrincipalAxes["1>3"]
 
@@ -720,10 +729,10 @@ function go()
 
 
     screen1 = GLMakie.Screen()
-    screen2 = GLMakie.Screen()
+    #screen2 = GLMakie.Screen()
 
     display(screen1, molWindow)
-    display(screen2, plotWindow)
+    #display(screen2, plotWindow)
 
 
     #animation stuff
