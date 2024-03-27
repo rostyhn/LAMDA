@@ -592,13 +592,13 @@ function go()
         lowclip=:black,
         colormap=:heat)
 
-    on(currentTransition) do val
+    @lift begin
         Threads.@threads for i in eachindex(sampleRangeX) # x
             for j in eachindex(sampleRangeY) # y
                 for k in eachindex(sampleRangeZ) # z
                     point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
-                    knn, dists = NearestNeighbors.knn(transitionKDTree[val], point, 5)
-                    kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[val][knn], kernelWidth) .* transitionInvariants1[val][knn])
+                    knn, dists = NearestNeighbors.knn(transitionKDTree[$currentTransition], point, 5)
+                    kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[$currentTransition][knn], kernelWidth) .* transitionInvariants1[$currentTransition][knn])
                     volumeData[][i, j, k] = kValue
                 end
             end
