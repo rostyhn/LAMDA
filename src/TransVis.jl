@@ -244,7 +244,7 @@ function go()
     )
 
     lsceneRightVolume = LScene(
-        molWindow[1:6, 4:6],
+        molWindow[1:5, 4:6],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
@@ -647,7 +647,7 @@ function go()
 
 
     glyphResolution = 0.1
-
+    glypsVisible = Observable(false)
     glyps = mesh!(
         lsceneRightVolume,
         lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize),
@@ -658,9 +658,23 @@ function go()
         #colorrange = (-invariant1MaxRange, invariant1MaxRange),
         fxaa=false,
         alpha=1.0,
-        visible=false,
+        visible=glypsVisible,
     )
+    glyps.inspectable[] = false
+
     #Colorbar(molWindow[6,4:6], glyps, vertical = false)
+    show_quadric_btn = Button(molWindow[5, 4:6], label=@lift begin
+        if $glypsVisible
+            return "Hide superquadric"
+        else
+            return "Show superquadric"
+        end
+    end)
+
+    on(show_quadric_btn.clicks) do _
+        glypsVisible[] = !glypsVisible[]
+        notify(glypsVisible)
+    end
 
     cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
     @show "cmap Range"
@@ -683,8 +697,6 @@ function go()
         visible=true,)
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
-
-
 
     on(events(lsceneRightVolume).mousebutton, priority=2) do event
         if event.button == Mouse.left && event.action == Mouse.pressed
