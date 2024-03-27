@@ -238,7 +238,7 @@ function go()
         scenekw=(backgroundcolor=:white, clear=true),
     )
     lscenePost = LScene(
-        molWindow[4:6, 1:3],
+        molWindow[3:6, 1:3],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
