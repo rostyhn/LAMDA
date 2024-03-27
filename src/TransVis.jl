@@ -354,9 +354,10 @@ function go()
     kernelWidth = 1.0
 
     volumeData = Observable(zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ)))
+    volumeDataDict = Observable(Dict{Int,Any}())
 
     volumeAbsMax = Observable(1.0)
-
+    volumeMin = Observable(1.0)
     #@show "volume comp time"
     # currentTransition = lift(sliderTransition.sliders[1].value) do val
     #     return transitionSequence[val]
@@ -547,8 +548,6 @@ function go()
     )
 
 
-
-
     currentTransition = lift(sliderTransition.sliders[1].value) do val
         return transitionSequence[val]
     end
@@ -593,39 +592,61 @@ function go()
         colormap=:heat)
 
     @lift begin
-        Threads.@threads for i in eachindex(sampleRangeX) # x
+        for i in eachindex(sampleRangeX) # x
             for j in eachindex(sampleRangeY) # y
                 for k in eachindex(sampleRangeZ) # z
                     point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
                     knn, dists = NearestNeighbors.knn(transitionKDTree[$currentTransition], point, 5)
                     kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[$currentTransition][knn], kernelWidth) .* transitionInvariants1[$currentTransition][knn])
                     volumeData[][i, j, k] = kValue
+                    idx, d = NearestNeighbors.nn(transitionKDTree[$currentTransition], point)
+                    volumeDataDict[][idx] = kValue
                 end
             end
         end
         volumeAbsMax[] = max(abs(minimum(volumeData[])), abs(maximum(volumeData[])))
+        volumeMin[] = minimum(volumeData[])
         #@show volumeAbsMax[]
         notify(volumeAbsMax)
         notify(volumeData)
     end
+    
+    @show volumeDataDict[]
+    
+    # 6 is the slope - should only be even odds
+    # 0.1 is the thickness of the white part
+    cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+    @show "cmap Range"
+    @show length(cmap)
 
+    ap1 = lift(x -> atomPositions[x[1]], currentStatePair); 
+    ap2 = lift(x -> atomPositions[x[2]], currentStatePair);
+   
+    aa1 = @lift begin 
+        return map(x-> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1))) 
+    end
 
-    scatter!(
+    aa2 = @lift begin 
+        return map(x-> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap2))) 
+    end
+   
+    meshscatter!(
         lscenePre,
-        lift(x -> atomPositions[x[1]], currentStatePair);
-        markersize=25,
-        color=:gray,
-        colormap=:bam,
-        colorrange=(-0.4, 0.4),
+        ap1,
+        markersize=0.5,
+        color=aa1,
+        colormap=cmap,
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
         inspector_label=(self, idx, pos) -> string("Atom ", idx)
     )
-    scatter!(
+
+    meshscatter!(
         lscenePost,
-        lift(x -> atomPositions[x[2]], currentStatePair);
-        markersize=25,
-        color=:gray,
-        colormap=:bam,
-        colorrange=(-0.4, 0.4),
+        ap2,
+        markersize=0.5,
+        color=aa2,
+        colormap=cmap,
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
         inspector_label=(self, idx, pos) -> string("Atom ", idx)
     )
 
@@ -676,9 +697,6 @@ function go()
         notify(glypsVisible)
     end
 
-    cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-    @show "cmap Range"
-    @show length(cmap)
     # r = 15:30
 
 
@@ -761,4 +779,4 @@ function go()
 end
 
 
-end # module TransVis
+end # module TransVi
