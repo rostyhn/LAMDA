@@ -657,7 +657,7 @@ function go()
         #colormap = :bam,
         #colorrange = (-invariant1MaxRange, invariant1MaxRange),
         fxaa=false,
-        alpha=1.0,
+        alpha=0.1,
         visible=glypsVisible,
     )
     glyps.inspectable[] = false
@@ -694,7 +694,8 @@ function go()
         transparency=true,
         shading=NoShading,
         colorrange=lift(x -> (-x, x), volumeAbsMax),
-        visible=true,)
+        visible=true,
+       overdraw=true)
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
