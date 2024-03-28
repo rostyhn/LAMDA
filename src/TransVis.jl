@@ -557,39 +557,6 @@ function go()
         return split(transString, ">")
     end
 
-    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Float64}}}()
-    @time for (key, value) in distanceMatrices
-        points = Vector{Tuple{Point3f,Point3f}}()
-        weights = Vector{Float64}()
-        for i in 1:length(value[1, :])
-            for j in 1:i
-                bw = bondWeights[key][i, j]
-                if bw > 0.0
-                    push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
-                    push!(weights, bw)
-                end
-            end
-        end
-        max_weight = maximum(max, weights)
-        colors = map(x -> invLerp(0.0, max_weight, x), weights)
-        lineSets[key] = (points, colors)
-    end
-
-    linesegments!(lscenePre,
-        lift(x -> lineSets[x[1]][1], currentStatePair),
-        color=lift(x -> lineSets[x[1]][2], currentStatePair),
-        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
-        lowclip=:black,
-        colorrange=(0.0, 1.0),
-        colormap=:heat)
-
-    linesegments!(lscenePost,
-        lift(x -> lineSets[x[2]][1], currentStatePair),
-        color=lift(x -> lineSets[x[2]][2], currentStatePair),
-        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
-        colorrange=(0.0, 1.0),
-        lowclip=:black,
-        colormap=:heat)
 
     @lift begin
         for i in eachindex(sampleRangeX) # x
@@ -665,6 +632,40 @@ function go()
     #     colorrange = (-0.4, 0.4),
     # )
 
+    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Float64}}}()
+    @time for (key, value) in distanceMatrices
+        points = Vector{Tuple{Point3f,Point3f}}()
+        weights = Vector{Float64}()
+        for i in 1:length(value[1, :])
+            for j in 1:i
+                v1 = volumeDataDict[][i]
+                v2 = volumeDataDict[][j]
+                bw = bondWeights[key][i,j]
+                avg = (abs((v1 + v2)) / 2) / volumeAbsMax[]
+                # 0.05 is the threshold val for filtering
+                # check against bond weight to make sure we're only looking at "real" bonds
+                if bw > 0.0 && avg > 0.05 
+                    push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
+                    push!(weights, bw)
+                end
+            end
+        end
+        lineSets[key] = (points, weights)
+    end
+
+    linesegments!(lscenePre,
+        lift(x -> lineSets[x[1]][1], currentStatePair),
+        color=lift(x -> lineSets[x[1]][2], currentStatePair),
+        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
+        lowclip=:black,
+        colormap=:heat)
+
+    linesegments!(lscenePost,
+        lift(x -> lineSets[x[2]][1], currentStatePair),
+        color=lift(x -> lineSets[x[2]][2], currentStatePair),
+        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
+        lowclip=:black,
+        colormap=:heat)
 
 
     glyphResolution = 0.1
