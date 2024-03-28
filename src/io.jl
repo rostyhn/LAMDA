@@ -3,6 +3,7 @@ function getDataSets(
     sqeuencePath::String,
     transitionLabelPath::String,
     bondWeightPath::String,
+    connectivityPath::String,
 )::Dict{String,Dict}
 
     combinedData = Dict{String,Dict}() # combined set
@@ -95,6 +96,12 @@ function getDataSets(
             file["bondWeights"]
         end
 
+        @time connectivity = JLD2.jldopen(
+            "$(rootPath)/cache/connectivity_$(sequenceHash).jld2";
+            compress = true,
+        ) do file
+            file["connectivity"]
+        end
 
         println("loading successfull")
     else
@@ -104,7 +111,8 @@ function getDataSets(
         atomPositions = loadAtomPositionsFromData(stateDataPath)
         bondWeights = loadBondWeightsFromData(bondWeightPath)
         atomPositions = alignAtomPositions(atomPositions |> keys |> first, atomPositions)
-
+        # they're the same type so it should just work - we could probably abstract this out later
+        connectivity = loadBondWeightsFromData(connectivityPath)
         #@show transitionRefPositions
 
         (transitionRefPositions, transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes) =
@@ -158,6 +166,11 @@ function getDataSets(
             bondWeights,
         )
 
+        @time JLD2.jldsave(
+            "$(rootPath)/cache/connectivity_$(sequenceHash).jld2",
+            true;
+            connectivity,
+        )
         println("Storing successfull")
     end
 
@@ -173,6 +186,7 @@ function getDataSets(
     @show "end"
 
     combinedData["bondWeights"] = bondWeights
+    combinedData["connectivity"] = connectivity
     combinedData["transitionLabels"] = transitionLabels
     combinedData["stretchedPrincipalAxes"] = stretchedPrincipalAxes
 

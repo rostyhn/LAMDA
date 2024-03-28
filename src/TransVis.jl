@@ -208,7 +208,26 @@ function link_cameras_lscene(f; step=0.01)
     f
 end
 
+function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions)
+    points = Vector{Tuple{Point3f,Point3f}}()
+    weights = Vector{Float64}()
+    for i in 1:length(bondDelta[1, :])
+        for j in 1:i
+            v1 = volumeDataDict[i]
+            v2 = volumeDataDict[j]
+            bw = bondDelta[i, j]
 
+            avg = (abs((v1 + v2)) / 2) / volumeAbsMax
+            # 0.05 is the threshold val for filtering
+            # check against bond weight to make sure we're only looking at "real" bonds
+            if abs(bw) > 0.0 && avg > 0.05
+                push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
+                push!(weights, bw)
+            end
+        end
+    end
+    return (points, weights)
+end
 
 function angle(a, b)
     return acosd(clamp(a ⋅ b / (norm(a) * norm(b)), -1, 1))
@@ -263,14 +282,14 @@ function go()
 
     transitionGlyphSizeSlider = Slider(molWindow[4:6, 7], range=0.1:0.01:4, horizontal=false, startvalue=1)
 
-
-
     stateDataPath = "/home/frosty/Programs/Julia/TransVis/data/state_data copy/"
     sequencePath = "/home/frosty/Programs/Julia/TransVis/data/state_data copy/seq.txt"
     transitionPath = "/home/frosty/Programs/Julia/TransVis/data/nano_pt_labels.pickle"
     bondWeightPath = "/home/frosty/Programs/Julia/TransVis/data/bond_weights.pickle"
+    connectivityPath = "/home/frosty/Programs/Julia/TransVis/data/connectivity.pickle"
 
-    combinedData = getDataSets(stateDataPath, sequencePath, transitionPath, bondWeightPath)
+    combinedData = getDataSets(stateDataPath, sequencePath, transitionPath, bondWeightPath, connectivityPath)
+
 
     transitionInvariants1 = combinedData["transitionInvariants1"]
     transitionInvariants2 = combinedData["transitionInvariants2"]
@@ -285,6 +304,7 @@ function go()
 
     atomPositions = combinedData["atomPositions"]
 
+    connectivity = combinedData["connectivity"]
     bondWeights = combinedData["bondWeights"]
 
     #get min max of all transition invariants 1
@@ -520,9 +540,6 @@ function go()
         return Consume(false)
     end
 
-
-
-
     sequence = getSequence(sequencePath)
 
     transitionSequence = Vector{String}()
@@ -573,30 +590,27 @@ function go()
         end
         volumeAbsMax[] = max(abs(minimum(volumeData[])), abs(maximum(volumeData[])))
         volumeMin[] = minimum(volumeData[])
-        #@show volumeAbsMax[]
         notify(volumeAbsMax)
         notify(volumeData)
     end
-    
-    @show volumeDataDict[]
-    
+
     # 6 is the slope - should only be even odds
     # 0.1 is the thickness of the white part
     cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
     @show "cmap Range"
     @show length(cmap)
 
-    ap1 = lift(x -> atomPositions[x[1]], currentStatePair); 
-    ap2 = lift(x -> atomPositions[x[2]], currentStatePair);
-   
-    aa1 = @lift begin 
-        return map(x-> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1))) 
+    ap1 = lift(x -> atomPositions[x[1]], currentStatePair)
+    ap2 = lift(x -> atomPositions[x[2]], currentStatePair)
+
+    aa1 = @lift begin
+        return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1)))
     end
 
-    aa2 = @lift begin 
-        return map(x-> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap2))) 
+    aa2 = @lift begin
+        return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap2)))
     end
-   
+
     meshscatter!(
         lscenePre,
         ap1,
@@ -632,40 +646,37 @@ function go()
     #     colorrange = (-0.4, 0.4),
     # )
 
-    lineSets = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Float64}}}()
-    @time for (key, value) in distanceMatrices
-        points = Vector{Tuple{Point3f,Point3f}}()
-        weights = Vector{Float64}()
-        for i in 1:length(value[1, :])
-            for j in 1:i
-                v1 = volumeDataDict[][i]
-                v2 = volumeDataDict[][j]
-                bw = bondWeights[key][i,j]
-                avg = (abs((v1 + v2)) / 2) / volumeAbsMax[]
-                # 0.05 is the threshold val for filtering
-                # check against bond weight to make sure we're only looking at "real" bonds
-                if bw > 0.0 && avg > 0.05 
-                    push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
-                    push!(weights, bw)
-                end
-            end
-        end
-        lineSets[key] = (points, weights)
+    @show currentStatePair
+    lineSets = @lift begin
+        ls = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Float64}}}()
+
+        dm1 = distanceMatrices[$currentStatePair[1]] .* connectivity[$currentStatePair[1]]'
+        dm2 = distanceMatrices[$currentStatePair[2]] .* connectivity[$currentStatePair[2]]'
+
+       
+        #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
+
+        # for now it's total delta
+        bondDelta = (dm2 - dm1) #/totalDistanceMatrix
+ 
+        ls[currentStatePair[][1]] = buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
+        ls[currentStatePair[][2]] = buildBonds($currentStatePair[2], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
+        return ls
     end
 
     linesegments!(lscenePre,
-        lift(x -> lineSets[x[1]][1], currentStatePair),
-        color=lift(x -> lineSets[x[1]][2], currentStatePair),
+        lift(x -> lineSets[][x[1]][1], currentStatePair),
+        color=lift(x -> lineSets[][x[1]][2], currentStatePair),
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
-        colormap=:heat)
+        colormap=:bam)
 
     linesegments!(lscenePost,
-        lift(x -> lineSets[x[2]][1], currentStatePair),
-        color=lift(x -> lineSets[x[2]][2], currentStatePair),
+        lift(x -> lineSets[][x[2]][1], currentStatePair),
+        color=lift(x -> lineSets[][x[2]][2], currentStatePair),
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
-        colormap=:heat)
+        colormap=:bam)
 
 
     glyphResolution = 0.1
@@ -714,7 +725,7 @@ function go()
         shading=NoShading,
         colorrange=lift(x -> (-x, x), volumeAbsMax),
         visible=true,
-       overdraw=true)
+        overdraw=true)
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
