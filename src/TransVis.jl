@@ -252,16 +252,11 @@ function go()
 
 
     lscenePre = LScene(
-        molWindow[1:3, 1:3],
+        molWindow[1:5, 1:3],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
-    lscenePost = LScene(
-        molWindow[3:6, 1:3],
-        show_axis=false,
-        scenekw=(backgroundcolor=:white, clear=true),
-    )
-
+   
     lsceneRightVolume = LScene(
         molWindow[1:5, 4:6],
         show_axis=false,
@@ -621,18 +616,7 @@ function go()
         inspector_label=(self, idx, pos) -> string("Atom ", idx)
     )
 
-    meshscatter!(
-        lscenePost,
-        ap2,
-        markersize=0.5,
-        color=aa2,
-        colormap=cmap,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
-        inspector_label=(self, idx, pos) -> string("Atom ", idx)
-    )
-
     DataInspector(lscenePre)
-    DataInspector(lscenePost)
 
     testCase = stretchedPrincipalAxes["1>3"]
 
@@ -670,14 +654,6 @@ function go()
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
-
-    linesegments!(lscenePost,
-        lift(x -> lineSets[][x[2]][1], currentStatePair),
-        color=lift(x -> lineSets[][x[2]][2], currentStatePair),
-        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
-        lowclip=:black,
-        colormap=:bam)
-
 
     glyphResolution = 0.1
     glypsVisible = Observable(false)
