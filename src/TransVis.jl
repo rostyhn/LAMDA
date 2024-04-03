@@ -1,6 +1,8 @@
 module TransVis
 
 #Data handling
+using GLMakie: apply_transform
+using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene
 using Pickle
 using JLD2
 using CodecZlib
@@ -251,24 +253,17 @@ function go()
     molWindow = Figure(size=(600, 400))
 
 
-    lscenePre = LScene(
+    atomView = LScene(
         molWindow[1:5, 1:3],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
-   
-    lsceneRightVolume = LScene(
+
+    volumeView = LScene(
         molWindow[1:5, 4:6],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
-    # lsceneRightAtoms = LScene(
-    #     molWindow[4:6, 4:6],
-    #     show_axis = false,
-    #     scenekw = (backgroundcolor = :white, clear = true),
-    # )
-
-
 
     axI1 = Axis(plotWindow[1:2, 1:4], xlabel="Atom Number", ylabel="K1")
     axI2 = Axis(plotWindow[3:4, 1:4], xlabel="Atom Number", ylabel="K2")
@@ -596,27 +591,24 @@ function go()
     @show length(cmap)
 
     ap1 = lift(x -> atomPositions[x[1]], currentStatePair)
-    ap2 = lift(x -> atomPositions[x[2]], currentStatePair)
 
     aa1 = @lift begin
         return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1)))
     end
 
-    aa2 = @lift begin
-        return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap2)))
-    end
+    #meshscatter!(
+    #    atomView,
+    #    ap1,
+    #    markersize=1.0,
+    #    color=aa1,
+    #    visible=false,
+    #    depth_shift=1,
+    #    colormap=cmap,
+    #    colorrange=lift(x -> (-x, x), volumeAbsMax),
+    #    inspectable=true,
+    #    inspector_label=(self, idx, pos) -> string("Atom ", idx)
+    #)
 
-    meshscatter!(
-        lscenePre,
-        ap1,
-        markersize=0.5,
-        color=aa1,
-        colormap=cmap,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
-        inspector_label=(self, idx, pos) -> string("Atom ", idx)
-    )
-
-    DataInspector(lscenePre)
 
     testCase = stretchedPrincipalAxes["1>3"]
 
@@ -632,63 +624,59 @@ function go()
 
     @show currentStatePair
     lineSets = @lift begin
-        ls = Dict{String,Tuple{Vector{Tuple{Point3f,Point3f}},Vector{Float64}}}()
-
         dm1 = distanceMatrices[$currentStatePair[1]] .* connectivity[$currentStatePair[1]]'
         dm2 = distanceMatrices[$currentStatePair[2]] .* connectivity[$currentStatePair[2]]'
 
-       
+
         #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
 
         # for now it's total delta
         bondDelta = (dm2 - dm1) #/totalDistanceMatrix
- 
-        ls[currentStatePair[][1]] = buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
-        ls[currentStatePair[][2]] = buildBonds($currentStatePair[2], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
-        return ls
+
+        return buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
     end
 
-    linesegments!(lscenePre,
-        lift(x -> lineSets[][x[1]][1], currentStatePair),
-        color=lift(x -> lineSets[][x[1]][2], currentStatePair),
+    linesegments!(atomView,
+        lineSets[][1],
+        color=lineSets[][2],
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
 
     glyphResolution = 0.1
-    glypsVisible = Observable(false)
     glyps = mesh!(
-        lsceneRightVolume,
+        atomView,
         lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize),
-        transparency=false,
-        color=:white,
-        #color = lift(x -> transitionInvariants1[x], currentTransition),
-        #colormap = :bam,
-        #colorrange = (-invariant1MaxRange, invariant1MaxRange),
+        color=aa1,
+        colormap=:bam,
         fxaa=false,
-        alpha=0.1,
-        visible=glypsVisible,
     )
     glyps.inspectable[] = false
 
-    #Colorbar(molWindow[6,4:6], glyps, vertical = false)
-    show_quadric_btn = Button(molWindow[5, 4:6], label=@lift begin
-        if $glypsVisible
-            return "Hide superquadric"
-        else
-            return "Show superquadric"
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
+
+    ttText = Observable("")
+    ttPos = Observable(Point2f(0))
+
+    on(events(atomView).mouseposition) do mp
+        plot, idx = pick(glyps)
+        if plot == glyps.plots[1]
+            pos = position_on_plot(plot, idx)
+            idx, d = NearestNeighbors.nn(transitionKDTree[currentTransition[]], pos)
+            if !isnan(pos)
+                ttPos[] = pos
+                ttText[] = string("Atom ", idx)
+                return Consume(true)
+            end
         end
-    end)
-
-    on(show_quadric_btn.clicks) do _
-        glypsVisible[] = !glypsVisible[]
-        notify(glypsVisible)
+        return Consume(false)
     end
+    Label(molWindow[6, 1], lift(x -> x, ttText))
 
+    DataInspector(atomView)
     # r = 15:30
 
-
-    vol = volume!(lsceneRightVolume, sampleRangeX, sampleRangeY, sampleRangeZ,
+    vol = volume!(volumeView, sampleRangeX, sampleRangeY, sampleRangeZ,
         lift(x -> x, volumeData);
         colormap=cmap,
         algorithm=:absorption,
@@ -705,7 +693,7 @@ function go()
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
-    on(events(lsceneRightVolume).mousebutton, priority=2) do event
+    on(events(volumeView).mousebutton, priority=2) do event
         if event.button == Mouse.left && event.action == Mouse.pressed
             # Delete marker
             plt, i = pick(glyps)
