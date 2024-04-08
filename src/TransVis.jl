@@ -210,25 +210,30 @@ function link_cameras_lscene(f; step=0.01)
     f
 end
 
-function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions)
+function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions, filtered)
     points = Vector{Tuple{Point3f,Point3f}}()
     weights = Vector{Float64}()
+    indices = Vector{Tuple{Int64,Int64}}()
     for i in 1:length(bondDelta[1, :])
-        for j in 1:i
-            v1 = volumeDataDict[i]
-            v2 = volumeDataDict[j]
-            bw = bondDelta[i, j]
+        if i in filtered
+            for j in 1:i
+                if j in filtered                    v1 = volumeDataDict[i]
+                    v2 = volumeDataDict[j]
+                    bw = bondDelta[i, j]
 
-            avg = (abs((v1 + v2)) / 2) / volumeAbsMax
-            # 0.05 is the threshold val for filtering
-            # check against bond weight to make sure we're only looking at "real" bonds
-            if abs(bw) > 0.0 && avg > 0.05
-                push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
-                push!(weights, bw)
+                    avg = (abs((v1 + v2)) / 2) / volumeAbsMax
+                    # 0.05 is the threshold val for filtering
+                    # check against bond weight to make sure we're only looking at "real" bonds
+                    if abs(bw) > 0.0                         
+                        push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
+                        push!(weights, bw)
+                        push!(indices, (i, j))
+                    end
+                end
             end
         end
     end
-    return (points, weights)
+    return (points, weights, indices)
 end
 
 function angle(a, b)
@@ -622,6 +627,46 @@ function go()
     #     colorrange = (-0.4, 0.4),
     # )
 
+    filtered = @lift begin
+        filtered = Vector{Int64}()
+        for (i, v) in enumerate($aa1)
+            if abs(v) > 0.0001
+                push!(filtered, i)
+            end
+        end
+        return filtered
+    end
+
+    glyphResolution = 0.1
+    glyps = mesh!(
+        atomView,
+        lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[filtered[]], currentTransition, transitionGlyphSize),
+        color=aa1[][filtered[]],
+        colormap=:bam,
+        fxaa=false,
+        overdraw=true,
+    )
+    glyps.inspectable[] = false
+
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
+
+    inspector = DataInspector(atomView)
+
+    on(events(atomView).mouseposition) do mp
+        plot, idx = pick(glyps)
+        if plot == glyps.plots[1]
+            pos = position_on_plot(plot, idx)
+            idx, d = NearestNeighbors.nn(transitionKDTree[currentTransition[]], pos)
+            if !isnan(pos)
+                inspector.plot.text[] = string("Atom ", idx)
+                inspector.plot.visible[] = true
+                inspector.plot.position = mp
+                return Consume(true)
+            end
+        end
+        return Consume(false)
+    end
+
     @show currentStatePair
     lineSets = @lift begin
         dm1 = distanceMatrices[$currentStatePair[1]] .* connectivity[$currentStatePair[1]]'
@@ -633,7 +678,9 @@ function go()
         # for now it's total delta
         bondDelta = (dm2 - dm1) #/totalDistanceMatrix
 
-        return buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
+        bonds = buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions, $filtered)
+     
+        return bonds[1], bonds[2]
     end
 
     linesegments!(atomView,
@@ -642,37 +689,6 @@ function go()
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
-
-    glyphResolution = 0.1
-    glyps = mesh!(
-        atomView,
-        lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize),
-        color=aa1,
-        colormap=:bam,
-        fxaa=false,
-        overdraw=true,
-    )
-    glyps.inspectable[] = false
-
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
-    
-    inspector = DataInspector(atomView)
-
-    on(events(atomView).mouseposition) do mp
-        plot, idx = pick(glyps)
-        if plot == glyps.plots[1]
-            pos = position_on_plot(plot, idx)
-            idx, d = NearestNeighbors.nn(transitionKDTree[currentTransition[]], pos)
-            if !isnan(pos)
-                inspector.plot.text[] = string("Atom ", idx)
-                inspector.plot.visible[] = true
-                inspector.plot.position = mp 
-                return Consume(true)
-            end
-        end
-        return Consume(false)
-    end
-
     # r = 15:30
 
     vol = volume!(volumeView, sampleRangeX, sampleRangeY, sampleRangeZ,
