@@ -2,7 +2,7 @@ module TransVis
 
 #Data handling
 using GLMakie: apply_transform
-using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene
+using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data
 using Pickle
 using JLD2
 using CodecZlib
@@ -650,13 +650,13 @@ function go()
         color=aa1,
         colormap=:bam,
         fxaa=false,
+        overdraw=true,
     )
     glyps.inspectable[] = false
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
-
-    ttText = Observable("")
-    ttPos = Observable(Point2f(0))
+    
+    inspector = DataInspector(atomView)
 
     on(events(atomView).mouseposition) do mp
         plot, idx = pick(glyps)
@@ -664,16 +664,15 @@ function go()
             pos = position_on_plot(plot, idx)
             idx, d = NearestNeighbors.nn(transitionKDTree[currentTransition[]], pos)
             if !isnan(pos)
-                ttPos[] = pos
-                ttText[] = string("Atom ", idx)
+                inspector.plot.text[] = string("Atom ", idx)
+                inspector.plot.visible[] = true
+                inspector.plot.position = mp 
                 return Consume(true)
             end
         end
         return Consume(false)
     end
-    Label(molWindow[6, 1], lift(x -> x, ttText))
 
-    DataInspector(atomView)
     # r = 15:30
 
     vol = volume!(volumeView, sampleRangeX, sampleRangeY, sampleRangeZ,
