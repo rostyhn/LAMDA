@@ -217,14 +217,15 @@ function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions,
     for i in 1:length(bondDelta[1, :])
         if i in filtered
             for j in 1:i
-                if j in filtered                    v1 = volumeDataDict[i]
+                if j in filtered
+                    v1 = volumeDataDict[i]
                     v2 = volumeDataDict[j]
                     bw = bondDelta[i, j]
 
                     avg = (abs((v1 + v2)) / 2) / volumeAbsMax
                     # 0.05 is the threshold val for filtering
                     # check against bond weight to make sure we're only looking at "real" bonds
-                    if abs(bw) > 0.0                         
+                    if abs(bw) > 0.0
                         push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
                         push!(weights, bw)
                         push!(indices, (i, j))
@@ -613,24 +614,18 @@ function go()
     #    inspectable=true,
     #    inspector_label=(self, idx, pos) -> string("Atom ", idx)
     #)
+    filterRange = @lift begin
+        mm = extrema($aa1)
+        return LinRange(mm[1], mm[2], 100)
+    end
 
-
-    testCase = stretchedPrincipalAxes["1>3"]
-
-    # glyps = meshscatter!(
-    #     lsceneRight,
-    #     lift(x -> transitionRefPositions[x], currentTransition);
-    #     markersize = lift(x -> x, transitionGlyphSize),
-    #     marker=superquadric( testCase[1],  0.99, 1.0 ,0.3),
-    #     color = lift(x -> transitionInvariants1[x], currentTransition),
-    #     colormap = :bwr,
-    #     colorrange = (-0.4, 0.4),
-    # )
-
-    filtered = @lift begin
+    volFilter = IntervalSlider(molWindow[6, 1:3], range=filterRange[], startvalues=(0.0001, -0.0001)) 
+    Label(molWindow[5,1], lift(x->string(x), volFilter.interval))
+    filtered = lift(volFilter.interval) do interval
         filtered = Vector{Int64}()
-        for (i, v) in enumerate($aa1)
-            if abs(v) > 0.0001
+        for (i, v) in enumerate(aa1[])
+            # inverse filter, blue area will be removed!
+            if v < interval[1] || v > interval[2]
                 push!(filtered, i)
             end
         end
@@ -640,11 +635,12 @@ function go()
     glyphResolution = 0.1
     glyps = mesh!(
         atomView,
-        lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[filtered[]], currentTransition, transitionGlyphSize),
-        color=aa1[][filtered[]],
+        lift((x, y, z) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[z], currentTransition, transitionGlyphSize, filtered),
+        color=lift(x -> aa1[][x], filtered),
+        # prevents it from recoloring each time the slider moves
+        colorrange=lift(x->extrema(x),aa1),
         colormap=:bam,
         fxaa=false,
-        overdraw=true,
     )
     glyps.inspectable[] = false
 
@@ -672,20 +668,19 @@ function go()
         dm1 = distanceMatrices[$currentStatePair[1]] .* connectivity[$currentStatePair[1]]'
         dm2 = distanceMatrices[$currentStatePair[2]] .* connectivity[$currentStatePair[2]]'
 
-
         #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
 
         # for now it's total delta
         bondDelta = (dm2 - dm1) #/totalDistanceMatrix
 
         bonds = buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions, $filtered)
-     
+
         return bonds[1], bonds[2]
     end
 
     linesegments!(atomView,
-        lineSets[][1],
-        color=lineSets[][2],
+        lift(x -> x[1], lineSets),
+        color=lift(x -> x[2], lineSets),
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
@@ -705,6 +700,7 @@ function go()
         colorrange=lift(x -> (-x, x), volumeAbsMax),
         visible=true,
         overdraw=true)
+
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
