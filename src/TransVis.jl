@@ -32,7 +32,7 @@ using PersistenceDiagrams
 
 include("io.jl")
 include("processing.jl")
-
+include("SelectionWindow.jl")
 
 export go
 
@@ -258,7 +258,6 @@ function go()
     plotWindow = Figure(size=(600, 400))
     molWindow = Figure(size=(600, 400))
 
-
     atomView = LScene(
         molWindow[1:5, 1:3],
         show_axis=false,
@@ -285,7 +284,6 @@ function go()
     connectivityPath = "/home/frosty/Programs/Julia/TransVis/data/connectivity.pickle"
 
     combinedData = getDataSets(stateDataPath, sequencePath, transitionPath, bondWeightPath, connectivityPath)
-
 
     transitionInvariants1 = combinedData["transitionInvariants1"]
     transitionInvariants2 = combinedData["transitionInvariants2"]
@@ -360,7 +358,6 @@ function go()
     @show length(sampleRangeY)
     @show length(sampleRangeZ)
 
-
     @show "computing kd trees"
     transitionKDTree = Dict{String,KDTree}()
     @time for (key, value) in transitionRefPositions
@@ -374,31 +371,12 @@ function go()
 
     volumeAbsMax = Observable(1.0)
     volumeMin = Observable(1.0)
-    #@show "volume comp time"
-    # currentTransition = lift(sliderTransition.sliders[1].value) do val
-    #     return transitionSequence[val]
-    # end
 
-
-    # extremes = extrema( volumeData )
-    # maxvariation = max(extremes|>first, extremes|>last)
-    # volumeData = volumeData ./ maxvariation
-
-
-    #volumeData = Float32.((volumeData .- minimum(volumeData)) ./ (maximum(volumeData) - minimum(volumeData)))
-
-    #    @show volumeData[1,1,1]
     transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
         return val
     end
 
     atoms = [1:1:length(values(transitionInvariants1) |> first);]
-
-    #   balltree = BallTree(data, Minkowski(3.5); reorder = false)
-
-    # lines!.(axI1, Ref(atoms), values(transitionInvariants1), alpha = 0.01)
-    # lines!.(axI2, Ref(atoms), values(transitionInvariants2), alpha = 0.01)
-    # lines!.(axI3, Ref(atoms), values(transitionInvariants3), alpha = 0.01)
 
     featureVectorMatrix = zeros(
         length(values(transitionInvariants1)),
@@ -606,6 +584,19 @@ function go()
         return Consume(false)
     end
 
+    bondDeltas = Dict{String, Matrix{Float64}}()
+    for t in transitionSequence
+        pair = split(t, ">")
+
+        dm1 = distanceMatrices[pair[1]] .* connectivity[pair[1]]'
+        dm2 = distanceMatrices[pair[2]] .* connectivity[pair[2]]'
+
+        #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
+
+        # for now it's total delta
+        bondDeltas[t] = (dm2 - dm1)
+    end
+
     @show currentStatePair
     lineSets = @lift begin
         dm1 = distanceMatrices[$currentStatePair[1]] .* connectivity[$currentStatePair[1]]'
@@ -641,72 +632,21 @@ function go()
         transparency=true,
         shading=NoShading,
         colorrange=lift(x -> (-x, x), volumeAbsMax),
-        visible=true,
-        overdraw=true)
-
+        visible=true)
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
-    on(events(volumeView).mousebutton, priority=2) do event
-        if event.button == Mouse.left && event.action == Mouse.pressed
-            # Delete marker
-            plt, i = pick(glyps)
-            # @show plt
-            # @show glyps
-            # #@show plt.plots
-            # @show glyps.plots[1]
-
-            if plt == glyps.plots[1]
-                #@show i
-                #@show 
-                idx = getIndexFromSQMesh(i, glyphResolution)
-                selectedAtom[] = idx
-
-                return Consume(false)
-            end
-            return Consume(false)
-        end
-        return Consume(false)
-    end
-
-
-
-    #@show typeof(testCase)
-    # @show keys(stretchedPrincipalAxes)
-
-    #meshscatter!( lsceneRight, lift(x -> transitionRefPositions[x], currentTransition);markersize = lift(x -> x, transitionGlyphSize) , marker=superquadric( testCase[1],  0.99, 1.0 ,0.3) )
-
-
     stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))
-
     stem!(axI2, atoms, lift(x -> transitionInvariants2[x], currentTransition))
-
-    #stem!(axI3, atoms, lift(x -> transitionInvariants3[x], currentTransition))
     stem!(axI3, invariantMomentFeatures[:, 3])
-
-
 
     link_cameras_lscene(molWindow)
 
-
     screen1 = GLMakie.Screen()
-    #screen2 = GLMakie.Screen()
+    screen2 = GLMakie.Screen()
 
     display(screen1, molWindow)
     #display(screen2, plotWindow)
-
-
-    #animation stuff
-    # fps = 30
-    # nframes = 120
-
-    # keep function alive while program is running
-    # while true || !nothing(screen2)
-    #     sleep(1 / (fps * abs(speedFactor[])))
-    # end
-
-
+    display(screen2, build_selection_window((600, 800), bondDeltas))
 end
-
-
-end # module TransVi
+end
