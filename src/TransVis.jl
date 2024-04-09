@@ -421,19 +421,6 @@ function go()
             col = col + 1
         end
 
-        # col = length(values(transitionInvariants1) |> first) + 1
-        # for invariant in transitionInvariants2[transition]
-        #     featureVectorMatrix[row, col] = invariant |> abs
-        #     col = col + 1
-        # end
-
-        # col = length(values(transitionInvariants1) |> first) * 2 + 1
-        # for invariant in transitionInvariants3[transition]
-        #     featureVectorMatrix[row, col] = invariant |> abs
-        #     col = col + 1
-        # end
-
-
         #@show transition
         splitToStates = split(transition, ">")
         flippedName = splitToStates[2] * ">" * splitToStates[1]
@@ -451,8 +438,6 @@ function go()
         row = row + 1
 
     end
-
-    #@show featureVectorMatrix[100,:]
 
     #build distance distanceMatrices
     invariantDistances = zeros(length(transitionInvariants1["1>3"]), length(transitionInvariants1["1>3"])) #nAtoms x nAtoms
@@ -482,43 +467,11 @@ function go()
         pcaInput[4, i] = transitionInvariants1["1>3"][i]
     end
 
-    # @show size(pcaInput)
-    # @show pca = fit(PCA, pcaInput;maxoutdim=3)
+        @show "compting PD"
 
-
-    #@time invariantDistances = computeDistances(transitionInvariants1["1>3"])
-    #    @show length(invariantDistances)
-    @show "compting PD"
-    #@time persistenceDiagrams =  ripserer.(invariantDistances[1:200], dim_max = 2)
-
-    #momentMaps = moment_map.(persistenceDiagrams, 4)
-    #momentMatrix =  reduce(vcat,transpose.(momentMaps))
-
-    #pdDistanceMatrix = computePersistenceDistances(persistenceDiagrams)
-    #@show "done"
-    #@time  
-
-    #plot!( axI3, persistenceDiagrams )
 
     rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
     featureVectorMatrix = featureVectorMatrix |> rescale
-
-    #invariantMomentFeatures = rescale(invariantMomentFeatures; )
-
-
-    #tsne(X, ndim, reduce_dims, max_iter, perplexit; [keyword arguments])
-    #@time Y = tsne(featureVectorMatrix[:, :], 2, 20, 400, 50.0;)
-    #@time Y = tsne(invariantMomentFeatures, 2, 20, 1000, 30.0; )
-    #@time Y = umap(pdDistanceMatrix, 2; metric=:precomputed, n_neighbors=20)
-    #@time Y = umap(transpose(momentMatrix), 2; metric=Cityblock(), n_neighbors=50)
-
-
-    #tsnePlot = scatter!(axDR, Y, color = labels, colormap = (:viridis, 0.5))
-    #tsnePlot = scatter!(axDR, invariantMomentFeatures[:,3:4], color = labels, colormap = (:viridis, 0.5))
-
-    #@time embedding = ManifoldLearning.fit(DiffMap, transpose(featureVectorMatrix[:, :]);maxoutdim=3,t=2, α=0.0, ɛ=1.0)
-    #Y = predict(embedding) 
-    #tsnePlot = scatter!(axDR, Y, color = labels, colormap = (:viridis, 1.0))
 
     on(events(plotWindow).mousebutton, priority=2) do event
         if event.button == Mouse.left && event.action == Mouse.press
@@ -602,18 +555,6 @@ function go()
         return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1)))
     end
 
-    #meshscatter!(
-    #    atomView,
-    #    ap1,
-    #    markersize=1.0,
-    #    color=aa1,
-    #    visible=false,
-    #    depth_shift=1,
-    #    colormap=cmap,
-    #    colorrange=lift(x -> (-x, x), volumeAbsMax),
-    #    inspectable=true,
-    #    inspector_label=(self, idx, pos) -> string("Atom ", idx)
-    #)
     filterRange = @lift begin
         mm = extrema($aa1)
         return LinRange(mm[1], mm[2], 100)
@@ -631,11 +572,13 @@ function go()
         end
         return filtered
     end
-
+    
     glyphResolution = 0.1
+
+    superquadrics = lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize) 
     glyps = mesh!(
         atomView,
-        lift((x, y, z) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[z], currentTransition, transitionGlyphSize, filtered),
+        lift((x,y) -> x[y], superquadrics, filtered),
         color=lift(x -> aa1[][x], filtered),
         # prevents it from recoloring each time the slider moves
         colorrange=lift(x->extrema(x),aa1),
