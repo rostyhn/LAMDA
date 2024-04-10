@@ -282,13 +282,17 @@ function go()
     transitionPath = "/home/frosty/Programs/Julia/TransVis/data/nano_pt_labels.pickle"
     bondWeightPath = "/home/frosty/Programs/Julia/TransVis/data/bond_weights.pickle"
     connectivityPath = "/home/frosty/Programs/Julia/TransVis/data/connectivity.pickle"
+    transitionDistanceMatrixPath = "/home/frosty/Programs/Julia/TransVis/data/distance_matrix.pickle"
+    transitionSequencePath = "/home/frosty/Programs/Julia/TransVis/data/transition_sequence.pickle"
 
-    combinedData = getDataSets(stateDataPath, sequencePath, transitionPath, bondWeightPath, connectivityPath)
+    combinedData = getDataSets(stateDataPath, sequencePath, transitionPath, bondWeightPath, connectivityPath, transitionDistanceMatrixPath, transitionSequencePath)
 
     transitionInvariants1 = combinedData["transitionInvariants1"]
     transitionInvariants2 = combinedData["transitionInvariants2"]
     transitionInvariants3 = combinedData["transitionInvariants3"]
 
+    transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
+    transitionSequence = combinedData["transitionSequence"]["sequence"]
     transitionRefPositions = combinedData["transitionRefPositions"]
     transitionLabels = combinedData["transitionLabels"]
 
@@ -359,7 +363,7 @@ function go()
     @show length(sampleRangeZ)
 
     @show "computing kd trees"
-    transitionKDTree = Dict{String,KDTree}()
+    transitionKDTree = Dict{Tuple{Int,Int},KDTree}()
     @time for (key, value) in transitionRefPositions
         transitionKDTree[key] = KDTree(value)
     end
@@ -385,8 +389,8 @@ function go()
     labels = zeros(length(values(transitionInvariants1)))
 
 
-    mapNameToIdx = Dict{String,Int64}()
-    mapIdxToName = Vector{String}()
+    mapNameToIdx = Dict{Tuple{Int,Int},Int64}()
+    mapIdxToName = Vector{Tuple{Int,Int}}()
 
     row = 1
     for (transition, invariants1) in transitionInvariants1
@@ -399,26 +403,22 @@ function go()
             col = col + 1
         end
 
-        #@show transition
-        splitToStates = split(transition, ">")
-        flippedName = splitToStates[2] * ">" * splitToStates[1]
-
-        # @show flippedName
+        s1, s2 = transition
+        flippedName = (s2, s1)
 
         if haskey(transitionLabels, transition)
             labels[row] = transitionLabels[transition]
         elseif haskey(transitionLabels, flippedName)
             labels[row] = transitionLabels[flippedName]
         else
-            @show "Transition Label not found for " * transition
+            println("Transition not found: $(string(transition))")
         end
 
         row = row + 1
-
     end
 
     #build distance distanceMatrices
-    invariantDistances = zeros(length(transitionInvariants1["1>3"]), length(transitionInvariants1["1>3"])) #nAtoms x nAtoms
+    invariantDistances = zeros(length(transitionInvariants1[(1,3)]), length(transitionInvariants1[(1,3)])) #nAtoms x nAtoms
     invariantDistances = Vector{Matrix}(undef, length(transitionInvariants1))
     @time for (key, value) in transitionInvariants1
         invariantDistances[mapNameToIdx[key]] = computeDistances(value)
@@ -434,52 +434,8 @@ function go()
     end
 
 
-    @show size(transitionRefPositions["1>3"])
-    @show size(transitionInvariants1["1>3"])
-
-    pcaInput = zeros(4, length(transitionRefPositions["1>3"]))
-    for i in 1:length(transitionRefPositions["1>3"])
-        pcaInput[1, i] = transitionRefPositions["1>3"][i][1]
-        pcaInput[2, i] = transitionRefPositions["1>3"][i][2]
-        pcaInput[3, i] = transitionRefPositions["1>3"][i][3]
-        pcaInput[4, i] = transitionInvariants1["1>3"][i]
-    end
-
-        @show "compting PD"
-
-
-    rescale(A; dims=1) = (A .- mean(A, dims=dims)) ./ max.(std(A, dims=dims), eps())
-    featureVectorMatrix = featureVectorMatrix |> rescale
-
-    on(events(plotWindow).mousebutton, priority=2) do event
-        if event.button == Mouse.left && event.action == Mouse.press
-            # Delete marker
-            plt, i = pick(axDR)
-
-            if plt == tsnePlot
-                # deleteat!(positions[], i)
-                currentTransition[] = mapIdxToName[i]
-                notify(currentTransition)
-                return Consume(true)
-            end
-            return Consume(false)
-        end
-        return Consume(false)
-    end
-
-    sequence = getSequence(sequencePath)
-
-    transitionSequence = Vector{String}()
-
-    selectedAtom = Observable{Int64}(0)
-
-    for sequenceStep = 1:(length(sequence)-1)
-        currentState = sequence[sequenceStep]
-        nextState = sequence[sequenceStep+1]
-        transitionName = currentState * ">" * nextState
-        push!(transitionSequence, transitionName)
-
-    end
+    @show size(transitionRefPositions[(1,3)])
+    @show size(transitionInvariants1[(1,3)])
 
     sliderTransition = SliderGrid(
         molWindow[7, 1:6],
@@ -491,16 +447,9 @@ function go()
         ),
     )
 
-
     currentTransition = lift(sliderTransition.sliders[1].value) do val
         return transitionSequence[val]
     end
-
-    currentStatePair = lift(sliderTransition.sliders[1].value) do val
-        transString = transitionSequence[val]
-        return split(transString, ">")
-    end
-
 
     @lift begin
         for i in eachindex(sampleRangeX) # x
@@ -527,7 +476,7 @@ function go()
     @show "cmap Range"
     @show length(cmap)
 
-    ap1 = lift(x -> atomPositions[x[1]], currentStatePair)
+    ap1 = lift(x -> atomPositions[x[1]], currentTransition)
 
     aa1 = @lift begin
         return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1)))
@@ -538,8 +487,8 @@ function go()
         return LinRange(mm[1], mm[2], 100)
     end
 
-    volFilter = IntervalSlider(molWindow[6, 1:3], range=filterRange[], startvalues=(0.0001, -0.0001)) 
-    Label(molWindow[5,1], lift(x->string(x), volFilter.interval))
+    volFilter = IntervalSlider(molWindow[6, 1:3], range=filterRange[], startvalues=(0.0001, -0.0001))
+    Label(molWindow[5, 1], lift(x -> string(x), volFilter.interval))
     filtered = lift(volFilter.interval) do interval
         filtered = Vector{Int64}()
         for (i, v) in enumerate(aa1[])
@@ -550,16 +499,16 @@ function go()
         end
         return filtered
     end
-    
+
     glyphResolution = 0.1
 
-    superquadrics = lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize) 
+    superquadrics = lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize)
     glyps = mesh!(
         atomView,
-        lift((x,y) -> x[y], superquadrics, filtered),
+        lift((x, y) -> x[y], superquadrics, filtered),
         color=lift(x -> aa1[][x], filtered),
         # prevents it from recoloring each time the slider moves
-        colorrange=lift(x->extrema(x),aa1),
+        colorrange=lift(x -> extrema(x), aa1),
         colormap=:bam,
         fxaa=false,
     )
@@ -584,12 +533,10 @@ function go()
         return Consume(false)
     end
 
-    bondDeltas = Dict{String, Matrix{Float64}}()
+    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
     for t in transitionSequence
-        pair = split(t, ">")
-
-        dm1 = distanceMatrices[pair[1]] .* connectivity[pair[1]]'
-        dm2 = distanceMatrices[pair[2]] .* connectivity[pair[2]]'
+        dm1 = distanceMatrices[t[1]] .* connectivity[t[1]]'
+        dm2 = distanceMatrices[t[2]] .* connectivity[t[2]]'
 
         #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
 
@@ -597,17 +544,16 @@ function go()
         bondDeltas[t] = (dm2 - dm1)
     end
 
-    @show currentStatePair
     lineSets = @lift begin
-        dm1 = distanceMatrices[$currentStatePair[1]] .* connectivity[$currentStatePair[1]]'
-        dm2 = distanceMatrices[$currentStatePair[2]] .* connectivity[$currentStatePair[2]]'
+        dm1 = distanceMatrices[$currentTransition[1]] .* connectivity[$currentTransition[1]]'
+        dm2 = distanceMatrices[$currentTransition[2]] .* connectivity[$currentTransition[2]]'
 
         #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
 
         # for now it's total delta
         bondDelta = (dm2 - dm1) #/totalDistanceMatrix
 
-        bonds = buildBonds($currentStatePair[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions, $filtered)
+        bonds = buildBonds($currentTransition[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions, $filtered)
 
         return bonds[1], bonds[2]
     end

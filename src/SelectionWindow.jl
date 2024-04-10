@@ -1,11 +1,10 @@
-function build_selection_window(fig_size, data::Dict{String,Matrix{Float64}})
+function build_selection_window(fig_size, data::Dict{Tuple{Int,Int},Matrix{Float64}})
     window = Figure(size=fig_size)
 
     scene = LScene(window[1, 1], show_axis=false,
         scenekw=scenekw = (backgroundcolor=:white, clear=true))
 
-    # need to normalize data
-    
+    # order matrices by distance relative to i
 
     # we assume that all matrices are the same size
     d = collect(values(data))

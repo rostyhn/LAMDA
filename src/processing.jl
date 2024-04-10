@@ -1,18 +1,18 @@
-function squaredNorm(a::Point3f )::Float32
-   return a[1]*a[1] + a[2]*a[2] + a[3]*a[3]
+function squaredNorm(a::Point3f)::Float32
+    return a[1] * a[1] + a[2] * a[2] + a[3] * a[3]
 end
 
-function kernelFunction(point::Point3f, atomPosition::Point3f ,width::Float64 )::Float32
-    scale = 1/((2pi)^(3/2) * width^3 )
-    return scale * exp( -1* (squaredNorm(point - atomPosition))/(2*width^2) )
-end 
+function kernelFunction(point::Point3f, atomPosition::Point3f, width::Float64)::Float32
+    scale = 1 / ((2pi)^(3 / 2) * width^3)
+    return scale * exp(-1 * (squaredNorm(point - atomPosition)) / (2 * width^2))
+end
 
 # Moment feature map
 function moment_map(diagram, max_level, H::Int64)
 
 
     # For H0, just compute lifetime moments
-    if H==0
+    if H == 0
         numMoments = max_level
         mu = zeros(numMoments)
         #y = persistenceDiagram[:,2] - persistenceDiagram[:,1]
@@ -20,51 +20,41 @@ function moment_map(diagram, max_level, H::Int64)
         pop!(y)
         #@show last(y)
         for i = 1:max_level
-            mu[i] = sum((y.^i))/sqrt(factorial(i))
+            mu[i] = sum((y .^ i)) / sqrt(factorial(i))
         end
         return mu
     else
-        numMoments = Int(max_level*(max_level+1)/2)
+        numMoments = Int(max_level * (max_level + 1) / 2)
         mu = zeros(numMoments)
 
-         mcount = 1
-         x = birth.(diagram[H+1])
-         y = persistence.(diagram[H+1])
+        mcount = 1
+        x = birth.(diagram[H+1])
+        y = persistence.(diagram[H+1])
 
         for i = 1:max_level
             for j = 1:i
-                mu[mcount] = sum((x.^(i-j)).*(y.^j))*sqrt(binomial(i,j)/factorial(i))
+                mu[mcount] = sum((x .^ (i - j)) .* (y .^ j)) * sqrt(binomial(i, j) / factorial(i))
                 mcount += 1
             end
         end
-        
+
         return mu
     end
 end
 
-function invLerp(a,b,v)
+function invLerp(a, b, v)
     return (v - a) / (b - a)
 end
 
 
-function moment_map( diagram, max_level )
+function moment_map(diagram, max_level)
     M0 = moment_map(diagram, max_level, 0)
     M1 = moment_map(diagram, max_level, 1)
     M2 = moment_map(diagram, max_level, 2)
     return vcat(M0, M1, M2)
 end
 
-# function moment_map_normalized( diagram, max_level )
-#     subsample=200
-#     N = 200
-
-#     M0 = moment_map(diagram.*(sf^(1/3), max_level, 0)/sf
-#     M1 = moment_map(diagram.*(sf^(1/3)), max_level, 1)/sf
-#     # M2 = moment_map(diagram.*(sf^(1/3)), max_level, 2)/sf
-#     return vcat(M0, M1)
-# end
-
-function computeMoment( values::Vector{Float64}, moment::Int64 )
+function computeMoment(values::Vector{Float64}, moment::Int64)
     meanValue = mean(values)
 
     if moment == 1
@@ -72,26 +62,26 @@ function computeMoment( values::Vector{Float64}, moment::Int64 )
     end
 
     valAboutMean = values .- meanValue
-    return sum( valAboutMean.^moment )/length(values) 
+    return sum(valAboutMean .^ moment) / length(values)
 end
 
-function computePersistenceDistances( persistenceDiagrams::Vector )::Matrix{Float64}
-    out = zeros(length(persistenceDiagrams),length(persistenceDiagrams) )
+function computePersistenceDistances(persistenceDiagrams::Vector)::Matrix{Float64}
+    out = zeros(length(persistenceDiagrams), length(persistenceDiagrams))
     @showprogress Threads.@threads for k in 1:length(persistenceDiagrams)
-        @inbounds out[k,k] = 0.0
-        for j in 1:(k-1) 
-            @inbounds out[j,k] = Wasserstein()(persistenceDiagrams[j], persistenceDiagrams[k])
+        @inbounds out[k, k] = 0.0
+        for j in 1:(k-1)
+            @inbounds out[j, k] = Wasserstein()(persistenceDiagrams[j], persistenceDiagrams[k])
         end
     end
     return Symmetric(out)
 end
 
-function computeDistances( invariants::Vector{Float64} )::Matrix{Float64}
-    out = zeros(length(invariants),length(invariants) )
+function computeDistances(invariants::Vector{Float64})::Matrix{Float64}
+    out = zeros(length(invariants), length(invariants))
     Threads.@threads for k in 1:length(invariants)
-        @inbounds out[k,k] = 0.0
-        for j in 1:(k-1) 
-            @inbounds out[j,k] = abs(invariants[j] - invariants[k])
+        @inbounds out[k, k] = 0.0
+        for j in 1:(k-1)
+            @inbounds out[j, k] = abs(invariants[j] - invariants[k])
         end
     end
     return Symmetric(out)
@@ -99,42 +89,36 @@ end
 
 
 function computeTransitionInvariants(
-    sequence::Vector{String},
-    atomPositions::Dict{String,Matrix{Float64}},
-    distanceMatrices::Dict{String,Matrix{Float64}},
-)::Tuple{Dict{String, Vector{Point3f}},Dict{String,Vector{Float64}},Dict{String,Vector{Float64}},
-Dict{String,Vector{Float64}}, Dict{String, Vector{Vector{Vec3f}}}}
+    sequence::Vector{Tuple{Int,Int}},
+    atomPositions::Dict{Int,Matrix{Float64}},
+    distanceMatrices::Dict{Int,Matrix{Float64}},
+)::Tuple{Dict{Tuple{Int,Int},Vector{Point3f}},Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
+    Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}}
 
 
-    transitionInvariants1 = Dict{String,Vector}()
-    transitionInvariants2 = Dict{String,Vector}()
-    transitionInvariants3 = Dict{String,Vector}()
+    transitionInvariants1 = Dict{Tuple{Int,Int},Vector}()
+    transitionInvariants2 = Dict{Tuple{Int,Int},Vector}()
+    transitionInvariants3 = Dict{Tuple{Int,Int},Vector}()
 
-    transitionReferencePosition = Dict{String, Vector}()
+    transitionReferencePosition = Dict{Tuple{Int,Int},Vector}()
 
-    stretchedPrincipalAxes = Dict{String, Vector{Vector{Vec3f}}}()
+    stretchedPrincipalAxes = Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}()
 
     unique = 1
-    @showprogress for sequenceStep = 1:(length(sequence)-1)
+    @showprogress for t in sequence
 
-        currentState = sequence[sequenceStep]
-        nextState = sequence[sequenceStep+1]
-
-        transitionName = currentState * ">" * nextState
-
-        if haskey(transitionInvariants1, currentState * ">" * nextState)
+        if haskey(transitionInvariants1, t)
             continue
         end
         unique = unique + 1
 
-        aPos1 = atomPositions[currentState]
-        aPos2 = atomPositions[nextState]
+        s1, s2 = t
+        aPos1 = atomPositions[s1]
+        aPos2 = atomPositions[s2]
 
+        transitionReferencePosition[t] = [Makie.Point3f.(aPos1[i, 1], aPos1[i, 2], aPos1[i, 3]) for i in 1:length(aPos1[:, 1])]
 
-        transitionReferencePosition[transitionName] = [ Makie.Point3f.( aPos1[i, 1], aPos1[i, 2], aPos1[i, 3] ) for i in 1:length(aPos1[:,1])]
-        
-
-        weights = 1 ./ ((distanceMatrices[currentState] + distanceMatrices[nextState]) ./ 2)
+        weights = 1 ./ ((distanceMatrices[s1] + distanceMatrices[s2]) ./ 2)
 
         F = Vector{Matrix{Float64}}(undef, length(aPos1[:, 1]))
 
@@ -169,12 +153,12 @@ Dict{String,Vector{Float64}}, Dict{String, Vector{Vector{Vec3f}}}}
         eigenSystems = eigen.(E)
 
         getStretchedEigVec(eigenSys) = [
-            sqrt( 2 * eigenSys.values[1] + 1.0) * eigenSys.vectors[:, 1],
-            sqrt( 2 * eigenSys.values[2] + 1.0) * eigenSys.vectors[:, 2],
-            sqrt( 2 * eigenSys.values[3] + 1.0) * eigenSys.vectors[:, 3],
+            sqrt(2 * eigenSys.values[1] + 1.0) * eigenSys.vectors[:, 1],
+            sqrt(2 * eigenSys.values[2] + 1.0) * eigenSys.vectors[:, 2],
+            sqrt(2 * eigenSys.values[3] + 1.0) * eigenSys.vectors[:, 3],
         ]
 
-        stretchedPrincipalAxes[transitionName] = [ Vec3f.(getStretchedEigVec(eigSys)) for eigSys in eigenSystems]
+        stretchedPrincipalAxes[t] = [Vec3f.(getStretchedEigVec(eigSys)) for eigSys in eigenSystems]
 
         # @show sqrt( 2 * eigenSystems[1].values[1] + 1.0)
         # @show sqrt( 2 *eigenSystems[2] + 1.0)
@@ -194,9 +178,9 @@ Dict{String,Vector{Float64}}, Dict{String, Vector{Vector{Vec3f}}}}
         invariant2 = [I2(eigenSystem.values) for eigenSystem in eigenSystemsDeviator]
         invariant3 = [I3(eigenSystem.values) for eigenSystem in eigenSystemsDeviator]
 
-        transitionInvariants1[transitionName] = invariant1
-        transitionInvariants2[transitionName] = invariant2
-        transitionInvariants3[transitionName] = invariant3
+        transitionInvariants1[t] = invariant1
+        transitionInvariants2[t] = invariant2
+        transitionInvariants3[t] = invariant3
 
     end
 
