@@ -1,4 +1,4 @@
-function build_selection_window(fig_size, data::Dict{Tuple{Int,Int},Matrix{Float64}})
+function build_selection_window(fig_size, data::Dict{Tuple{Int,Int},Matrix{Float64}}, order)
     window = Figure(size=fig_size)
 
     scene = LScene(window[1, 1], show_axis=false,
@@ -7,7 +7,7 @@ function build_selection_window(fig_size, data::Dict{Tuple{Int,Int},Matrix{Float
     # order matrices by distance relative to i
 
     # we assume that all matrices are the same size
-    d = collect(values(data))
+    d = map(x -> data[x], order) 
     max_val = maximum(map((x) -> maximum(x), d))
     norm = map((x) -> x / max_val, d)
     coords, alpha = generate_points(size(d[1]), length(d), 5.0, norm)

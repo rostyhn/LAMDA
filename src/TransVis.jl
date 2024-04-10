@@ -545,16 +545,8 @@ function go()
     end
 
     lineSets = @lift begin
-        dm1 = distanceMatrices[$currentTransition[1]] .* connectivity[$currentTransition[1]]'
-        dm2 = distanceMatrices[$currentTransition[2]] .* connectivity[$currentTransition[2]]'
-
-        #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
-
-        # for now it's total delta
-        bondDelta = (dm2 - dm1) #/totalDistanceMatrix
-
+        bondDelta = bondDeltas[$currentTransition]
         bonds = buildBonds($currentTransition[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions, $filtered)
-
         return bonds[1], bonds[2]
     end
 
@@ -591,8 +583,9 @@ function go()
     screen1 = GLMakie.Screen()
     screen2 = GLMakie.Screen()
 
+    sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
     display(screen1, molWindow)
     #display(screen2, plotWindow)
-    display(screen2, build_selection_window((600, 800), bondDeltas))
+    display(screen2, build_selection_window((600, 800), bondDeltas, sorted))
 end
 end

@@ -226,7 +226,6 @@ end
 function loadBondWeightsFromData(path::String)::Dict{Int,Matrix{Float64}}
     bw = Pickle.npyload(open(path))
     # for now we assume that it's a dense representation
-    # TODO: add ability to read sparse format matrices
     f((k, v)) = k => Matrix{Float64}(v)
 
     return Dict(Iterators.map(f, pairs(bw)))

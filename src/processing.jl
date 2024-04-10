@@ -189,3 +189,16 @@ function computeTransitionInvariants(
     return transitionReferencePosition, transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes
 
 end
+
+"""
+sort_transitions(rel, seq, dm)
+sorts transitions relative to their distance to the specified transition using
+distance matrix dm
+"""
+function sort_transitions(rel::Tuple{Int,Int}, seq::Vector{Tuple{Int,Int}}, dm::Matrix{Float32})
+    # get row of rel
+    idx = findfirst(item -> item == rel, seq)
+    row = dm[idx, :]
+
+    return map((x) -> x[2], sort(collect(zip(row, seq)), by=first))
+end
