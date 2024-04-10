@@ -15,16 +15,16 @@ function getDataSets(
     atomPositions = Dict{Int,Matrix{Float64}}()
     distanceMatrices = Dict{Int,Matrix{Float64}}()
     transitionRefPositions = Dict{Tuple{Int,Int},Vector{Point3f}}()
-    transitionLabels = Dict{String,Int64}()
+    transitionLabels = Dict{Tuple{Int,Int}, Int}()
     #eigenvalues = Dict{String, Vector{Vec3f}}
-    stretchedPrincipalAxes = Dict{String,Vector{Vector{Vec3f}}}()
+    stretchedPrincipalAxes = Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}()
 
     # need to load in transition sequence because we can't guarantee order
     # no idea if the underlying implementation of sets would yield the
     # same results in julia vs. python
     transitionDistanceMatrix = Pickle.npyload(transitionDistanceMatrixPath)
     transitionSequence = Vector{Tuple{Int,Int}}(Pickle.npyload(transitionSequencePath))
-    transitionLabelData = Pickle.npyload(transitionLabelPath)
+    transitionLabels = Dict{Tuple{Int,Int}, Int}(Pickle.npyload(transitionLabelPath))
 
     sequence = readlines(sequencePath)
     sequenceHash = Base.hash(sequence)
