@@ -533,7 +533,7 @@ function go()
         return Consume(false)
     end
 
-    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
+    bondDeltas = Dict{Tuple{Int,Int}, Matrix{Float64}}()
     for t in transitionSequence
         dm1 = distanceMatrices[t[1]] .* connectivity[t[1]]'
         dm2 = distanceMatrices[t[2]] .* connectivity[t[2]]'
