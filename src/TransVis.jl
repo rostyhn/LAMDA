@@ -418,7 +418,7 @@ function go()
     end
 
     #build distance distanceMatrices
-    invariantDistances = zeros(length(transitionInvariants1[(1,3)]), length(transitionInvariants1[(1,3)])) #nAtoms x nAtoms
+    invariantDistances = zeros(length(transitionInvariants1[(1, 3)]), length(transitionInvariants1[(1, 3)])) #nAtoms x nAtoms
     invariantDistances = Vector{Matrix}(undef, length(transitionInvariants1))
     @time for (key, value) in transitionInvariants1
         invariantDistances[mapNameToIdx[key]] = computeDistances(value)
@@ -434,8 +434,8 @@ function go()
     end
 
 
-    @show size(transitionRefPositions[(1,3)])
-    @show size(transitionInvariants1[(1,3)])
+    @show size(transitionRefPositions[(1, 3)])
+    @show size(transitionInvariants1[(1, 3)])
 
     sliderTransition = SliderGrid(
         molWindow[7, 1:6],
@@ -533,7 +533,8 @@ function go()
         return Consume(false)
     end
 
-    bondDeltas = Dict{Tuple{Int,Int}, Matrix{Float64}}()
+    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
+    #svdTransform = Dict{Tuple{Int,Int},Matrix{Float64}}()
     for t in transitionSequence
         dm1 = distanceMatrices[t[1]] .* connectivity[t[1]]'
         dm2 = distanceMatrices[t[2]] .* connectivity[t[2]]'
@@ -542,6 +543,10 @@ function go()
 
         # for now it's total delta
         bondDeltas[t] = (dm2 - dm1)
+
+        #p1 = atomPositions[t[1]]
+        #p2 = atomPositions[t[2]]
+        #svdTransform[t] = Diagonal(svd(p2 - p1).S)
     end
 
     lineSets = @lift begin
@@ -580,11 +585,11 @@ function go()
 
     link_cameras_lscene(molWindow)
 
-    screen1 = GLMakie.Screen()
+    #screen1 = GLMakie.Screen()
     screen2 = GLMakie.Screen()
 
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
-    display(screen1, molWindow)
+    #display(screen1, molWindow)
     #display(screen2, plotWindow)
     display(screen2, build_selection_window((600, 800), bondDeltas, sorted))
 end
