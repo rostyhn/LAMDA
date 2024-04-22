@@ -92,8 +92,19 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
+    on(events(scene).mousebutton) do event
+        if event.button == Mouse.left
+            if event.action == Mouse.press
+                plot, idx = pick(scene)
+                pos = position_on_plot(plot, idx)
+                if !isnan(pos) && plot == points
+                    d_idx = Int(pos[1] / (transition_spacing))
+                    @show d_idx
+                end
+            end
+        end
+    end
     # function to calculate center of point at index
-
 
     center = lift(sliderTransition.sliders[1].value) do val
         return get_center(val, matrix_spacing, transition_spacing, matrix_shape)
