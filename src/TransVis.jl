@@ -534,7 +534,7 @@ function go()
     end
 
     bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
-    #svdTransform = Dict{Tuple{Int,Int},Matrix{Float64}}()
+    transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
     for t in transitionSequence
         dm1 = distanceMatrices[t[1]] .* connectivity[t[1]]'
         dm2 = distanceMatrices[t[2]] .* connectivity[t[2]]'
@@ -544,9 +544,9 @@ function go()
         # for now it's total delta
         bondDeltas[t] = (dm2 - dm1)
 
-        #p1 = atomPositions[t[1]]
-        #p2 = atomPositions[t[2]]
-        #svdTransform[t] = Diagonal(svd(p2 - p1).S)
+        p1 = atomPositions[t[1]]
+        p2 = atomPositions[t[2]]
+        transforms[t] = (abs.(p2 - p1))
     end
 
     lineSets = @lift begin
@@ -591,6 +591,6 @@ function go()
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
     #display(screen1, molWindow)
     #display(screen2, plotWindow)
-    display(screen2, build_selection_window((600, 800), bondDeltas, sorted))
+    display(screen2, build_selection_window((600, 800), transforms, sorted))
 end
 end
