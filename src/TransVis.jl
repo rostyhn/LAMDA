@@ -33,6 +33,7 @@ using PersistenceDiagrams
 include("io.jl")
 include("processing.jl")
 include("SelectionWindow.jl")
+include("MolWindow.jl")
 
 export go
 
@@ -210,27 +211,23 @@ function link_cameras_lscene(f; step=0.01)
     f
 end
 
-function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions, filtered)
+function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions)
     points = Vector{Tuple{Point3f,Point3f}}()
     weights = Vector{Float64}()
     indices = Vector{Tuple{Int64,Int64}}()
     for i in 1:length(bondDelta[1, :])
-        if i in filtered
-            for j in 1:i
-                if j in filtered
-                    v1 = volumeDataDict[i]
-                    v2 = volumeDataDict[j]
-                    bw = bondDelta[i, j]
+        for j in 1:i
+            v1 = volumeDataDict[i]
+            v2 = volumeDataDict[j]
+            bw = bondDelta[i, j]
 
-                    avg = (abs((v1 + v2)) / 2) / volumeAbsMax
-                    # 0.05 is the threshold val for filtering
-                    # check against bond weight to make sure we're only looking at "real" bonds
-                    if abs(bw) > 0.0
-                        push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
-                        push!(weights, bw)
-                        push!(indices, (i, j))
-                    end
-                end
+            avg = (abs((v1 + v2)) / 2) / volumeAbsMax
+            # 0.05 is the threshold val for filtering
+            # check against bond weight to make sure we're only looking at "real" bonds
+            if abs(bw) > 0.0
+                push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
+                push!(weights, bw)
+                push!(indices, (i, j))
             end
         end
     end
@@ -551,7 +548,7 @@ function go()
 
     lineSets = @lift begin
         bondDelta = bondDeltas[$currentTransition]
-        bonds = buildBonds($currentTransition[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions, $filtered)
+        bonds = buildBonds($currentTransition[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
         return bonds[1], bonds[2]
     end
 
@@ -585,12 +582,45 @@ function go()
 
     link_cameras_lscene(molWindow)
 
+    function on_click(t)
+        # atom positions for transition
+        # volumeData, voluemDataDict, volumeAbsMax
+        # superquadrics, linesets,
+        # kdTree
+        # sampleRangex,y,z, cmap
+        atomPosTuple = (atomPositions[t[1]], atomPositions[t[2]])
+        volData = zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ))
+        volDataDict = Dict{Int,Any}()
+
+        kdTree = transitionKDTree[t]
+        for i in eachindex(sampleRangeX) # x
+            for j in eachindex(sampleRangeY) # y
+                for k in eachindex(sampleRangeZ) # z
+                    point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
+                    knn, dists = NearestNeighbors.knn(kdTree, point, 5)
+                    kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[t][knn], kernelWidth) .* transitionInvariants1[t][knn])
+                    volData[i, j, k] = kValue
+                    idx, d = NearestNeighbors.nn(kdTree, point)
+                    volDataDict[idx] = kValue
+                end
+            end
+        end
+        volAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
+        volMin = minimum(volData)
+
+        # 1.0 should be transitionGlyphSize
+        sq = superquadric.(1.0, transitionRefPositions[t], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
+        ls = buildBonds(t[1], volDataDict, bondDeltas[t], volAbsMax, atomPositions)
+
+        build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap)
+    end
+
     #screen1 = GLMakie.Screen()
     screen2 = GLMakie.Screen()
 
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
     #display(screen1, molWindow)
     #display(screen2, plotWindow)
-    display(screen2, build_selection_window((600, 800), transforms, sorted))
+    display(screen2, build_selection_window((600, 800), transforms, sorted, on_click))
 end
 end

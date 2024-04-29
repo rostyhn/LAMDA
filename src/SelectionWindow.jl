@@ -11,7 +11,7 @@ function pair(v)
 end
 
 function build_selection_window(fig_size,
-    data::Dict{Tuple{Int,Int},Matrix{Float64}}, order)
+    data::Dict{Tuple{Int,Int},Matrix{Float64}}, order, on_click)
     window = Figure(size=fig_size)
     scene = LScene(window[1, 1], show_axis=true,
         scenekw=scenekw = (backgroundcolor=:white, clear=true))
@@ -99,7 +99,8 @@ function build_selection_window(fig_size,
                 pos = position_on_plot(plot, idx)
                 if !isnan(pos) && plot == points
                     d_idx = Int(pos[1] / (transition_spacing))
-                    @show d_idx
+                    # call on click here with the idx, main will handle the rest
+                    on_click(order[d_idx])
                 end
             end
         end
