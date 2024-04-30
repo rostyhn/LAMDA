@@ -272,8 +272,6 @@ function go()
     axI3 = Axis(plotWindow[5:6, 1:4], xlabel="Atom Number", ylabel="mode(E)")
     axDR = Axis(plotWindow[1:6, 5:7], title="t-SNE")
 
-    transitionGlyphSizeSlider = Slider(molWindow[4:6, 7], range=0.1:0.01:4, horizontal=false, startvalue=1)
-
     stateDataPath = "/home/frosty/Programs/Julia/TransVis/data/state_data copy/"
     sequencePath = "/home/frosty/Programs/Julia/TransVis/data/state_data copy/seq.txt"
     transitionPath = "/home/frosty/Programs/Julia/TransVis/data/nano_pt_labels.pickle"
@@ -367,16 +365,6 @@ function go()
 
     kernelWidth = 1.0
 
-    volumeData = Observable(zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ)))
-    volumeDataDict = Observable(Dict{Int,Any}())
-
-    volumeAbsMax = Observable(1.0)
-    volumeMin = Observable(1.0)
-
-    transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
-        return val
-    end
-
     atoms = [1:1:length(values(transitionInvariants1) |> first);]
 
     featureVectorMatrix = zeros(
@@ -434,101 +422,15 @@ function go()
     @show size(transitionRefPositions[(1, 3)])
     @show size(transitionInvariants1[(1, 3)])
 
-    sliderTransition = SliderGrid(
-        molWindow[7, 1:6],
-        (
-            label="Transition",
-            range=[1:length(transitionSequence);],
-            startvalue=1,
-            format=x -> string(transitionSequence[x]),
-        ),
-    )
-
-    currentTransition = lift(sliderTransition.sliders[1].value) do val
-        return transitionSequence[val]
-    end
-
-    @lift begin
-        for i in eachindex(sampleRangeX) # x
-            for j in eachindex(sampleRangeY) # y
-                for k in eachindex(sampleRangeZ) # z
-                    point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
-                    knn, dists = NearestNeighbors.knn(transitionKDTree[$currentTransition], point, 5)
-                    kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[$currentTransition][knn], kernelWidth) .* transitionInvariants1[$currentTransition][knn])
-                    volumeData[][i, j, k] = kValue
-                    idx, d = NearestNeighbors.nn(transitionKDTree[$currentTransition], point)
-                    volumeDataDict[][idx] = kValue
-                end
-            end
-        end
-        volumeAbsMax[] = max(abs(minimum(volumeData[])), abs(maximum(volumeData[])))
-        volumeMin[] = minimum(volumeData[])
-        notify(volumeAbsMax)
-        notify(volumeData)
-    end
-
     # 6 is the slope - should only be even odds
     # 0.1 is the thickness of the white part
     cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
     @show "cmap Range"
     @show length(cmap)
 
-    ap1 = lift(x -> atomPositions[x[1]], currentTransition)
-
-    aa1 = @lift begin
-        return map(x -> get(volumeDataDict[], x[1], 0.0), enumerate(eachrow($ap1)))
-    end
-
-    filterRange = @lift begin
-        mm = extrema($aa1)
-        return LinRange(mm[1], mm[2], 100)
-    end
-
-    volFilter = IntervalSlider(molWindow[6, 1:3], range=filterRange[], startvalues=(0.0001, -0.0001))
-    Label(molWindow[5, 1], lift(x -> string(x), volFilter.interval))
-    filtered = lift(volFilter.interval) do interval
-        filtered = Vector{Int64}()
-        for (i, v) in enumerate(aa1[])
-            # inverse filter, blue area will be removed!
-            if v < interval[1] || v > interval[2]
-                push!(filtered, i)
-            end
-        end
-        return filtered
-    end
-
     glyphResolution = 0.1
 
-    superquadrics = lift((x, y) -> superquadric.(y, transitionRefPositions[x], stretchedPrincipalAxes[x], transitionInvariants2[x], -1.0, 3.0, glyphResolution)[:], currentTransition, transitionGlyphSize)
-    glyps = mesh!(
-        atomView,
-        lift((x, y) -> x[y], superquadrics, filtered),
-        color=lift(x -> aa1[][x], filtered),
-        # prevents it from recoloring each time the slider moves
-        colorrange=lift(x -> extrema(x), aa1),
-        colormap=:bam,
-        fxaa=false,
-    )
-    glyps.inspectable[] = false
-
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
-
-    inspector = DataInspector(atomView)
-
-    on(events(atomView).mouseposition) do mp
-        plot, idx = pick(glyps)
-        if plot == glyps.plots[1]
-            pos = position_on_plot(plot, idx)
-            idx, d = NearestNeighbors.nn(transitionKDTree[currentTransition[]], pos)
-            if !isnan(pos)
-                inspector.plot.text[] = string("Atom ", idx)
-                inspector.plot.visible[] = true
-                inspector.plot.position = mp
-                return Consume(true)
-            end
-        end
-        return Consume(false)
-    end
 
     bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
     transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
@@ -545,40 +447,6 @@ function go()
         p2 = atomPositions[t[2]]
         transforms[t] = (abs.(p2 - p1))
     end
-
-    lineSets = @lift begin
-        bondDelta = bondDeltas[$currentTransition]
-        bonds = buildBonds($currentTransition[1], $volumeDataDict, bondDelta, $volumeAbsMax, atomPositions)
-        return bonds[1], bonds[2]
-    end
-
-    linesegments!(atomView,
-        lift(x -> x[1], lineSets),
-        color=lift(x -> x[2], lineSets),
-        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
-        lowclip=:black,
-        colormap=:bam)
-    # r = 15:30
-
-    vol = volume!(volumeView, sampleRangeX, sampleRangeY, sampleRangeZ,
-        lift(x -> x, volumeData);
-        colormap=cmap,
-        algorithm=:absorption,
-        #isorange = 0.000001,
-        #isovalue = 0.0,
-        #colorscale = abs,
-        #absorption= lift(x->x, transitionGlyphSize),
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
-        visible=true)
-
-    Colorbar(molWindow[6, 4:6], vol, vertical=false)
-
-    stem!(axI1, atoms, lift(x -> transitionInvariants1[x], currentTransition))
-    stem!(axI2, atoms, lift(x -> transitionInvariants2[x], currentTransition))
-    stem!(axI3, invariantMomentFeatures[:, 3])
 
     link_cameras_lscene(molWindow)
 
@@ -615,12 +483,9 @@ function go()
         build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap)
     end
 
-    #screen1 = GLMakie.Screen()
-    screen2 = GLMakie.Screen()
+    screen = GLMakie.Screen()
 
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
-    #display(screen1, molWindow)
-    #display(screen2, plotWindow)
-    display(screen2, build_selection_window((600, 800), transforms, sorted, on_click))
+    display(screen, build_selection_window((600, 800), transforms, sorted, on_click))
 end
 end

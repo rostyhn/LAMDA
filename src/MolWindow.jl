@@ -31,7 +31,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     mm = extrema(aa1)
     filterRange = LinRange(mm[1], mm[2], 100)
 
-    volFilter = IntervalSlider(molWindow[7, 1:3], range=filterRange, startvalues=(0.0001, -0.0001))
+    volFilter = IntervalSlider(molWindow[7, 1:3], range=filterRange, startvalues=(-0.0001, 0.0001))
     Label(molWindow[6, 1], lift(x -> string(x), volFilter.interval))
     kept = lift(volFilter.interval) do interval
         kept = Vector{Int}()
