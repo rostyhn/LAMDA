@@ -16,40 +16,41 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         scenekw=(backgroundcolor=:white, clear=true),
     )
 
-    transitionGlyphSizeSlider = Slider(molWindow[4:6, 7], range=0.1:0.01:4, horizontal=false, startvalue=1)
-
-    transitionGlyphSize = lift(transitionGlyphSizeSlider.value) do val
-        return val
-    end
-
-
     # atom positions should be a tuple of both states involved
     ap1 = atomPositions[1]
     aa1 = map(x -> get(volumeDataDict, x[1], 0.0), enumerate(eachrow(ap1)))
-
 
     mm = extrema(aa1)
     filterRange = LinRange(mm[1], mm[2], 100)
 
     volFilter = IntervalSlider(molWindow[7, 1:3], range=filterRange, startvalues=(-0.0001, 0.0001))
     Label(molWindow[6, 1], lift(x -> string(x), volFilter.interval))
-    kept = lift(volFilter.interval) do interval
-        kept = Vector{Int}()
+    selected = lift(volFilter.interval) do interval
+        selected = Vector{Int}()
         for (i, v) in enumerate(aa1)
             # inverse filter, blue area will be removed!
             if v < interval[1] || v > interval[2]
-                push!(kept, i)
+                push!(selected, i)
             end
         end
-        return kept
+        return selected
     end
 
-    glyphResolution = 0.1
+    # need to filter out linesets
+    selectedLineSets = lift(selected) do kept
+        selectedLineSets = Vector{Int}()
+        for (i, e) in enumerate(lineSets[3])
+            if e[1] in kept && e[2] in kept
+                push!(selectedLineSets, i)
+            end
+        end
+        return selectedLineSets
+    end
 
     glyps = mesh!(
         atomView,
-        lift(x -> superquadrics[x], kept),
-        color=lift(x -> aa1[x], kept),
+        lift(x -> superquadrics[x], selected),
+        color=lift(x -> aa1[x], selected),
         # prevents it from recoloring each time the slider moves
         colorrange=extrema(aa1),
         colormap=:bam,
@@ -57,6 +58,12 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     )
     glyps.inspectable[] = false
 
+    linesegments!(atomView,
+        lift(x -> lineSets[1][x], selectedLineSets),
+        color=lift(x -> lineSets[2][x], selectedLineSets),
+        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
+        lowclip=:black,
+        colormap=:bam)
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
 
     inspector = DataInspector(atomView)
@@ -75,25 +82,6 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         end
         return Consume(false)
     end
-
-    # need to filter out linesets
-    keptLineSets = lift(kept) do kept
-        keptLineSets = Vector{Int}()
-        for (i, e) in enumerate(lineSets[3])
-            if e[1] in kept && e[2] in kept
-                push!(keptLineSets, i)
-            end
-        end
-        return keptLineSets
-    end
-
-    linesegments!(atomView,
-        lift(x -> lineSets[1][x], keptLineSets),
-        color=lift(x -> lineSets[2][x], keptLineSets),
-        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
-        lowclip=:black,
-        colormap=:bam)
-    # r = 15:30
 
     vol = volume!(volumeView, sampleRangeX, sampleRangeY, sampleRangeZ,
         volumeData;

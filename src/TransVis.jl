@@ -82,11 +82,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
     stretchRatio2 = norm(principalStretches[2])
     stretchRatio3 = norm(principalStretches[1])
 
-    #debug
-    # stretchRatio1 = 5.
-    # stretchRatio2 = 1.
-    # stretchRatio3 = 1.
-
     stretchDirection1 = principalStretches[3] / stretchRatio1
     stretchDirection2 = principalStretches[2] / stretchRatio2
     stretchDirection3 = principalStretches[1] / stretchRatio3
@@ -96,12 +91,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
     cp = 2 * (stretchRatio2 - stretchRatio3) / (stretchRatio1 + stretchRatio2 + stretchRatio3) # planar anisotropy
     cs = 3 * stretchRatio3 / (stretchRatio1 + stretchRatio2 + stretchRatio3)
 
-    # @show cl
-    # @show cp
-    # @show cs
-    #@show stretchRatio1 * stretchRatio1 * stretchRatio1
-
-    #@show cs
 
     phiRange = [0:resolution:pi;]  #vertical: south -> north
     push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
@@ -147,15 +136,7 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
 
     transform = rotationMatrix * scaleMatrix
 
-    #meshscatter!( scene, position[1],position[2],position[3]; color= :black)
-    #meshscatter!( scene, position[1] + 5*stretchDirection1[1], position[2]+5*stretchDirection1[2], position[3]+5*stretchDirection1[3]; color= :black)
-    # @show scaleMatrix
-    # @show points[1]
     points = Point3f.(Ref(transform) .* points) .+ Ref(position)
-    # @show points[1]
-
-    #scatter!(scene, points)
-
     nPhi = length(phiRange)
     nTheta = length(thetaRange)
 
@@ -178,13 +159,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
 
         end
     end
-
-    # if K3 >=0 #linear
-    #     points = [ p[1]*exp(abs(K2)) for p in points]
-    # else #planar
-    #     points = [ p[2]*exp(abs(K2)) for p in points]
-    #     points = [ p[3]*exp(abs(K2)) for p in points]
-    # end
 
     triFaces = TriangleFace.(indices)
 
@@ -254,18 +228,6 @@ function go()
 
     plotWindow = Figure(size=(600, 400))
     molWindow = Figure(size=(600, 400))
-
-    atomView = LScene(
-        molWindow[1:5, 1:3],
-        show_axis=false,
-        scenekw=(backgroundcolor=:white, clear=true),
-    )
-
-    volumeView = LScene(
-        molWindow[1:5, 4:6],
-        show_axis=false,
-        scenekw=(backgroundcolor=:white, clear=true),
-    )
 
     axI1 = Axis(plotWindow[1:2, 1:4], xlabel="Atom Number", ylabel="K1")
     axI2 = Axis(plotWindow[3:4, 1:4], xlabel="Atom Number", ylabel="K2")
@@ -365,8 +327,6 @@ function go()
 
     kernelWidth = 1.0
 
-    atoms = [1:1:length(values(transitionInvariants1) |> first);]
-
     featureVectorMatrix = zeros(
         length(values(transitionInvariants1)),
         length(values(transitionInvariants1) |> first) * 1,
@@ -418,27 +378,18 @@ function go()
         end
     end
 
-
-    @show size(transitionRefPositions[(1, 3)])
-    @show size(transitionInvariants1[(1, 3)])
-
     # 6 is the slope - should only be even odds
     # 0.1 is the thickness of the white part
     cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
     @show "cmap Range"
     @show length(cmap)
 
-    glyphResolution = 0.1
-
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
 
     bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
     transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
     for t in transitionSequence
         dm1 = distanceMatrices[t[1]] .* connectivity[t[1]]'
         dm2 = distanceMatrices[t[2]] .* connectivity[t[2]]'
-
-        #totalDistanceMatrix = (dm2 + dm1) .+ 0.0000001
 
         # for now it's total delta
         bondDeltas[t] = (dm2 - dm1)
@@ -460,6 +411,8 @@ function go()
         volData = zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ))
         volDataDict = Dict{Int,Any}()
 
+        glyphResolution = 0.1
+
         kdTree = transitionKDTree[t]
         for i in eachindex(sampleRangeX) # x
             for j in eachindex(sampleRangeY) # y
@@ -474,7 +427,6 @@ function go()
             end
         end
         volAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
-        volMin = minimum(volData)
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, transitionRefPositions[t], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
