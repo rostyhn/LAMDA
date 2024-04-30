@@ -227,7 +227,6 @@ function go()
     GLMakie.closeall() #close all windows for rerun!
 
     plotWindow = Figure(size=(600, 400))
-    molWindow = Figure(size=(600, 400))
 
     axI1 = Axis(plotWindow[1:2, 1:4], xlabel="Atom Number", ylabel="K1")
     axI2 = Axis(plotWindow[3:4, 1:4], xlabel="Atom Number", ylabel="K2")
@@ -399,7 +398,6 @@ function go()
         transforms[t] = (abs.(p2 - p1))
     end
 
-    link_cameras_lscene(molWindow)
 
     function on_click(t)
         # atom positions for transition

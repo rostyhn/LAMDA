@@ -23,7 +23,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     mm = extrema(aa1)
     filterRange = LinRange(mm[1], mm[2], 100)
 
-    volFilter = IntervalSlider(molWindow[7, 1:3], range=filterRange, startvalues=(-0.0001, 0.0001))
+    volFilter = IntervalSlider(molWindow[7, 1:3], range=filterRange, startvalues=(0, 0))
     Label(molWindow[6, 1], lift(x -> string(x), volFilter.interval))
     selected = lift(volFilter.interval) do interval
         selected = Vector{Int}()
@@ -61,6 +61,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     linesegments!(atomView,
         lift(x -> lineSets[1][x], selectedLineSets),
         color=lift(x -> lineSets[2][x], selectedLineSets),
+        colorrange=extrema(lineSets[2]),
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
@@ -97,7 +98,9 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         colorrange=(-volumeAbsMax, volumeAbsMax),
         visible=true)
 
+    link_cameras_lscene(molWindow)
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
+
     screen = GLMakie.Screen()
     display(screen, molWindow)
 end
