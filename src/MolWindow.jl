@@ -7,7 +7,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     atomView = LScene(
         molWindow[1:5, 1:3],
         show_axis=false,
-        scenekw=(backgroundcolor=:white, clear=true),
+        scenekw=(backgroundcolor=:black, clear=true),
     )
 
     volumeView = LScene(
@@ -31,25 +31,25 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     mm = extrema(aa1)
     filterRange = LinRange(mm[1], mm[2], 100)
 
-    volFilter = IntervalSlider(molWindow[6, 1:3], range=filterRange, startvalues=(0.0001, -0.0001))
-    Label(molWindow[5, 1], lift(x -> string(x), volFilter.interval))
-    filtered = lift(volFilter.interval) do interval
-        filtered = Vector{Int64}()
+    volFilter = IntervalSlider(molWindow[7, 1:3], range=filterRange, startvalues=(0.0001, -0.0001))
+    Label(molWindow[6, 1], lift(x -> string(x), volFilter.interval))
+    kept = lift(volFilter.interval) do interval
+        kept = Vector{Int}()
         for (i, v) in enumerate(aa1)
             # inverse filter, blue area will be removed!
             if v < interval[1] || v > interval[2]
-                push!(filtered, i)
+                push!(kept, i)
             end
         end
-        return filtered
+        return kept
     end
 
     glyphResolution = 0.1
 
     glyps = mesh!(
         atomView,
-        superquadrics,
-        color=aa1,
+        lift(x -> superquadrics[x], kept),
+        color=lift(x -> aa1[x], kept),
         # prevents it from recoloring each time the slider moves
         colorrange=extrema(aa1),
         colormap=:bam,
@@ -76,9 +76,20 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         return Consume(false)
     end
 
+    # need to filter out linesets
+    keptLineSets = lift(kept) do kept
+        keptLineSets = Vector{Int}()
+        for (i, e) in enumerate(lineSets[3])
+            if e[1] in kept && e[2] in kept
+                push!(keptLineSets, i)
+            end
+        end
+        return keptLineSets
+    end
+
     linesegments!(atomView,
-        lineSets[1],
-        color=lineSets[2],
+        lift(x -> lineSets[1][x], keptLineSets),
+        color=lift(x -> lineSets[2][x], keptLineSets),
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
