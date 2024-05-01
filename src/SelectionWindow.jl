@@ -64,23 +64,33 @@ function build_selection_window(fig_size,
     filteredCoords = lift(y -> map(x -> coords[x], y), filteredIdx)
     filteredColors = lift(y -> map(x -> colors[x], y), filteredIdx)
 
+    # invisible bounding box we use to get the position from pick
+    # when no points are selected
+    scatter_bbox = mesh!(scene, Rect3f(Point3f(0.0),
+            Point3f(length(norm) * transition_spacing, matrix_shape[1] * matrix_spacing, matrix_shape[2] * matrix_spacing)),
+        visible=true, alpha=0.01, color=:white, transparency=true)
+
+    scatter_bbox.inspectable[] = false
+
     points = scatter!(scene, lift(x -> x, filteredCoords), color=lift(x -> x, filteredColors), colorrange=(0.0, 1.0))
     points.inspectable[] = false
 
     inspector = DataInspector(scene)
     a = inspector.attributes
 
+
+
     on(events(scene).mouseposition) do mp
         plot, idx = pick(scene)
         pos = position_on_plot(plot, idx)
-        if !isnan(pos) && plot == points
+        if !isnan(pos)
             # index of data point
-            d_idx = Int(pos[1] / (transition_spacing))
+            d_idx = Int(round(pos[1] / (transition_spacing)))
             if d_idx > 0 && d_idx < length(d)
                 bBox = highlight(d_idx, matrix_spacing, transition_spacing, matrix_shape)
                 if inspector.selection != plot
                     clear_temporary_plots!(inspector, plot)
-                    p = wireframe!(scene, bBox, inspectable=false)
+                    p = wireframe!(scene, bBox, inspectable=false, color=:red)
                     push!(inspector.temp_plots, p)
                 elseif !isempty(inspector.temp_plots)
                     p = inspector.temp_plots[1]
@@ -97,11 +107,14 @@ function build_selection_window(fig_size,
             if event.action == Mouse.press
                 plot, idx = pick(scene)
                 pos = position_on_plot(plot, idx)
-                if !isnan(pos) && plot == points
-                    d_idx = Int(pos[1] / (transition_spacing))
-                    # call on click here with the idx, main will handle the rest
-                    on_click(order[d_idx])
+                if !isnan(pos)
+                    if plot == points || plot == scatter_bbox
+                        d_idx = Int(round(pos[1] / (transition_spacing)))
+                        # call on click here with the idx, main will handle the rest
+                        on_click(order[d_idx])
+                    end
                 end
+
             end
         end
     end
