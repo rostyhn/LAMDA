@@ -88,10 +88,6 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         volumeData;
         colormap=cmap,
         algorithm=:absorption,
-        #isorange = 0.000001,
-        #isovalue = 0.0,
-        #colorscale = abs,
-        #absorption= lift(x->x, transitionGlyphSize),
         fxaa=false,
         transparency=true,
         shading=NoShading,
@@ -101,6 +97,6 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     link_cameras_lscene(molWindow)
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
-    screen = GLMakie.Screen()
+    screen = GLMakie.Screen(title="TransVis - $transition")
     display(screen, molWindow)
 end

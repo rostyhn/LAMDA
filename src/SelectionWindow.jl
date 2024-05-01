@@ -78,7 +78,7 @@ function build_selection_window(fig_size,
     inspector = DataInspector(scene)
     a = inspector.attributes
 
-
+    # currently_selected = Observable(1)
 
     on(events(scene).mouseposition) do mp
         plot, idx = pick(scene)
@@ -96,6 +96,10 @@ function build_selection_window(fig_size,
                     p = inspector.temp_plots[1]
                     p[1][] = bBox
                 end
+                inspector.plot.text[] = string(order[d_idx])
+                inspector.plot.position = mp
+                inspector.plot.visible[] = true
+                # currently_selected[] = d_idx
             end
             return Consume(true)
         end
@@ -118,8 +122,12 @@ function build_selection_window(fig_size,
             end
         end
     end
-    # function to calculate center of point at index
 
+    # listen to currently selected transition
+    # this actually does work but is super finicky!
+    # lift(x -> set_close_to!(sliderTransition.sliders[1], x), currently_selected)
+
+    # function to calculate center of point at index
     center = lift(sliderTransition.sliders[1].value) do val
         return get_center(val, matrix_spacing, transition_spacing, matrix_shape)
     end
