@@ -185,7 +185,7 @@ function link_cameras_lscene(f; step=0.01)
     f
 end
 
-function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions)
+function buildBonds(key, volumeDataDict, bondDelta, atomPositions)
     points = Vector{Tuple{Point3f,Point3f}}()
     weights = Vector{Float64}()
     indices = Vector{Tuple{Int64,Int64}}()
@@ -195,7 +195,7 @@ function buildBonds(key, volumeDataDict, bondDelta, volumeAbsMax, atomPositions)
             v2 = volumeDataDict[j]
             bw = bondDelta[i, j]
 
-            avg = (abs((v1 + v2)) / 2) / volumeAbsMax
+            # avg = (abs((v1 + v2)) / 2) / volumeAbsMax
             # 0.05 is the threshold val for filtering
             # check against bond weight to make sure we're only looking at "real" bonds
             if abs(bw) > 0.0
@@ -399,9 +399,12 @@ function go()
     end
 
 
+    volAbsMax = Observable(0.0)
+    lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
+
     function on_click(t, on_window_hover)
         # atom positions for transition
-        # volumeData, voluemDataDict, volumeAbsMax
+        # volumeData, volumeDataDict, volumeAbsMax
         # superquadrics, linesets,
         # kdTree
         # sampleRangex,y,z, cmap
@@ -424,13 +427,17 @@ function go()
                 end
             end
         end
-        volAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
+        thisVolAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
+        volAbsMax[] = max(volAbsMax[], thisVolAbsMax)
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, transitionRefPositions[t], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
-        ls = buildBonds(t[1], volDataDict, bondDeltas[t], volAbsMax, atomPositions)
+        ls = buildBonds(t[1], volDataDict, bondDeltas[t], atomPositions)
 
-        build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover)
+        thislsExtrema = extrema(ls[2])
+        lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
+
+        build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
     end
 
     screen = GLMakie.Screen()

@@ -1,6 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic
 
-function build_mol_window(fig_size, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover)
+function build_mol_window(fig_size, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
 
     molWindow = Figure(size=fig_size)
 
@@ -52,7 +52,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         lift(x -> superquadrics[x], selected),
         color=lift(x -> aa1[x], selected),
         # prevents it from recoloring each time the slider moves
-        colorrange=extrema(aa1),
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
         colormap=:bam,
         fxaa=false,
     )
@@ -61,7 +61,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     linesegments!(atomView,
         lift(x -> lineSets[1][x], selectedLineSets),
         color=lift(x -> lineSets[2][x], selectedLineSets),
-        colorrange=extrema(lineSets[2]),
+        colorrange=lift(x -> x, lsExtrema),
         inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
         lowclip=:black,
         colormap=:bam)
@@ -91,7 +91,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=(-volumeAbsMax, volumeAbsMax),
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
         visible=true)
 
     link_cameras_lscene(molWindow)
