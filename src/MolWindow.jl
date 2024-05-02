@@ -94,7 +94,6 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         colorrange=lift(x -> (-x, x), volumeAbsMax),
         visible=true)
 
-    link_cameras_lscene(molWindow)
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
     on(events(molWindow).entered_window) do is_hovered
@@ -103,4 +102,6 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
 
     screen = GLMakie.Screen(title="TransVis - $transition")
     display(screen, molWindow)
+
+    return molWindow
 end

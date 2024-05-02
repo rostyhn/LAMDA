@@ -7,10 +7,6 @@ using Pickle
 using JLD2
 using CodecZlib
 
-# #GUI
-# using Gtk4
-# using Gtk4Makie
-
 #Vis
 using GLMakie
 using Makie
@@ -18,26 +14,21 @@ using GeometryBasics
 
 #Processing and Helpers
 using NearestNeighbors
-#using Distances
 using LinearAlgebra
 using TSne
-#using GeometryBasics
 using Base.Threads
 using Statistics
 using ProgressMeter
 using Ripserer
 using PersistenceDiagrams
-#using UMAP
-#using MultivariateStats
 
 include("io.jl")
 include("processing.jl")
 include("SelectionWindow.jl")
 include("MolWindow.jl")
+include("utils.jl")
 
 export go
-
-
 
 function getIndexFromSQMesh(i::Int64, resolution::Float64)
 
@@ -168,23 +159,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
     return mesh
 end
 
-function link_cameras_lscene(f; step=0.01)
-    scenes = filter(x -> x isa LScene, f.content)
-    cameras = map(x -> cameracontrols(x.scene), scenes)
-
-    for i in eachindex(cameras)
-        on(cameras[i].eyeposition) do eye
-            for j in eachindex(cameras)
-                i == j && continue
-                if sum(abs, eye - cameras[j].eyeposition[]) > step
-                    update_cam!(scenes[j].scene, cameras[i])
-                end
-            end
-        end
-    end
-    f
-end
-
 function buildBonds(key, volumeDataDict, bondDelta, atomPositions)
     points = Vector{Tuple{Point3f,Point3f}}()
     weights = Vector{Float64}()
@@ -219,8 +193,6 @@ function fractionalAnisotropy(ev::Vector{Float64})
         sqrt(ev[1]^2 + ev[2]^2 + ev[3]^2)
     return sqrt(3.0 / 2.0) * a
 end
-
-
 
 function go()
 
@@ -401,13 +373,9 @@ function go()
 
     volAbsMax = Observable(0.0)
     lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
+    molWindows = Vector()
 
     function on_click(t, on_window_hover)
-        # atom positions for transition
-        # volumeData, volumeDataDict, volumeAbsMax
-        # superquadrics, linesets,
-        # kdTree
-        # sampleRangex,y,z, cmap
         atomPosTuple = (atomPositions[t[1]], atomPositions[t[2]])
         volData = zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ))
         volDataDict = Dict{Int,Any}()
@@ -437,7 +405,11 @@ function go()
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
+        mw = build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
+
+        push!(molWindows, mw)
+
+        link_cameras_lscene(molWindows)
     end
 
     screen = GLMakie.Screen()
