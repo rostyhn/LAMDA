@@ -399,7 +399,7 @@ function go()
     end
 
 
-    function on_click(t)
+    function on_click(t, on_window_hover)
         # atom positions for transition
         # volumeData, voluemDataDict, volumeAbsMax
         # superquadrics, linesets,
@@ -430,7 +430,7 @@ function go()
         sq = superquadric.(1.0, transitionRefPositions[t], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
         ls = buildBonds(t[1], volDataDict, bondDeltas[t], volAbsMax, atomPositions)
 
-        build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap)
+        build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover)
     end
 
     screen = GLMakie.Screen()

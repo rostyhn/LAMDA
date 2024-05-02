@@ -1,6 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic
 
-function build_mol_window(fig_size, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap)
+function build_mol_window(fig_size, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover)
 
     molWindow = Figure(size=fig_size)
 
@@ -96,6 +96,10 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
 
     link_cameras_lscene(molWindow)
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
+
+    on(events(molWindow).entered_window) do is_hovered
+        on_window_hover(transition, is_hovered)
+    end
 
     screen = GLMakie.Screen(title="TransVis - $transition")
     display(screen, molWindow)

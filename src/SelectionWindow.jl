@@ -87,14 +87,14 @@ function build_selection_window(fig_size,
             # index of data point
             d_idx = Int(round(pos[1] / (transition_spacing)))
             if d_idx > 0 && d_idx < length(d)
-                bBox = highlight(d_idx, matrix_spacing, transition_spacing, matrix_shape)
+                b_box = bBox(d_idx, matrix_spacing, transition_spacing, matrix_shape)
                 if inspector.selection != plot
                     clear_temporary_plots!(inspector, plot)
-                    p = wireframe!(scene, bBox, inspectable=false, color=:red)
+                    p = wireframe!(scene, b_box, inspectable=false, color=:red)
                     push!(inspector.temp_plots, p)
                 elseif !isempty(inspector.temp_plots)
                     p = inspector.temp_plots[1]
-                    p[1][] = bBox
+                    p[1][] = b_box
                 end
                 inspector.plot.text[] = string(order[d_idx])
                 inspector.plot.position = mp
@@ -106,6 +106,23 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
+    # create a highlight function for matrices of this size
+    hovered = Vector()
+    highlight = function hi(t, is_hovered)
+        # get index of t
+        if is_hovered
+            idx = findfirst(item -> item == t, order)
+            b_box = bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
+            p = wireframe!(scene, b_box, inspectable=false, color=:blue)
+            push!(hovered, p)
+        else
+            for p in hovered
+                delete!(parent_scene(p), p)
+            end
+            empty!(hovered)
+        end
+    end
+
     on(events(scene).mousebutton) do event
         if event.button == Mouse.left
             if event.action == Mouse.press
@@ -114,8 +131,10 @@ function build_selection_window(fig_size,
                 if !isnan(pos)
                     if plot == points || plot == scatter_bbox
                         d_idx = Int(round(pos[1] / (transition_spacing)))
+
                         # call on click here with the idx, main will handle the rest
-                        on_click(order[d_idx])
+                        # pass the highlight function down to on_click
+                        on_click(order[d_idx], highlight)
                     end
                 end
 
@@ -137,7 +156,6 @@ function build_selection_window(fig_size,
         return Vec3f(center[][1] - (matrix_shape[1] * matrix_spacing), eyepos[][2], eyepos[][3])
     end
 
-
     cc = Makie.Camera3D(scene.scene, center=false, lookat=lift(x -> x, center), eyeposition=lift(x -> x, eyepos))
     center!(scene.scene)
 
@@ -152,7 +170,7 @@ function get_center(idx, matrix_spacing, transition_spacing, matrix_shape)
     return Vec3f(x, y, z)
 end
 
-function highlight(idx, matrix_spacing, transition_spacing, matrix_shape)
+function bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
     # give the box some width
     minX = (idx * transition_spacing) - (transition_spacing / 2)
     maxX = (idx * transition_spacing) + (transition_spacing / 2)
@@ -163,10 +181,6 @@ function highlight(idx, matrix_spacing, transition_spacing, matrix_shape)
     minZ = 1
     maxZ = matrix_shape[2]
 
-    return bBox(minX, minY, minZ, maxX, maxY, maxZ, matrix_spacing, transition_spacing)
-end
-
-function bBox(minX, minY, minZ, maxX, maxY, maxZ, matrix_spacing, transition_spacing)
     return Rect3f(Point3f(minX, minY, minZ),
         Point3f(transition_spacing, (maxY - minY) * matrix_spacing, (maxZ - minZ) * matrix_spacing))
 end
