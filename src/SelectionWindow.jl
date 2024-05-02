@@ -1,19 +1,19 @@
 using Makie: clear_temporary_plots!, Orthographic
 
-function pair(v)
-    pairs = Vector{Pair{Any,Any}}()
-    for i in 1:length(v)-1
-        e1 = v[i]
-        e2 = v[i+1]
-        push!(pairs, Pair(e1, e2))
-    end
-    return pairs
-end
-
+include("utils.jl")
 function build_selection_window(fig_size,
-    data::Dict{Tuple{Int,Int},Matrix{Float64}}, order, on_click)
+    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}, order, on_click)
     window = Figure(size=fig_size)
-    scene = LScene(window[1, 1], show_axis=true,
+
+    selected_data = Observable(first(keys(data)))
+
+    matrix_selection = Menu(window[1, 1], options=collect(keys(data)))
+
+    on(matrix_selection.selection) do val
+        selected_data[] = val
+    end
+
+    scene = LScene(window[2, 1], show_axis=true,
         scenekw=scenekw = (backgroundcolor=:white, clear=true))
 
     # space between matrices
@@ -21,34 +21,22 @@ function build_selection_window(fig_size,
     # space btwn matrix elements
     matrix_spacing = 5.0
 
-
-    # order matrices by distance relative to i
-    # we assume that all matrices are the same size
-    d = map(x -> data[x], order)
-    matrix_shape = size(d[1])
-    max_val = maximum(map((x) -> maximum(x), d))
-    min_val = minimum(map((x) -> minimum(x), d))
-
-    # broadcasting somehow messes up the values?
-    norm = map((x) -> (x .- min_val) / (max_val - min_val), d)
-    pairs = pair(norm)
-    #diff = Vector{Any}()
-    #for p in pairs
-    #    push!(diff, p.second - p.first)
-    #end
+    # ugly, but need to keep it this way, otherwise julia will trigger multiple updates
+    # coords, colors, matrix_shape 
+    d_info = lift(x -> load_data(data[x], order, matrix_spacing, transition_spacing), selected_data)
 
     sliderTransition = SliderGrid(
-        window[2, 1],
+        window[3, 1],
         (
             label="Transition",
-            range=[1:length(norm);],
+            range=[1:length(order);],
             startvalue=1,
             format=x -> string(order[x]),
         ),
     )
 
     pointValueFilter = SliderGrid(
-        window[3, 1],
+        window[4, 1],
         (
             label="Point Filter",
             range=0.0:0.01:1.0,
@@ -58,16 +46,17 @@ function build_selection_window(fig_size,
 
     filterValue = lift(x -> x, pointValueFilter.sliders[1].value)
 
-    coords, colors = generate_points(matrix_shape, length(norm), matrix_spacing, transition_spacing, norm)
-
-    filteredIdx = lift(y -> map((x) -> x[1], findall(x -> x > y, colors)), filterValue)
-    filteredCoords = lift(y -> map(x -> coords[x], y), filteredIdx)
-    filteredColors = lift(y -> map(x -> colors[x], y), filteredIdx)
+    filteredCoords, filteredColors = splitobs(@lift begin
+        filteredIdx = map((x) -> x[1], findall(x -> x > $filterValue, $d_info[2]))
+        filteredCoords = map(x -> $d_info[1][x], filteredIdx)
+        filteredColors = map(x -> $d_info[2][x], filteredIdx)
+        return (filteredCoords, filteredColors)
+    end)
 
     # invisible bounding box we use to get the position from pick
     # when no points are selected
-    scatter_bbox = mesh!(scene, Rect3f(Point3f(0.0),
-            Point3f(length(norm) * transition_spacing, matrix_shape[1] * matrix_spacing, matrix_shape[2] * matrix_spacing)),
+    scatter_bbox = mesh!(scene, lift(x -> Rect3f(Point3f(0.0),
+                Point3f(length(order) * transition_spacing, x[3][1] * matrix_spacing, x[3][2] * matrix_spacing)), d_info),
         visible=true, alpha=0.01, color=:white, transparency=true)
 
     scatter_bbox.inspectable[] = false
@@ -86,8 +75,8 @@ function build_selection_window(fig_size,
         if !isnan(pos)
             # index of data point
             d_idx = Int(round(pos[1] / (transition_spacing)))
-            if d_idx > 0 && d_idx < length(d)
-                b_box = bBox(d_idx, matrix_spacing, transition_spacing, matrix_shape)
+            if d_idx > 0 && d_idx < length(order)
+                b_box = bBox(d_idx, matrix_spacing, transition_spacing, d_info[][3])
                 if inspector.selection != plot
                     clear_temporary_plots!(inspector, plot)
                     p = wireframe!(scene, b_box, inspectable=false, color=:red)
@@ -112,7 +101,7 @@ function build_selection_window(fig_size,
         # get index of t
         if is_hovered
             idx = findfirst(item -> item == t, order)
-            b_box = bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
+            b_box = bBox(idx, matrix_spacing, transition_spacing, d_info[][3])
             p = wireframe!(scene, b_box, inspectable=false, color=:blue)
             push!(hovered, p)
         else
@@ -148,12 +137,12 @@ function build_selection_window(fig_size,
 
     # function to calculate center of point at index
     center = lift(sliderTransition.sliders[1].value) do val
-        return get_center(val, matrix_spacing, transition_spacing, matrix_shape)
+        return get_center(val, matrix_spacing, transition_spacing, d_info[][3])
     end
 
-    eyepos = Observable(Vec3f(-matrix_shape[1] * matrix_spacing, -matrix_shape[1] * matrix_spacing, matrix_shape[2] * matrix_spacing))
+    eyepos = Observable(Vec3f(-d_info[][3][1] * matrix_spacing, -d_info[][3][1] * matrix_spacing, d_info[][3][2] * matrix_spacing))
     eyepos = lift(sliderTransition.sliders[1].value) do val
-        return Vec3f(center[][1] - (matrix_shape[1] * matrix_spacing), eyepos[][2], eyepos[][3])
+        return Vec3f(center[][1] - (d_info[][3][1] * matrix_spacing), eyepos[][2], eyepos[][3])
     end
 
     cc = Makie.Camera3D(scene.scene, center=false, lookat=lift(x -> x, center), eyeposition=lift(x -> x, eyepos))
@@ -183,6 +172,22 @@ function bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
 
     return Rect3f(Point3f(minX, minY, minZ),
         Point3f(transition_spacing, (maxY - minY) * matrix_spacing, (maxZ - minZ) * matrix_spacing))
+end
+
+function load_data(data, order, matrix_spacing, transition_spacing)
+    # order matrices by distance relative to i
+    d = map(x -> data[x], order)
+
+    # we assume that all matrices are the same size#
+    matrix_shape = size(d[1])
+
+    # simple min-max norm
+    max_val = maximum(map((x) -> maximum(x), d))
+    min_val = minimum(map((x) -> minimum(x), d))
+    norm = map((x) -> (x .- min_val) / (max_val - min_val), d)
+
+    coords, colors = generate_points(matrix_shape, length(norm), matrix_spacing, transition_spacing, norm)
+    return coords, colors, matrix_shape
 end
 
 function generate_points(matrix_shape, num_matrices, matrix_spacing, transition_spacing, data)

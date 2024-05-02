@@ -435,7 +435,11 @@ function go()
 
     screen = GLMakie.Screen()
 
+    available_matrices = Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}()
+    available_matrices["bondDeltas"] = bondDeltas
+    available_matrices["transforms"] = transforms
+
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
-    display(screen, build_selection_window((600, 800), transforms, sorted, on_click))
+    display(screen, build_selection_window((600, 800), available_matrices, sorted, on_click))
 end
 end
