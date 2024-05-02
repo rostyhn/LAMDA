@@ -72,7 +72,7 @@ function build_selection_window(fig_size,
     on(events(scene).mouseposition) do mp
         plot, idx = pick(scene)
         pos = position_on_plot(plot, idx)
-        if !isnan(pos)
+        if !isnan(pos) && (plot == points || plot == scatter_bbox)
             # index of data point
             d_idx = Int(round(pos[1] / (transition_spacing)))
             if d_idx > 0 && d_idx < length(order)
@@ -117,14 +117,12 @@ function build_selection_window(fig_size,
             if event.action == Mouse.press
                 plot, idx = pick(scene)
                 pos = position_on_plot(plot, idx)
-                if !isnan(pos)
-                    if plot == points || plot == scatter_bbox
-                        d_idx = Int(round(pos[1] / (transition_spacing)))
+                if !isnan(pos) && (plot == points || plot == scatter_bbox)
+                    d_idx = Int(round(pos[1] / (transition_spacing)))
 
-                        # call on click here with the idx, main will handle the rest
-                        # pass the highlight function down to on_click
-                        on_click(order[d_idx], highlight)
-                    end
+                    # call on click here with the idx, main will handle the rest
+                    # pass the highlight function down to on_click
+                    on_click(order[d_idx], highlight)
                 end
 
             end
