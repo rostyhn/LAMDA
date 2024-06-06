@@ -90,6 +90,9 @@ function go()
 
     atomPositions = combinedData["atomPositions"]
 
+    # get number of atoms
+    num_atoms = size(Iterators.first(values(atomPositions)))[1]
+
     connectivity = combinedData["connectivity"]
     bondWeights = combinedData["bondWeights"]
 
@@ -275,8 +278,8 @@ function go()
     screen = GLMakie.Screen()
 
     available_matrices = Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}()
-    available_matrices["bondDeltas"] = bondDeltas
     available_matrices["transforms"] = transforms
+    available_matrices["bondDeltas"] = bondDeltas
 
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
     display(screen, build_selection_window((600, 800), available_matrices, sorted, on_click))

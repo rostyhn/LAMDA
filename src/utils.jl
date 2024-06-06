@@ -1,4 +1,4 @@
-function pair(v)
+function pair_array(v)
     pairs = Vector{Pair{Any,Any}}()
     for i in 1:length(v)-1
         e1 = v[i]

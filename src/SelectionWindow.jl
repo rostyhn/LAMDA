@@ -24,12 +24,13 @@ function build_selection_window(fig_size,
     matrix_spacing = 5.0
 
     # ugly, but need to keep it this way, otherwise julia will trigger multiple updates
-    # coords, colors, matrix_shape 
-    d_info = lift(x -> load_data(data[x], order, matrix_spacing, transition_spacing), selected_data)
+    # normed data, matrix_shape 
+    processed_data = lift(x -> load_data(data[x], order), selected_data)
+
+    # coords, colors for points
+    point_data = lift(x -> generate_points(x[1], x[2], matrix_spacing, transition_spacing), processed_data)
 
     currently_selected = Observable(1)
-
-
 
     sliderTransition = SliderGrid(
         window[4, 1],
@@ -53,26 +54,32 @@ function build_selection_window(fig_size,
     filterValue = lift(x -> x, pointValueFilter.sliders[1].value)
 
     filteredCoords, filteredColors = splitobs(@lift begin
-        filteredIdx = map((x) -> x[1], findall(x -> x > $filterValue, $d_info[2]))
-        filteredCoords = map(x -> $d_info[1][x], filteredIdx)
-        filteredColors = map(x -> $d_info[2][x], filteredIdx)
+        filteredIdx = map((x) -> x[1], findall(x -> x > $filterValue, $point_data[2]))
+        filteredCoords = map(x -> $point_data[1][x], filteredIdx)
+        filteredColors = map(x -> $point_data[2][x], filteredIdx)
+
+        @show $point_data[2]
         return (filteredCoords, filteredColors)
     end)
 
-    this_mat = @lift begin
-        this_data = data[$selected_data]
-        # copying is not ideal
-        mat = copy(this_data[order[$currently_selected]])
+    mat_2d = @lift begin
+        mat = $processed_data[1][$currently_selected]
+
+        mat_mask = ones(size(mat))
         mask = findall(x -> x < $filterValue, mat)
-        mat[mask] .= 0
-        return SparseArrays.sparse(mat)
+        mat_mask[mask] .= NaN
+
+        res = mat .* mat_mask
+        return res
     end
 
-    spy!(scene_2d, lift(x -> x, this_mat), markersize=30)
+    matrix_plot = heatmap!(scene_2d, mat_2d, colorrange=(0.0, 1.0), colormap=:viridis)
+    matrix_plot.inspectable[] = false
+
     # invisible bounding box we use to get the position from pick
     # when no points are selected
     scatter_bbox = mesh!(scene, lift(x -> Rect3f(Point3f(0.0),
-                Point3f(length(order) * transition_spacing, x[3][1] * matrix_spacing, x[3][2] * matrix_spacing)), d_info),
+                Point3f(length(order) * transition_spacing, x[2][1] * matrix_spacing, x[2][2] * matrix_spacing)), processed_data),
         visible=true, alpha=0.01, color=:white, transparency=true)
 
     scatter_bbox.inspectable[] = false
@@ -83,8 +90,6 @@ function build_selection_window(fig_size,
     inspector = DataInspector(scene)
     a = inspector.attributes
 
-    # currently_selected = Observable(1)
-
     on(events(scene).mouseposition) do mp
         plot, idx = pick(scene)
         pos = position_on_plot(plot, idx)
@@ -92,7 +97,7 @@ function build_selection_window(fig_size,
             # index of data point
             d_idx = Int(round(pos[1] / (transition_spacing)))
             if d_idx > 0 && d_idx < length(order)
-                b_box = bBox(d_idx, matrix_spacing, transition_spacing, d_info[][3])
+                b_box = bBox(d_idx, matrix_spacing, transition_spacing, processed_data[][2])
                 if inspector.selection != plot
                     clear_temporary_plots!(inspector, plot)
                     p = wireframe!(scene, b_box, inspectable=false, color=:red)
@@ -117,7 +122,7 @@ function build_selection_window(fig_size,
         # get index of t
         if is_hovered
             idx = findfirst(item -> item == t, order)
-            b_box = bBox(idx, matrix_spacing, transition_spacing, d_info[][3])
+            b_box = bBox(idx, matrix_spacing, transition_spacing, processed_data[][2])
             p = wireframe!(scene, b_box, inspectable=false, color=:blue)
             push!(hovered, p)
         else
@@ -151,12 +156,12 @@ function build_selection_window(fig_size,
 
     # function to calculate center of point at index
     center = lift(sliderTransition.sliders[1].value) do val
-        return get_center(val, matrix_spacing, transition_spacing, d_info[][3])
+        return get_center(val, matrix_spacing, transition_spacing, processed_data[][2])
     end
 
-    eyepos = Observable(Vec3f(-d_info[][3][1] * matrix_spacing, -d_info[][3][1] * matrix_spacing, d_info[][3][2] * matrix_spacing))
+    eyepos = Observable(Vec3f(-processed_data[][2][1] * matrix_spacing, -processed_data[][2][1] * matrix_spacing, processed_data[][2][2] * matrix_spacing))
     eyepos = lift(sliderTransition.sliders[1].value) do val
-        return Vec3f(center[][1] - (d_info[][3][1] * matrix_spacing), eyepos[][2], eyepos[][3])
+        return Vec3f(center[][1] - (processed_data[][2][1] * matrix_spacing), eyepos[][2], eyepos[][3])
     end
 
     cc = Makie.Camera3D(scene.scene, center=false, lookat=lift(x -> x, center), eyeposition=lift(x -> x, eyepos))
@@ -188,11 +193,11 @@ function bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
         Point3f(transition_spacing, (maxY - minY) * matrix_spacing, (maxZ - minZ) * matrix_spacing))
 end
 
-function load_data(data, order, matrix_spacing, transition_spacing)
+function load_data(data, order)
     # order matrices by distance relative to i
     d = map(x -> data[x], order)
 
-    # we assume that all matrices are the same size#
+    # we assume that all matrices are the same size
     matrix_shape = size(d[1])
 
     # simple min-max norm
@@ -200,13 +205,14 @@ function load_data(data, order, matrix_spacing, transition_spacing)
     min_val = minimum(map((x) -> minimum(x), d))
     norm = map((x) -> (x .- min_val) / (max_val - min_val), d)
 
-    coords, colors = generate_points(matrix_shape, length(norm), matrix_spacing, transition_spacing, norm)
-    return coords, colors, matrix_shape
+    return norm, matrix_shape
 end
 
-function generate_points(matrix_shape, num_matrices, matrix_spacing, transition_spacing, data)
+function generate_points(data, matrix_shape, matrix_spacing, transition_spacing)
     p = Vector{Point3f}()
     alpha = Vector{Float64}()
+
+    num_matrices = length(data)
 
     for z in 1:num_matrices
         m = data[z]
