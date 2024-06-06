@@ -1,4 +1,4 @@
-using Makie: clear_temporary_plots!, Orthographic
+using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 
 include("utils.jl")
 function build_selection_window(fig_size,
@@ -13,7 +13,9 @@ function build_selection_window(fig_size,
         selected_data[] = val
     end
 
-    scene = LScene(window[2, 1], show_axis=true,
+    scene_2d = Axis(window[2, 1])
+
+    scene = LScene(window[3, 1], show_axis=true,
         scenekw=scenekw = (backgroundcolor=:white, clear=true))
 
     # space between matrices
@@ -25,8 +27,12 @@ function build_selection_window(fig_size,
     # coords, colors, matrix_shape 
     d_info = lift(x -> load_data(data[x], order, matrix_spacing, transition_spacing), selected_data)
 
+    currently_selected = Observable(1)
+
+
+
     sliderTransition = SliderGrid(
-        window[3, 1],
+        window[4, 1],
         (
             label="Transition",
             range=[1:length(order);],
@@ -36,7 +42,7 @@ function build_selection_window(fig_size,
     )
 
     pointValueFilter = SliderGrid(
-        window[4, 1],
+        window[5, 1],
         (
             label="Point Filter",
             range=0.0:0.01:1.0,
@@ -53,6 +59,16 @@ function build_selection_window(fig_size,
         return (filteredCoords, filteredColors)
     end)
 
+    this_mat = @lift begin
+        this_data = data[$selected_data]
+        # copying is not ideal
+        mat = copy(this_data[order[$currently_selected]])
+        mask = findall(x -> x < $filterValue, mat)
+        mat[mask] .= 0
+        return SparseArrays.sparse(mat)
+    end
+
+    spy!(scene_2d, lift(x -> x, this_mat), markersize=30)
     # invisible bounding box we use to get the position from pick
     # when no points are selected
     scatter_bbox = mesh!(scene, lift(x -> Rect3f(Point3f(0.0),
@@ -88,7 +104,7 @@ function build_selection_window(fig_size,
                 inspector.plot.text[] = string(order[d_idx])
                 inspector.plot.position = mp
                 inspector.plot.visible[] = true
-                # currently_selected[] = d_idx
+                currently_selected[] = d_idx
             end
             return Consume(true)
         end
