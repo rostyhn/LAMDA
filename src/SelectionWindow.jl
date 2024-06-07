@@ -156,7 +156,10 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
-    segment_selector = scatter!(atom_view, map(x -> Point3f(x), eachrow(reference_configuration[1])))
+    # start off unselected by default
+    segment_selector = scatter!(atom_view, map(x -> Point3f(x), eachrow(reference_configuration[1])),
+        color=lift(x -> color_selected(x, reference_configuration[3]), selected_atoms)
+    )
     segment_selector.inspectable[] = false
 
     inspector = DataInspector(atom_view)
@@ -175,7 +178,9 @@ function build_selection_window(fig_size,
                     else
                         push!(selected_atoms[], idx)
                     end
-                    @show selected_atoms[]
+
+                    notify(selected_atoms)
+
                     return Consume(true)
                 end
             end
@@ -241,6 +246,14 @@ function bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
 
     return Rect3f(Point3f(minX, minY, minZ),
         Point3f(transition_spacing, (maxY - minY) * matrix_spacing, (maxZ - minZ) * matrix_spacing))
+end
+
+function color_selected(selected_atoms, num_atoms)
+    colors = [:blue for _ in range(1, num_atoms)]
+    for idx in selected_atoms
+        colors[idx] = :red
+    end
+    return colors
 end
 
 function load_data(data, order)
