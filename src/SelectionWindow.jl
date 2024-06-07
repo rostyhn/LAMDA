@@ -2,7 +2,8 @@ using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 
 include("utils.jl")
 function build_selection_window(fig_size,
-    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}, order, on_click)
+    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}, order, on_click, reference_configuration)
+
     window = Figure(size=fig_size)
 
     selected_data = Observable(first(keys(data)))
@@ -13,9 +14,15 @@ function build_selection_window(fig_size,
         selected_data[] = val
     end
 
-    scene_2d = Axis(window[2, 1])
+    selected_atoms = Observable(Set())
 
-    scene = LScene(window[3, 1], show_axis=true,
+    atom_view = LScene(window[2, 1], show_axis=false,
+        scenekw=scenekw = (backgroundcolor=:white, clear=true))
+
+    scene_2d = Axis(window[2, 2])
+    hidedecorations!(scene_2d)
+
+    scene = LScene(window[3, :], show_axis=true,
         scenekw=scenekw = (backgroundcolor=:white, clear=true))
 
     # space between matrices
@@ -33,7 +40,7 @@ function build_selection_window(fig_size,
     currently_selected = Observable(1)
 
     sliderTransition = SliderGrid(
-        window[4, 1],
+        window[4, :],
         (
             label="Transition",
             range=[1:length(order);],
@@ -43,7 +50,7 @@ function build_selection_window(fig_size,
     )
 
     pointValueFilter = SliderGrid(
-        window[5, 1],
+        window[5, :],
         (
             label="Point Filter",
             range=0.0:0.01:1.0,
@@ -57,8 +64,6 @@ function build_selection_window(fig_size,
         filteredIdx = map((x) -> x[1], findall(x -> x > $filterValue, $point_data[2]))
         filteredCoords = map(x -> $point_data[1][x], filteredIdx)
         filteredColors = map(x -> $point_data[2][x], filteredIdx)
-
-        @show $point_data[2]
         return (filteredCoords, filteredColors)
     end)
 
@@ -144,11 +149,56 @@ function build_selection_window(fig_size,
                     # call on click here with the idx, main will handle the rest
                     # pass the highlight function down to on_click
                     on_click(order[d_idx], highlight)
+                    return Consume(true)
                 end
-
             end
         end
+        return Consume(false)
     end
+
+    segment_selector = scatter!(atom_view, map(x -> Point3f(x), eachrow(reference_configuration[1])))
+    segment_selector.inspectable[] = false
+
+    inspector = DataInspector(atom_view)
+
+    # for now, let's just select individual atoms
+    on(events(atom_view).mousebutton, priority=1) do event
+        if event.button == Mouse.left
+            if event.action == Mouse.press
+                plot, idx = pick(atom_view)
+                if plot == segment_selector
+                    pos = position_on_plot(plot, idx)
+                    idx, d = NearestNeighbors.nn(reference_configuration[2], pos)
+
+                    if idx in selected_atoms[]
+                        delete!(selected_atoms[], idx)
+                    else
+                        push!(selected_atoms[], idx)
+                    end
+                    @show selected_atoms[]
+                    return Consume(true)
+                end
+            end
+        end
+        return Consume(false)
+    end
+
+    on(events(atom_view).mouseposition, priority=-1) do mp
+        plot, idx = pick(atom_view)
+        if plot == segment_selector
+            pos = position_on_plot(plot, idx)
+            idx, d = NearestNeighbors.nn(reference_configuration[2], pos)
+            if !isnan(pos)
+                inspector.plot.text[] = string("Atom ", idx)
+                inspector.plot.visible[] = true
+                inspector.plot.position = mp
+                return Consume(true)
+            end
+            return Consume(false)
+        end
+    end
+
+
 
     # listen to currently selected transition
     # this actually does work but is super finicky!
