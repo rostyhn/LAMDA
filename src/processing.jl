@@ -1,3 +1,5 @@
+using StatsBase, SparseArrays, Distances
+
 function squaredNorm(a::Point3f)::Float32
     return a[1] * a[1] + a[2] * a[2] + a[3] * a[3]
 end
@@ -76,6 +78,32 @@ function computePersistenceDistances(persistenceDiagrams::Vector)::Matrix{Float6
     return Symmetric(out)
 end
 
+function computeInvariantDistributionInNeighborhood(data::Vector{Float64}, positions::Vector{Point{3,Float32}}, binEdges::Vector{Float64}, neighborCount::Int64, atomKDTree::NearestNeighbors.KDTree)::Vector{SparseVector{Float64}}
+    distributionsAtPositions = Vector{SparseVector{Float64}}()
+    for position in positions
+        nns, dists = knn(atomKDTree, position, neighborCount)
+        #add minimum distance
+        vals = data[nns]
+        histo = fit(Histogram, vals, binEdges; closed=:right)
+        pd = StatsBase.normalize(histo; mode=:probability)
+        push!(distributionsAtPositions, sparse(pd.weights))
+    end
+    return distributionsAtPositions
+end
+
+function computeLNCD(distributions::Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}, a::Tuple{Int,Int}, b::Tuple{Int,Int})::Float64 #local neighborhood cummulative diverge score
+
+    informationScore = 0.0
+    distA = distributions[a]
+    distB = distributions[b]
+
+    for i in eachindex(distA)
+        informationScore = informationScore + JSDivergence()(distA[i], distB[i])
+    end
+
+    return informationScore
+end
+
 function computeDistances(invariants::Vector{Float64})::Matrix{Float64}
     out = zeros(length(invariants), length(invariants))
     Threads.@threads for k in 1:length(invariants)
@@ -122,9 +150,6 @@ function computeTransitionInvariants(
 
         F = Vector{Matrix{Float64}}(undef, length(aPos1[:, 1]))
 
-        #  kdtree = KDTree(transpose(aPos1); leafsize = 5)
-        #  nnIndices, dists = knn(kdtree, transpose(aPos1), 10)
-
         for m = 1:length(aPos1[:, 1])
 
             D = zeros(3, 3)
@@ -160,16 +185,10 @@ function computeTransitionInvariants(
 
         stretchedPrincipalAxes[t] = [Vec3f.(getStretchedEigVec(eigSys)) for eigSys in eigenSystems]
 
-        # @show sqrt( 2 * eigenSystems[1].values[1] + 1.0)
-        # @show sqrt( 2 *eigenSystems[2] + 1.0)
-        # @show sqrt( 2 *eigenSystems[1]+ 1.0)
-
         deviator = E .- (1 / 3 * tr.(E) .* Ref(I))
         eigenSystemsDeviator = eigen.(deviator)
 
         I1(ev::Vector{Float64}) = ev[1] + ev[2] + ev[3]
-        # I2( ev::Vector{Float64} ) = ev[1]*ev[2] + ev[1]*ev[3] + ev[2]*ev[3]
-        # I3( ev::Vector{Float64} ) = ev[1] * ev[2] * ev[3]
         I2(ev::Vector{Float64}) = sqrt(ev[1]^2 + ev[2]^2 + ev[3]^2)
         I3(ev::Vector{Float64}) =
             3 * sqrt(6) * (ev[1] * ev[2] * ev[3]) / ((ev[1]^2 + ev[2]^2 + ev[3]^2)^(3 / 2))

@@ -282,8 +282,7 @@ function go()
     available_matrices["bondDeltas"] = bondDeltas
 
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
-
     reference_configuration = first(transitionSequence)
-    display(screen, build_selection_window((600, 800), available_matrices, sorted, on_click, (first(values(atomPositions)), transitionKDTree[reference_configuration], num_atoms)))
+    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (first(values(atomPositions)), transitionKDTree[reference_configuration], num_atoms, transitionSequence[1]), (minInvariant1, maxInvariant2, transitionInvariants1), transitionRefPositions, transitionKDTree))
 end
 end

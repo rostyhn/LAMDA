@@ -1,12 +1,12 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 
-include("utils.jl")
 function build_selection_window(fig_size,
-    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}, order, on_click, reference_configuration)
+    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}, seq, on_click, reference_configuration, iv1, transitionRefPositions, transitionKDTree)
 
     window = Figure(size=fig_size)
 
     selected_data = Observable(first(keys(data)))
+    num_transitions = length(seq)
 
     matrix_selection = Menu(window[1, 1], options=collect(keys(data)))
 
@@ -14,7 +14,7 @@ function build_selection_window(fig_size,
         selected_data[] = val
     end
 
-    selected_atoms = Observable(Set())
+    selected_atoms = Observable(Set(1))
 
     atom_view = LScene(window[2, 1], show_axis=false,
         scenekw=scenekw = (backgroundcolor=:white, clear=true))
@@ -30,9 +30,27 @@ function build_selection_window(fig_size,
     # space btwn matrix elements
     matrix_spacing = 5.0
 
+    order = @lift begin
+        numberOfBins = 100
+        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
+
+        @show stepSize = (maxInvariant1 - minInvariant1) / numberOfBins
+        binEdges = [minInvariant1:stepSize:maxInvariant1;]
+
+        transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
+        @time for (name, values) in transitionInvariants1
+            transitionDistribution[name] = computeInvariantDistributionInNeighborhood(values, transitionRefPositions[name][collect($selected_atoms)], binEdges, 10, transitionKDTree[name])
+        end
+        @show "done with distributions"
+
+        distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref(reference_configuration[4]), keys(transitionInvariants1))
+        zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
+        sort!(zipped, by=x -> x[end])
+        return map(x -> x[1], zipped)
+    end
     # ugly, but need to keep it this way, otherwise julia will trigger multiple updates
     # normed data, matrix_shape 
-    processed_data = lift(x -> load_data(data[x], order), selected_data)
+    processed_data = lift((x, y) -> load_data(data[x], y), selected_data, order)
 
     # coords, colors for points
     point_data = lift(x -> generate_points(x[1], x[2], matrix_spacing, transition_spacing), processed_data)
@@ -43,9 +61,8 @@ function build_selection_window(fig_size,
         window[4, :],
         (
             label="Transition",
-            range=[1:length(order);],
+            range=[1:num_transitions;],
             startvalue=1,
-            format=x -> string(order[x]),
         ),
     )
 
@@ -60,7 +77,11 @@ function build_selection_window(fig_size,
 
     filterValue = lift(x -> x, pointValueFilter.sliders[1].value)
 
+    # need to filter out based on atom numbers
     filteredCoords, filteredColors = splitobs(@lift begin
+        # filteredIdx = vcat(map(x -> [x + 147 * i for i in range(0, length($processed_data[1]))], collect($selected_atoms))...)
+
+        # TODO: apply the other filter now
         filteredIdx = map((x) -> x[1], findall(x -> x > $filterValue, $point_data[2]))
         filteredCoords = map(x -> $point_data[1][x], filteredIdx)
         filteredColors = map(x -> $point_data[2][x], filteredIdx)
@@ -74,6 +95,12 @@ function build_selection_window(fig_size,
         mask = findall(x -> x < $filterValue, mat)
         mat_mask[mask] .= NaN
 
+        # depends on the matrix! 
+        #sa = collect($selected_atoms)
+        # TODO throw in a test for if matrix_shape[1] == 2, then add columns
+        #mat_mask = fill(NaN, size(mat))
+        # mat_mask[sa, :] .= 1
+
         res = mat .* mat_mask
         return res
     end
@@ -84,7 +111,7 @@ function build_selection_window(fig_size,
     # invisible bounding box we use to get the position from pick
     # when no points are selected
     scatter_bbox = mesh!(scene, lift(x -> Rect3f(Point3f(0.0),
-                Point3f(length(order) * transition_spacing, x[2][1] * matrix_spacing, x[2][2] * matrix_spacing)), processed_data),
+                Point3f(num_transitions * transition_spacing, x[2][1] * matrix_spacing, x[2][2] * matrix_spacing)), processed_data),
         visible=true, alpha=0.01, color=:white, transparency=true)
 
     scatter_bbox.inspectable[] = false
@@ -101,7 +128,8 @@ function build_selection_window(fig_size,
         if !isnan(pos) && (plot == points || plot == scatter_bbox)
             # index of data point
             d_idx = Int(round(pos[1] / (transition_spacing)))
-            if d_idx > 0 && d_idx < length(order)
+            @show d_idx, num_transitions
+            if d_idx > 0 && d_idx < num_transitions
                 b_box = bBox(d_idx, matrix_spacing, transition_spacing, processed_data[][2])
                 if inspector.selection != plot
                     clear_temporary_plots!(inspector, plot)
@@ -111,7 +139,7 @@ function build_selection_window(fig_size,
                     p = inspector.temp_plots[1]
                     p[1][] = b_box
                 end
-                inspector.plot.text[] = string(order[d_idx])
+                inspector.plot.text[] = string(order[][d_idx])
                 inspector.plot.position = mp
                 inspector.plot.visible[] = true
                 currently_selected[] = d_idx
@@ -126,7 +154,7 @@ function build_selection_window(fig_size,
     highlight = function hi(t, is_hovered)
         # get index of t
         if is_hovered
-            idx = findfirst(item -> item == t, order)
+            idx = findfirst(item -> item == t, order[])
             b_box = bBox(idx, matrix_spacing, transition_spacing, processed_data[][2])
             p = wireframe!(scene, b_box, inspectable=false, color=:blue)
             push!(hovered, p)
@@ -148,7 +176,7 @@ function build_selection_window(fig_size,
 
                     # call on click here with the idx, main will handle the rest
                     # pass the highlight function down to on_click
-                    on_click(order[d_idx], highlight)
+                    on_click(order[][d_idx], highlight)
                     return Consume(true)
                 end
             end
@@ -202,8 +230,6 @@ function build_selection_window(fig_size,
             return Consume(false)
         end
     end
-
-
 
     # listen to currently selected transition
     # this actually does work but is super finicky!
