@@ -268,7 +268,7 @@ function go()
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        mw = build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, kdTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
+        mw = build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, KDTree(map(x -> Point3f(x), eachrow(atomPositions[t[1]]))), sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
 
         push!(molWindows, mw)
 
