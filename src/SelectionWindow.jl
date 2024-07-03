@@ -39,11 +39,12 @@ function build_selection_window(fig_size,
 
         transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
         @time for (name, values) in transitionInvariants1
-            transitionDistribution[name] = computeInvariantDistributionInNeighborhood(values, transitionRefPositions[name][collect($selected_atoms)], binEdges, 10, transitionKDTree[name])
+            transitionDistribution[name] = computeInvariantDistributionInNeighborhood(values, transitionRefPositions[name], binEdges, 10, transitionKDTree[name])
         end
         @show "done with distributions"
 
-        distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref(reference_configuration[4]), keys(transitionInvariants1))
+        distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref(reference_configuration[4]), keys(transitionInvariants1), Ref($selected_atoms))
+
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
         sort!(zipped, by=x -> x[end])
         return map(x -> x[1], zipped)
@@ -128,7 +129,6 @@ function build_selection_window(fig_size,
         if !isnan(pos) && (plot == points || plot == scatter_bbox)
             # index of data point
             d_idx = Int(round(pos[1] / (transition_spacing)))
-            @show d_idx, num_transitions
             if d_idx > 0 && d_idx < num_transitions
                 b_box = bBox(d_idx, matrix_spacing, transition_spacing, processed_data[][2])
                 if inspector.selection != plot
@@ -200,7 +200,6 @@ function build_selection_window(fig_size,
                 if plot == segment_selector
                     pos = position_on_plot(plot, idx)
                     idx, d = NearestNeighbors.nn(reference_configuration[2], pos)
-
                     if idx in selected_atoms[]
                         delete!(selected_atoms[], idx)
                     else
@@ -216,12 +215,14 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
+    # nearest neighbors is wrong!
+
     on(events(atom_view).mouseposition, priority=-1) do mp
         plot, idx = pick(atom_view)
         if plot == segment_selector
             pos = position_on_plot(plot, idx)
-            idx, d = NearestNeighbors.nn(reference_configuration[2], pos)
             if !isnan(pos)
+                idx, d = NearestNeighbors.nn(reference_configuration[2], pos)
                 inspector.plot.text[] = string("Atom ", idx)
                 inspector.plot.visible[] = true
                 inspector.plot.position = mp

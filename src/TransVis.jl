@@ -283,6 +283,6 @@ function go()
 
     sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
     reference_configuration = first(transitionSequence)
-    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (first(values(atomPositions)), transitionKDTree[reference_configuration], num_atoms, transitionSequence[1]), (minInvariant1, maxInvariant2, transitionInvariants1), transitionRefPositions, transitionKDTree))
+    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (first(values(atomPositions)), KDTree(map(x -> Point3f(x), eachrow(first(values(atomPositions))))), num_atoms, transitionSequence[1]), (minInvariant1, maxInvariant2, transitionInvariants1), transitionRefPositions, transitionKDTree))
 end
 end

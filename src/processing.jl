@@ -91,16 +91,28 @@ function computeInvariantDistributionInNeighborhood(data::Vector{Float64}, posit
     return distributionsAtPositions
 end
 
-function computeLNCD(distributions::Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}, a::Tuple{Int,Int}, b::Tuple{Int,Int})::Float64 #local neighborhood cummulative diverge score
+function computeLNCD(distributions::Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}, a::Tuple{Int,Int}, b::Tuple{Int,Int}, selected_atoms)::Float64 #local neighborhood cummulative diverge score
 
     informationScore = 0.0
     distA = distributions[a]
     distB = distributions[b]
 
-    for i in eachindex(distA)
+    vals = Dict()
+    for i in selected_atoms
         informationScore = informationScore + JSDivergence()(distA[i], distB[i])
+        minDiv = floatmax(Float64)
+        minIdx = i
+        for j in eachindex(distB)
+            div = JSDivergence()(distA[i], distB[j])
+            if minDiv > div
+                minDiv = div
+                minIdx = j
+            end
+        end
+        vals[i] = (minIdx, minDiv)
     end
 
+    @show vals
     return informationScore
 end
 
