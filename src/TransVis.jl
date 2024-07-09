@@ -58,6 +58,9 @@ function go()
 
     GLMakie.closeall() #close all windows for rerun!
 
+    trajectories, active_trajectory_name = get_data_alt()
+    active_trajectory = trajectories[active_trajectory_name]
+
     plotWindow = Figure(size=(600, 400))
 
     axI1 = Axis(plotWindow[1:2, 1:4], xlabel="Atom Number", ylabel="K1")
@@ -65,36 +68,26 @@ function go()
     axI3 = Axis(plotWindow[5:6, 1:4], xlabel="Atom Number", ylabel="mode(E)")
     axDR = Axis(plotWindow[1:6, 5:7], title="t-SNE")
 
-    stateDataPath = "/home/frosty/Programs/Julia/TransVis/data/state_data copy/"
-    sequencePath = "/home/frosty/Programs/Julia/TransVis/data/state_data copy/seq.txt"
-    transitionPath = "/home/frosty/Programs/Julia/TransVis/data/nano_pt_labels.pickle"
-    bondWeightPath = "/home/frosty/Programs/Julia/TransVis/data/bond_weights.pickle"
-    connectivityPath = "/home/frosty/Programs/Julia/TransVis/data/connectivity.pickle"
-    transitionDistanceMatrixPath = "/home/frosty/Programs/Julia/TransVis/data/distance_matrix.pickle"
-    transitionSequencePath = "/home/frosty/Programs/Julia/TransVis/data/transition_sequence.pickle"
+    transitionInvariants1 = active_trajectory["t1"]
+    transitionInvariants2 = active_trajectory["t2"]
+    transitionInvariants3 = active_trajectory["t3"]
+    stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
+    stateKDTree = active_trajectory["kdTree"]
 
-    combinedData = getDataSets(stateDataPath, sequencePath, transitionPath, bondWeightPath, connectivityPath, transitionDistanceMatrixPath, transitionSequencePath)
+    # transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
+    transitionSequence = active_trajectory["transitions"]
 
-    transitionInvariants1 = combinedData["transitionInvariants1"]
-    transitionInvariants2 = combinedData["transitionInvariants2"]
-    transitionInvariants3 = combinedData["transitionInvariants3"]
+    # sometimes need to grab first transition for setting sizes
+    firstTransition = Iterators.first(transitionSequence)
+    firstState = firstTransition[1]
 
-    transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
-    transitionSequence = combinedData["transitionSequence"]["sequence"]
-    transitionRefPositions = combinedData["transitionRefPositions"]
-    transitionLabels = combinedData["transitionLabels"]
-
-    distanceMatrices = combinedData["distanceMatrices"]
-
-    stretchedPrincipalAxes = combinedData["stretchedPrincipalAxes"]
-
-    atomPositions = combinedData["atomPositions"]
+    positionMatrices = active_trajectory["positionMatrices"]
+    atomPositions = active_trajectory["positions"]
+    connectivity = active_trajectory["connectivity"]
+    distanceMatrices = active_trajectory["distanceMatrices"]
 
     # get number of atoms
-    num_atoms = size(Iterators.first(values(atomPositions)))[1]
-
-    connectivity = combinedData["connectivity"]
-    bondWeights = combinedData["bondWeights"]
+    num_atoms = size(Iterators.first(values(positionMatrices)))[1]
 
     #get min max of all transition invariants 1
     minInvariant1 = 1.0e10
@@ -120,7 +113,7 @@ function go()
     maxX = -1.0e10
     maxY = -1.0e10
     maxZ = -1.0e10
-    @time for (key, positions) in atomPositions
+    @time for (key, positions) in positionMatrices
         for row in 1:length(positions[:, 1])
             if minX > positions[row, 1]
                 minX = positions[row, 1]
@@ -153,11 +146,6 @@ function go()
     @show length(sampleRangeY)
     @show length(sampleRangeZ)
 
-    @show "computing kd trees"
-    transitionKDTree = Dict{Tuple{Int,Int},KDTree}()
-    @time for (key, value) in transitionRefPositions
-        transitionKDTree[key] = KDTree(value)
-    end
 
     kernelWidth = 1.0
 
@@ -165,9 +153,6 @@ function go()
         length(values(transitionInvariants1)),
         length(values(transitionInvariants1) |> first) * 1,
     )
-    labels = zeros(length(values(transitionInvariants1)))
-
-
     mapNameToIdx = Dict{Tuple{Int,Int},Int64}()
     mapIdxToName = Vector{Tuple{Int,Int}}()
 
@@ -183,21 +168,12 @@ function go()
         end
 
         s1, s2 = transition
-        flippedName = (s2, s1)
-
-        if haskey(transitionLabels, transition)
-            labels[row] = transitionLabels[transition]
-        elseif haskey(transitionLabels, flippedName)
-            labels[row] = transitionLabels[flippedName]
-        else
-            println("Transition not found: $(string(transition))")
-        end
-
         row = row + 1
     end
 
     #build distance distanceMatrices
-    invariantDistances = zeros(length(transitionInvariants1[(1, 3)]), length(transitionInvariants1[(1, 3)])) #nAtoms x nAtoms
+    # move this to cache as well
+    invariantDistances = zeros(length(transitionInvariants1[firstTransition]), length(transitionInvariants1[firstTransition])) #nAtoms x nAtoms
     invariantDistances = Vector{Matrix}(undef, length(transitionInvariants1))
     @time for (key, value) in transitionInvariants1
         invariantDistances[mapNameToIdx[key]] = computeDistances(value)
@@ -222,15 +198,19 @@ function go()
     bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
     transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
     for t in transitionSequence
-        dm1 = distanceMatrices[t[1]] .* connectivity[t[1]]'
-        dm2 = distanceMatrices[t[2]] .* connectivity[t[2]]'
+        s1, s2 = t
+        dm1 = distanceMatrices[s1] .* connectivity[s1]'
+        dm2 = distanceMatrices[s2] .* connectivity[s2]'
 
         # for now it's total delta
         bondDeltas[t] = (dm2 - dm1)
 
-        p1 = atomPositions[t[1]]
-        p2 = atomPositions[t[2]]
-        transforms[t] = (abs.(p2 - p1))
+        p1 = positionMatrices[s1]
+        p2 = positionMatrices[s2]
+
+        # align p2 then calc difference
+        aligned = alignAtomPositions(p1, p2)
+        transforms[t] = (abs.(aligned - p1))
     end
 
 
@@ -245,13 +225,16 @@ function go()
 
         glyphResolution = 0.1
 
-        kdTree = transitionKDTree[t]
+        s1, _ = t
+
+        kdTree = stateKDTree[s1]
+
         for i in eachindex(sampleRangeX) # x
             for j in eachindex(sampleRangeY) # y
                 for k in eachindex(sampleRangeZ) # z
                     point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
                     knn, dists = NearestNeighbors.knn(kdTree, point, 5)
-                    kValue = sum(kernelFunction.(Ref(point), transitionRefPositions[t][knn], kernelWidth) .* transitionInvariants1[t][knn])
+                    kValue = sum(kernelFunction.(Ref(point), atomPositions[s1][knn], kernelWidth) .* transitionInvariants1[t][knn])
                     volData[i, j, k] = kValue
                     idx, d = NearestNeighbors.nn(kdTree, point)
                     volDataDict[idx] = kValue
@@ -262,13 +245,13 @@ function go()
         volAbsMax[] = max(volAbsMax[], thisVolAbsMax)
 
         # 1.0 should be transitionGlyphSize
-        sq = superquadric.(1.0, transitionRefPositions[t], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
-        ls = buildBonds(t[1], volDataDict, bondDeltas[t], atomPositions)
+        sq = superquadric.(1.0, atomPositions[s1], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
+        ls = buildBonds(t[1], volDataDict, bondDeltas[t], positionMatrices)
 
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        mw = build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, KDTree(map(x -> Point3f(x), eachrow(atomPositions[t[1]]))), sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
+        mw = build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, KDTree(atomPositions[s1]), sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
 
         push!(molWindows, mw)
 
@@ -281,8 +264,6 @@ function go()
     available_matrices["transforms"] = transforms
     available_matrices["bondDeltas"] = bondDeltas
 
-    sorted = sort_transitions(transitionSequence[1], transitionSequence, transitionDistanceMatrix)
-    reference_configuration = first(transitionSequence)
-    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (first(values(atomPositions)), KDTree(map(x -> Point3f(x), eachrow(first(values(atomPositions))))), num_atoms, transitionSequence[1]), (minInvariant1, maxInvariant2, transitionInvariants1), transitionRefPositions, transitionKDTree))
+    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (atomPositions[firstState], stateKDTree[firstState], num_atoms, firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), atomPositions, stateKDTree))
 end
 end

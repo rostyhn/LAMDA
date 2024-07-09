@@ -78,7 +78,7 @@ function computePersistenceDistances(persistenceDiagrams::Vector)::Matrix{Float6
     return Symmetric(out)
 end
 
-function computeInvariantDistributionInNeighborhood(data::Vector{Float64}, positions::Vector{Point{3,Float32}}, binEdges::Vector{Float64}, neighborCount::Int64, atomKDTree::NearestNeighbors.KDTree)::Vector{SparseVector{Float64}}
+function computeInvariantDistributionInNeighborhood(data::Vector{Float64}, positions::Vector{Point3f}, binEdges::Vector{Float64}, neighborCount::Int64, atomKDTree::NearestNeighbors.KDTree)::Vector{SparseVector{Float64}}
     distributionsAtPositions = Vector{SparseVector{Float64}}()
     for position in positions
         nns, dists = knn(atomKDTree, position, neighborCount)
@@ -112,7 +112,6 @@ function computeLNCD(distributions::Dict{Tuple{Int,Int},Vector{SparseVector{Floa
         vals[i] = (minIdx, minDiv)
     end
 
-    @show vals
     return informationScore
 end
 
@@ -129,37 +128,28 @@ end
 
 
 function computeTransitionInvariants(
-    sequence::Vector{Tuple{Int,Int}},
-    atomPositions::Dict{Int,Matrix{Float64}},
-    distanceMatrices::Dict{Int,Matrix{Float64}},
-)::Tuple{Dict{Tuple{Int,Int},Vector{Point3f}},Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
+    transitions::Set{Tuple{Int,Int}},
+    positions::Dict{Int,Matrix},
+    distances::Dict{Int,Matrix}
+)::Tuple{Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
     Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}}
-
 
     transitionInvariants1 = Dict{Tuple{Int,Int},Vector}()
     transitionInvariants2 = Dict{Tuple{Int,Int},Vector}()
     transitionInvariants3 = Dict{Tuple{Int,Int},Vector}()
 
-    transitionReferencePosition = Dict{Tuple{Int,Int},Vector}()
-
     stretchedPrincipalAxes = Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}()
 
-    unique = 1
-    @showprogress for t in sequence
-
-        if haskey(transitionInvariants1, t)
-            continue
-        end
-        unique = unique + 1
-
+    println("Calculating transition invariants.")
+    @showprogress for t in transitions
         s1, s2 = t
-        aPos1 = atomPositions[s1]
-        aPos2 = atomPositions[s2]
+        aPos1 = positions[s1]
+        aPos2 = positions[s2]
 
-        transitionReferencePosition[t] = [Makie.Point3f.(aPos1[i, 1], aPos1[i, 2], aPos1[i, 3]) for i in 1:length(aPos1[:, 1])]
+        # creates matrices with INF values if distance sum has 0s
+        weights = 1 ./ ((distances[s1] + distances[s2]) ./ 2)
 
-        weights = 1 ./ ((distanceMatrices[s1] + distanceMatrices[s2]) ./ 2)
-
+        replace!(weights, Inf => 0)
         F = Vector{Matrix{Float64}}(undef, length(aPos1[:, 1]))
 
         for m = 1:length(aPos1[:, 1])
@@ -212,12 +202,8 @@ function computeTransitionInvariants(
         transitionInvariants1[t] = invariant1
         transitionInvariants2[t] = invariant2
         transitionInvariants3[t] = invariant3
-
     end
-
-    println("Found * $(unique) * unique transitions")
-
-    return transitionReferencePosition, transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes
+    return transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes
 
 end
 

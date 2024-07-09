@@ -1,7 +1,13 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 
 function build_selection_window(fig_size,
-    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}, seq, on_click, reference_configuration, iv1, transitionRefPositions, transitionKDTree)
+    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}},
+    seq,
+    on_click,
+    reference_configuration,
+    iv1,
+    atomPositions,
+    stateKDTree)
 
     window = Figure(size=fig_size)
 
@@ -38,8 +44,9 @@ function build_selection_window(fig_size,
         binEdges = [minInvariant1:stepSize:maxInvariant1;]
 
         transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
-        @time for (name, values) in transitionInvariants1
-            transitionDistribution[name] = computeInvariantDistributionInNeighborhood(values, transitionRefPositions[name], binEdges, 10, transitionKDTree[name])
+        @time for (t, values) in transitionInvariants1
+            s1, _ = t
+            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, atomPositions[s1], binEdges, 10, stateKDTree[s1])
         end
         @show "done with distributions"
 
@@ -185,7 +192,7 @@ function build_selection_window(fig_size,
     end
 
     # start off unselected by default
-    segment_selector = scatter!(atom_view, map(x -> Point3f(x), eachrow(reference_configuration[1])),
+    segment_selector = scatter!(atom_view, reference_configuration[1],
         color=lift(x -> color_selected(x, reference_configuration[3]), selected_atoms)
     )
     segment_selector.inspectable[] = false
@@ -214,8 +221,6 @@ function build_selection_window(fig_size,
         end
         return Consume(false)
     end
-
-    # nearest neighbors is wrong!
 
     on(events(atom_view).mouseposition, priority=-1) do mp
         plot, idx = pick(atom_view)
