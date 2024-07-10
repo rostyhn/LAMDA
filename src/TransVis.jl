@@ -74,6 +74,7 @@ function go()
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     stateKDTree = active_trajectory["kdTree"]
 
+
     # transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
     transitionSequence = active_trajectory["transitions"]
 
@@ -85,6 +86,7 @@ function go()
     atomPositions = active_trajectory["positions"]
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
+    alignedS2Positions = active_trajectory["alignedS2Positions"]
 
     # get number of atoms
     num_atoms = size(Iterators.first(values(positionMatrices)))[1]
@@ -219,7 +221,7 @@ function go()
     molWindows = Vector()
 
     function on_click(t, on_window_hover)
-        atomPosTuple = (atomPositions[t[1]], atomPositions[t[2]])
+        atomPosTuple = (atomPositions[t[1]], alignedS2Positions[t])
         volData = zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ))
         volDataDict = Dict{Int,Any}()
 

@@ -4,20 +4,36 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
 
     molWindow = Figure(size=fig_size)
 
+    ap1 = atomPositions[1]
+    ap2 = atomPositions[2]
+
+    beforeView = LScene(
+        molWindow[1, 1:3],
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+    scatter!(beforeView, ap1)
+
+    afterView = LScene(
+        molWindow[1, 4:6],
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+    scatter!(afterView, ap2)
+
     atomView = LScene(
-        molWindow[1:5, 1:3],
+        molWindow[2:5, 1:3],
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
     volumeView = LScene(
-        molWindow[1:5, 4:6],
+        molWindow[2:5, 4:6],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
 
     # atom positions should be a tuple of both states involved
-    ap1 = atomPositions[1]
     aa1 = map(x -> get(volumeDataDict, x[1], 0.0), enumerate(eachrow(ap1)))
 
     mm = extrema(aa1)
