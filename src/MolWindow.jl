@@ -12,14 +12,12 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
-    scatter!(beforeView, ap1)
 
     afterView = LScene(
         molWindow[1, 4:6],
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
-    scatter!(afterView, ap2)
 
     atomView = LScene(
         molWindow[2:5, 1:3],
@@ -73,6 +71,11 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
         fxaa=false,
     )
     glyps.inspectable[] = false
+
+    # call these "context views"
+    scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+    # need to match atoms that moved on the other side!
+    scatter!(afterView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
 
     linesegments!(atomView,
         lift(x -> lineSets[1][x], selectedLineSets),
