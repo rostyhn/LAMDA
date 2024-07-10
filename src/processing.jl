@@ -130,6 +130,7 @@ end
 function computeTransitionInvariants(
     transitions::Set{Tuple{Int,Int}},
     positions::Dict{Int,Matrix},
+    alignedS2Positions::Dict{Tuple{Int,Int},Matrix},
     distances::Dict{Int,Matrix}
 )::Tuple{Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
     Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}}
@@ -144,7 +145,7 @@ function computeTransitionInvariants(
     @showprogress for t in transitions
         s1, s2 = t
         aPos1 = positions[s1]
-        aPos2 = positions[s2]
+        aPos2 = alignedS2Positions[t]
 
         # creates matrices with INF values if distance sum has 0s
         weights = 1 ./ ((distances[s1] + distances[s2]) ./ 2)

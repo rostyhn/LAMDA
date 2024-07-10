@@ -247,7 +247,7 @@ function getSequence(sequencePath::String)
     return readlines(sequencePath)
 end
 
-function alignAtomPositions(x::Matrix, xp::Matrix)::Matrix
+function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
     #s2 changes s1 stays
     s = mean(x, dims=1)
     sp = mean(xp, dims=1)
@@ -313,8 +313,17 @@ function get_data_alt()
                 connectivity = Dict{Int,Matrix}(Pickle.npyload(connectivity_pickle))
                 transitions = Set{Tuple{Int,Int}}(Pickle.npyload(transitions_pickle))
 
+                # stores aligned version of s2 for each transition
+                alignedS2Positions = Dict{Tuple{Int,Int},Matrix}()
+                for t in transitions
+                    s1, s2 = t
+                    p1 = positions[s1]
+                    p2 = positions[s2]
+                    alignedS2Positions[t] = alignAtomPositions(p1, p2)
+                end
+
                 (t1, t2, t3, stretchedPrincipalAxes) =
-                    computeTransitionInvariants(transitions, positions, distanceMatrices)
+                    computeTransitionInvariants(transitions, positions, alignedS2Positions, distanceMatrices)
 
                 # converts into array of Point3fs
                 atomPositions = Dict{Int,Vector{Point3f}}()
@@ -328,14 +337,6 @@ function get_data_alt()
                     stateKDTree[stateID] = KDTree(val)
                 end
 
-                # stores aligned version of s2 for each transition
-                alignedS2Positions = Dict{Tuple{Int,Int},Matrix}()
-                for t in transitions
-                    s1, s2 = t
-                    p1 = positions[s1]
-                    p2 = positions[s2]
-                    alignedS2Positions[t] = alignAtomPositions(p1, p2)
-                end
 
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
                     "positions" => atomPositions,
