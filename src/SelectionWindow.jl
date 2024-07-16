@@ -1,4 +1,5 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
+using StatsBase
 
 function build_selection_window(fig_size,
     data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}},
@@ -51,6 +52,9 @@ function build_selection_window(fig_size,
 
         distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref(reference_configuration[4]), keys(transitionInvariants1), Ref($selected_atoms))
 
+        dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=100)
+        @show dist_h
+
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
         sort!(zipped, by=x -> x[end])
         return map(x -> x[1], zipped), distancesToReference
@@ -63,23 +67,28 @@ function build_selection_window(fig_size,
     end
 
     hist!(selection_scene, lift(x -> x[2], order), bins=100)
-
     on(events(selection_scene).mousebutton) do event
-        if event.button == Mouse.left
-            if event.action == Mouse.press
-                plot, idx = pick(selection_scene)
-                pos = position_on_plot(plot, idx)
-                # need to retrieve which elements got placed in this bin
-                if !isnan(pos)
+        if event.button == Mouse.left && event.action == Mouse.press
+            plot, idx = pick(selection_scene)
+            # need to retrieve which elements got placed in this bin
+            # figure out which bin was clicked in the first place
+            mp = mouseposition(selection_scene)[1]
 
-                    #d_idx = Int(round(pos[1] / (transition_spacing)))
+            hist_plt = selection_scene.scene.plots[1]
 
-                    # call on click here with the idx, main will handle the rest
-                    # pass the highlight function down to on_click
-                    #on_click(order[][d_idx], highlight)
-                    return Consume(true)
-                end
-            end
+            step_size = Makie.pick_hist_edges(hist_plt[1][], hist_plt.bins[]).step
+            selected_bin = Int(trunc(mp / Float32(step_size))) + 1
+            @show selected_bin
+
+            #=if !isnan(pos)
+
+                #d_idx = Int(round(pos[1] / (transition_spacing)))
+
+                # call on click here with the idx, main will handle the rest
+                # pass the highlight function down to on_click
+                #on_click(order[][d_idx], highlight)
+                return Consume(true)
+            end=#
         end
         return Consume(false)
     end
