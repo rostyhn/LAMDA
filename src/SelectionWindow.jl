@@ -28,8 +28,7 @@ function build_selection_window(fig_size,
     scene_2d = Axis(window[2, 2])
     hidedecorations!(scene_2d)
 
-    scene = LScene(window[3, :], show_axis=true,
-        scenekw=scenekw = (backgroundcolor=:white, clear=true))
+    selection_scene = Axis(window[3, :])
 
     # space between matrices
     transition_spacing = 18.0
@@ -54,12 +53,40 @@ function build_selection_window(fig_size,
 
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
         sort!(zipped, by=x -> x[end])
-        return map(x -> x[1], zipped)
+        return map(x -> x[1], zipped), distancesToReference
     end
-    # ugly, but need to keep it this way, otherwise julia will trigger multiple updates
-    # normed data, matrix_shape 
-    processed_data = lift((x, y) -> load_data(data[x], y), selected_data, order)
 
+    on(order) do r
+        vals = r[2]
+        xlims!(selection_scene, minimum(vals), maximum(vals))
+        reset_limits!(selection_scene)
+    end
+
+    hist!(selection_scene, lift(x -> x[2], order), bins=100)
+
+    on(events(selection_scene).mousebutton) do event
+        if event.button == Mouse.left
+            if event.action == Mouse.press
+                plot, idx = pick(selection_scene)
+                pos = position_on_plot(plot, idx)
+                # need to retrieve which elements got placed in this bin
+                if !isnan(pos)
+
+                    #d_idx = Int(round(pos[1] / (transition_spacing)))
+
+                    # call on click here with the idx, main will handle the rest
+                    # pass the highlight function down to on_click
+                    #on_click(order[][d_idx], highlight)
+                    return Consume(true)
+                end
+            end
+        end
+        return Consume(false)
+    end
+
+    # processed_data = lift((x, y) -> load_data(data[x], y), selected_data, order[1])
+
+    #= matrix view code
     # coords, colors for points
     point_data = lift(x -> generate_points(x[1], x[2], matrix_spacing, transition_spacing), processed_data)
 
@@ -146,7 +173,7 @@ function build_selection_window(fig_size,
                     p = inspector.temp_plots[1]
                     p[1][] = b_box
                 end
-                inspector.plot.text[] = string(order[][d_idx])
+                inspector.plot.text[] = string(order[1][][d_idx])
                 inspector.plot.position = mp
                 inspector.plot.visible[] = true
                 currently_selected[] = d_idx
@@ -161,7 +188,7 @@ function build_selection_window(fig_size,
     highlight = function hi(t, is_hovered)
         # get index of t
         if is_hovered
-            idx = findfirst(item -> item == t, order[])
+            idx = findfirst(item -> item == t, order[1][])
             b_box = bBox(idx, matrix_spacing, transition_spacing, processed_data[][2])
             p = wireframe!(scene, b_box, inspectable=false, color=:blue)
             push!(hovered, p)
@@ -190,6 +217,7 @@ function build_selection_window(fig_size,
         end
         return Consume(false)
     end
+    =#
 
     # start off unselected by default
     segment_selector = scatter!(atom_view, reference_configuration[1],
@@ -242,6 +270,7 @@ function build_selection_window(fig_size,
     # lift(x -> set_close_to!(sliderTransition.sliders[1], x), currently_selected)
 
     # function to calculate center of point at index
+    #=
     center = lift(sliderTransition.sliders[1].value) do val
         return get_center(val, matrix_spacing, transition_spacing, processed_data[][2])
     end
@@ -253,7 +282,7 @@ function build_selection_window(fig_size,
 
     cc = Makie.Camera3D(scene.scene, center=false, lookat=lift(x -> x, center), eyeposition=lift(x -> x, eyepos))
     center!(scene.scene)
-
+    =#
     return window
 end
 

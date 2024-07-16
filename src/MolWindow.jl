@@ -8,25 +8,25 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
     ap2 = atomPositions[2]
 
     beforeView = LScene(
-        molWindow[1, 1:3],
+        molWindow[1:2, 1:3],
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
     afterView = LScene(
-        molWindow[1, 4:6],
+        molWindow[1:2, 4:6],
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
     atomView = LScene(
-        molWindow[2:5, 1:3],
+        molWindow[3:5, 1:3],
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
     volumeView = LScene(
-        molWindow[2:5, 4:6],
+        molWindow[3:5, 4:6],
         show_axis=false,
         scenekw=(backgroundcolor=:white, clear=true),
     )
