@@ -52,12 +52,38 @@ function build_selection_window(fig_size,
 
         distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref(reference_configuration[4]), keys(transitionInvariants1), Ref($selected_atoms))
 
-        dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=100)
-        @show dist_h
 
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
+
+        dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=10)
+
+        # builds a dict of bin indices to transitions
+        next = iterate(dist_h.edges[1])
+        binIdx = 1
+        bins = Dict()
+        while next !== nothing
+            (left, state) = next
+            next = iterate(dist_h.edges[1], state)
+            if next !== nothing
+                (right, _) = next
+                thisBin = Any[]
+                for z in zipped
+                    (key, val) = z
+                    if val >= left && val <= right
+                        push!(thisBin, key)
+                    end
+                end
+                println(binIdx, " ", left, " ", right, " ", length(thisBin))
+
+                bins[binIdx] = thisBin
+                binIdx += 1
+            end
+        end
+
         sort!(zipped, by=x -> x[end])
-        return map(x -> x[1], zipped), distancesToReference
+        @show collect(keys(bins))
+        @show map(y -> length(y), collect(values(bins)))
+        return map(x -> x[1], zipped), distancesToReference, bins
     end
 
     on(order) do r
@@ -66,19 +92,19 @@ function build_selection_window(fig_size,
         reset_limits!(selection_scene)
     end
 
-    hist!(selection_scene, lift(x -> x[2], order), bins=100)
+    barplot!(selection_scene,
+        lift(x -> map(y -> Float32(y), collect(keys(x[3]))), order),
+        lift(x -> map(y -> Float32(length(y)), values(x[3])), order),
+        width=1, gap=0)
+
     on(events(selection_scene).mousebutton) do event
         if event.button == Mouse.left && event.action == Mouse.press
-            plot, idx = pick(selection_scene)
-            # need to retrieve which elements got placed in this bin
-            # figure out which bin was clicked in the first place
+            #plot, idx = pick(bp)
+
             mp = mouseposition(selection_scene)[1]
 
-            hist_plt = selection_scene.scene.plots[1]
-
-            step_size = Makie.pick_hist_edges(hist_plt[1][], hist_plt.bins[]).step
-            selected_bin = Int(trunc(mp / Float32(step_size))) + 1
-            @show selected_bin
+            selected_bin = Int(trunc(mp)) + 1
+            @show selected_bin, length(get(order[][3], selected_bin, []))
 
             #=if !isnan(pos)
 
