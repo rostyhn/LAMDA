@@ -1,6 +1,71 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
 
+# leaving out non-! version for now
+function swarm_plot!(scene, bins, currently_selected, on_click)
+    x = Vector{Int}()
+    y = Vector{Int}()
+    for (binIdx, vals) in bins
+        # x val is binIdx
+        # y val is position in vals array
+        foreach(val -> push!(x, binIdx), vals)
+        foreach(i -> push!(y, i), eachindex(vals))
+    end
+
+    sc = scatter!(scene, x, y, markersize=0.5)
+    sc.inspectable[] = false
+
+    inspector = DataInspector(scene)
+
+    on(events(scene).mouseposition) do mp
+        plot, idx = pick(scene)
+        if plot == sc
+            pos = position_on_plot(plot, idx)
+            if !isnan(pos)
+                t = bins[Int(pos[1])][Int(pos[2])]
+                currently_selected[] = t
+                notify(currently_selected)
+                inspector.plot.text[] = string(t)
+                inspector.plot.visible[] = true
+                inspector.plot.position = mp
+                return Consume(true)
+            end
+        end
+    end
+
+    on(events(scene).mousebutton) do event
+        if event.button == Mouse.left && event.action == Mouse.press
+            #plot, idx = pick(bp)
+            plot, idx = pick(scene)
+            pos = position_on_plot(plot, idx)
+            if !isnan(pos) && (plot == sc)
+                t = bins[Int(pos[1])][Int(pos[2])]
+                #TODO: figure out how to catch only clicks on bar elements
+                on_click(t, x -> ())
+            end
+
+            #=if !isnan(pos)
+
+                #d_idx = Int(round(pos[1] / (transition_spacing)))
+
+                # call on click here with the idx, main will handle the rest
+                # pass the highlight function down to on_click
+                #on_click(order[][d_idx], highlight)
+                return Consume(true)
+            end=#
+        end
+        if event.button == Mouse.right && event.action == Mouse.press
+            reset_limits!(scene)
+        end
+
+        return Consume(false)
+    end
+    hidexdecorations!(scene, ticks=false, ticklabels=false)
+    hideydecorations!(scene, ticks=false, ticklabels=false)
+
+    return sc
+end
+
 function build_selection_window(fig_size,
     data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}},
     seq,
@@ -55,7 +120,7 @@ function build_selection_window(fig_size,
 
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
 
-        dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=10)
+        dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=100)
 
         # builds a dict of bin indices to transitions
         next = iterate(dist_h.edges[1])
@@ -92,40 +157,55 @@ function build_selection_window(fig_size,
         reset_limits!(selection_scene)
     end
 
-    barplot!(selection_scene,
-        lift(x -> map(y -> Float32(y), collect(keys(x[3]))), order),
-        lift(x -> map(y -> Float32(length(y)), values(x[3])), order),
-        width=1, gap=0)
 
-    on(events(selection_scene).mousebutton) do event
-        if event.button == Mouse.left && event.action == Mouse.press
-            #plot, idx = pick(bp)
 
-            mp = mouseposition(selection_scene)[1]
+    #    barplot!(selection_scene,
+    #       lift(x -> map(y -> Float32(y), collect(keys(x[3]))), order),
+    #      lift(x -> map(y -> Float32(length(y)), values(x[3])), order),
+    #     width=1, gap=0)
 
-            selected_bin = Int(trunc(mp)) + 1
-            @show selected_bin, length(get(order[][3], selected_bin, []))
+    processed_data = lift(x -> load_data(data[x]), selected_data)
 
-            #=if !isnan(pos)
+    currently_selected = Observable{Any}(Nothing)
+    swarm_plot!(selection_scene, order[][3], currently_selected, on_click)
 
-                #d_idx = Int(round(pos[1] / (transition_spacing)))
+    mat_2d = @lift begin
+        mat = zeros(1, 1)
+        if $currently_selected != Nothing
+            mat = $processed_data[$currently_selected]
 
-                # call on click here with the idx, main will handle the rest
-                # pass the highlight function down to on_click
-                #on_click(order[][d_idx], highlight)
-                return Consume(true)
-            end=#
+            #mat_mask = ones(size(mat))
+            #mask = findall(x -> x < $filterValue, mat)
+            #mat_mask[mask] .= NaN
+
+            # depends on the matrix! 
+            #sa = collect($selected_atoms)
+            # TODO throw in a test for if matrix_shape[1] == 2, then add columns
+            #mat_mask = fill(NaN, size(mat))
+            # mat_mask[sa, :] .= 1
+
+            #res = mat .* mat_mask
         end
-        return Consume(false)
+        return mat
+
     end
 
-    # processed_data = lift((x, y) -> load_data(data[x], y), selected_data, order[1])
+    on(mat_2d) do r
+        reset_limits!(scene_2d)
+    end
 
+    matrix_plot = heatmap!(scene_2d, mat_2d, colorrange=(0.0, 1.0), colormap=:viridis)
+    matrix_plot.inspectable[] = false
+    #=
+
+    =#
+
+    #
     #= matrix view code
     # coords, colors for points
     point_data = lift(x -> generate_points(x[1], x[2], matrix_spacing, transition_spacing), processed_data)
 
-    currently_selected = Observable(1)
+
 
     sliderTransition = SliderGrid(
         window[4, :],
@@ -158,25 +238,7 @@ function build_selection_window(fig_size,
         return (filteredCoords, filteredColors)
     end)
 
-    mat_2d = @lift begin
-        mat = $processed_data[1][$currently_selected]
 
-        mat_mask = ones(size(mat))
-        mask = findall(x -> x < $filterValue, mat)
-        mat_mask[mask] .= NaN
-
-        # depends on the matrix! 
-        #sa = collect($selected_atoms)
-        # TODO throw in a test for if matrix_shape[1] == 2, then add columns
-        #mat_mask = fill(NaN, size(mat))
-        # mat_mask[sa, :] .= 1
-
-        res = mat .* mat_mask
-        return res
-    end
-
-    matrix_plot = heatmap!(scene_2d, mat_2d, colorrange=(0.0, 1.0), colormap=:viridis)
-    matrix_plot.inspectable[] = false
 
     # invisible bounding box we use to get the position from pick
     # when no points are selected
@@ -352,19 +414,20 @@ function color_selected(selected_atoms, num_atoms)
     return colors
 end
 
-function load_data(data, order)
+function load_data(data)
     # order matrices by distance relative to i
-    d = map(x -> data[x], order)
-
-    # we assume that all matrices are the same size
-    matrix_shape = size(d[1])
+    d = collect(values(data))
 
     # simple min-max norm
     max_val = maximum(map((x) -> maximum(x), d))
     min_val = minimum(map((x) -> minimum(x), d))
-    norm = map((x) -> (x .- min_val) / (max_val - min_val), d)
+    norm = Dict{Tuple{Int,Int},Matrix}()
 
-    return norm, matrix_shape
+    for (transition, val) in data
+        norm[transition] = (val .- min_val) / (max_val - min_val)
+    end
+
+    return norm
 end
 
 function generate_points(data, matrix_shape, matrix_spacing, transition_spacing)
