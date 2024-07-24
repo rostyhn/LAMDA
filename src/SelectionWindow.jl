@@ -5,32 +5,52 @@ using StatsBase
 function swarm_plot!(scene, bins, currently_selected, on_click)
     x = Vector{Int}()
     y = Vector{Int}()
+    colors = []
+
+    t_to_idx = Dict{Tuple{Int,Int},Int}()
+
+    idx = 1
     for (binIdx, vals) in bins
         # x val is binIdx
         # y val is position in vals array
         foreach(val -> push!(x, binIdx), vals)
-        foreach(i -> push!(y, i), eachindex(vals))
+        foreach(val -> push!(colors, :blue), vals)
+        foreach(function (i)
+                t_to_idx[vals[i]] = idx
+                push!(y, i)
+                idx += 1
+            end, eachindex(vals))
     end
 
-    sc = scatter!(scene, x, y, markersize=0.5)
+    obs_colors = Observable(colors)
+
+    sc = scatter!(scene, x, y, color=obs_colors)
     sc.inspectable[] = false
 
     inspector = DataInspector(scene)
-
     on(events(scene).mouseposition) do mp
+        obs_colors[] = fill(:blue, length(obs_colors[]))
+
         plot, idx = pick(scene)
         if plot == sc
             pos = position_on_plot(plot, idx)
             if !isnan(pos)
+                # would need to get idx of bin
                 t = bins[Int(pos[1])][Int(pos[2])]
+
                 currently_selected[] = t
                 notify(currently_selected)
+
+                t_idx = t_to_idx[t]
+
+                obs_colors[][t_idx] = :red
                 inspector.plot.text[] = string(t)
                 inspector.plot.visible[] = true
                 inspector.plot.position = mp
-                return Consume(true)
             end
         end
+        notify(obs_colors)
+
     end
 
     on(events(scene).mousebutton) do event
@@ -40,19 +60,8 @@ function swarm_plot!(scene, bins, currently_selected, on_click)
             pos = position_on_plot(plot, idx)
             if !isnan(pos) && (plot == sc)
                 t = bins[Int(pos[1])][Int(pos[2])]
-                #TODO: figure out how to catch only clicks on bar elements
                 on_click(t, x -> ())
             end
-
-            #=if !isnan(pos)
-
-                #d_idx = Int(round(pos[1] / (transition_spacing)))
-
-                # call on click here with the idx, main will handle the rest
-                # pass the highlight function down to on_click
-                #on_click(order[][d_idx], highlight)
-                return Consume(true)
-            end=#
         end
         if event.button == Mouse.right && event.action == Mouse.press
             reset_limits!(scene)
@@ -196,16 +205,10 @@ function build_selection_window(fig_size,
 
     matrix_plot = heatmap!(scene_2d, mat_2d, colorrange=(0.0, 1.0), colormap=:viridis)
     matrix_plot.inspectable[] = false
-    #=
 
-    =#
-
-    #
     #= matrix view code
     # coords, colors for points
     point_data = lift(x -> generate_points(x[1], x[2], matrix_spacing, transition_spacing), processed_data)
-
-
 
     sliderTransition = SliderGrid(
         window[4, :],
