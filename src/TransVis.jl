@@ -73,7 +73,9 @@ function go()
     transitionInvariants3 = active_trajectory["t3"]
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     stateKDTree = active_trajectory["kdTree"]
+    dms = active_trajectory["dms"]
 
+    #@show dms["graph"]
 
     # transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
     transitionSequence = active_trajectory["transitions"]

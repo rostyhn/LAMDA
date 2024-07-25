@@ -282,6 +282,27 @@ function get_data_folders(path)
     return dirs
 end
 
+function readDistanceMatrixFolder(folder)
+    dms = Dict()
+    for dmf in readdir(folder, join=true)
+        # each distance matrix should be in a folder with a t_to_idx dict && the matrix
+        dm_name = basename(dmf)
+        if isdir(dmf)
+            dm_path = joinpath(dmf, "dm.pickle")
+            t_to_idx_path = joinpath(dmf, "t_to_idx.pickle")
+
+            if isfile(dm_path) && isfile(t_to_idx_path)
+                dm = Pickle.npyload(dm_path)
+                t_to_idx = Pickle.npyload(t_to_idx_path)
+                dms[dm_name] = Dict("matrix" => dm, "t_to_idx" => t_to_idx)
+            else
+                println("$dm_name not loaded.")
+            end
+        end
+    end
+    return dms
+end
+
 function get_data_alt()
     rootPath = dirname(dirname(@__FILE__))
     dataPath = joinpath(rootPath, "data")
@@ -302,11 +323,25 @@ function get_data_alt()
             else
                 println("Calculating data for $(trajectory_name).")
 
+                if !isdir(cachePath)
+                    mkdir(cachePath)
+                end
+
+                dmf = joinpath(t, "dms")
+                if !isdir(dmf)
+                    return error("Distance matrix folder not found")
+                end
+
+                dms = readDistanceMatrixFolder(dmf)
+
+                if isempty(dms)
+                    return error("No distance matrices found.")
+                end
+
                 distances_pickle = joinpath(t, "distances.pickle")
                 positions_pickle = joinpath(t, "positions.pickle")
                 connectivity_pickle = joinpath(t, "connectivity.pickle")
                 transitions_pickle = joinpath(t, "transitions.pickle")
-
 
                 distanceMatrices = Dict{Int,Matrix}(Pickle.npyload(distances_pickle))
                 positions = Dict{Int,Matrix}(Pickle.npyload(positions_pickle))
@@ -337,7 +372,6 @@ function get_data_alt()
                     stateKDTree[stateID] = KDTree(val)
                 end
 
-
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
                     "positions" => atomPositions,
                     "positionMatrices" => positions,
@@ -348,7 +382,9 @@ function get_data_alt()
                     "t2" => t2,
                     "t3" => t3,
                     "kdTree" => stateKDTree,
-                    "stretchedPrincipalAxes" => stretchedPrincipalAxes)
+                    "stretchedPrincipalAxes" => stretchedPrincipalAxes,
+                    "dms" => dms)
+
                 @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
             end
             all_data[trajectory_name] = trajectory_data
