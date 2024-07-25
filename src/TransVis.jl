@@ -260,6 +260,10 @@ function go()
         link_cameras_lscene(molWindows)
     end
 
+    # do a convex hull of values for each type of transitionInvariant ?
+    # layered radar plots?
+    # need to be entirely rotationally invariant
+    @show typeof(transitionInvariants1), typeof(transitionInvariants2), typeof(transitionInvariants3)
     screen = GLMakie.Screen()
 
     available_matrices = Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}()

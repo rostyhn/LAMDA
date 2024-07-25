@@ -147,31 +147,23 @@ function build_selection_window(fig_size,
                         push!(thisBin, key)
                     end
                 end
-                println(binIdx, " ", left, " ", right, " ", length(thisBin))
-
                 bins[binIdx] = thisBin
                 binIdx += 1
             end
         end
 
         sort!(zipped, by=x -> x[end])
-        @show collect(keys(bins))
-        @show map(y -> length(y), collect(values(bins)))
         return map(x -> x[1], zipped), distancesToReference, bins
     end
 
     on(order) do r
-        vals = r[2]
-        xlims!(selection_scene, minimum(vals), maximum(vals))
+        bins = r[3]
+        binKeys = collect(keys(bins))
+        binLengths = map(x -> length(x), collect(values(bins)))
+        xlims!(selection_scene, minimum(binKeys), maximum(binKeys))
+        ylims!(selection_scene, minimum(binLengths), maximum(binLengths))
         reset_limits!(selection_scene)
     end
-
-
-
-    #    barplot!(selection_scene,
-    #       lift(x -> map(y -> Float32(y), collect(keys(x[3]))), order),
-    #      lift(x -> map(y -> Float32(length(y)), values(x[3])), order),
-    #     width=1, gap=0)
 
     processed_data = lift(x -> load_data(data[x]), selected_data)
 

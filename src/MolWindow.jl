@@ -115,9 +115,9 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
 
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
 
-    on(events(molWindow).entered_window) do is_hovered
-        on_window_hover(transition, is_hovered)
-    end
+    #on(events(molWindow).entered_window) do is_hovered
+    # on_window_hover(transition, is_hovered)
+    #end
 
     screen = GLMakie.Screen(title="TransVis - $transition")
     display(screen, molWindow)
