@@ -82,7 +82,7 @@ function build_selection_window(fig_size,
     reference_configuration,
     iv1,
     atomPositions,
-    stateKDTree)
+    stateKDTree, dms)
 
     window = Figure(size=fig_size)
 
@@ -105,11 +105,6 @@ function build_selection_window(fig_size,
 
     selection_scene = Axis(window[3, :])
 
-    # space between matrices
-    transition_spacing = 18.0
-    # space btwn matrix elements
-    matrix_spacing = 5.0
-
     order = @lift begin
         numberOfBins = 100
         minInvariant1, maxInvariant1, transitionInvariants1 = iv1
@@ -126,8 +121,12 @@ function build_selection_window(fig_size,
 
         distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref(reference_configuration[4]), keys(transitionInvariants1), Ref($selected_atoms))
 
-
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
+
+        ref_distances = Dict()
+        for (t, d) in zipped
+            ref_distances[t] = d
+        end
 
         dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=100)
 
@@ -153,9 +152,34 @@ function build_selection_window(fig_size,
         end
 
         sort!(zipped, by=x -> x[end])
-        return map(x -> x[1], zipped), distancesToReference, bins
+        return map(x -> x[1], zipped), distancesToReference, bins, ref_distances
     end
 
+    m = dms["graph"]["matrix"]
+    row_idx = dms["graph"]["t_to_idx"][reference_configuration[4]]
+    row = m[row_idx, :]
+
+    t_to_idx = dms["graph"]["t_to_idx"]
+    graph_dist = Dict()
+    for (t, idx) in t_to_idx
+        d = row[idx]
+        graph_dist[t] = d
+    end
+
+    dist_pos = @lift begin
+        ref_distances = $order[4]
+        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
+        positions = Vector{Point2f}()
+        for t in collect(keys(transitionInvariants1))
+            push!(positions, Point2f(get(graph_dist, t, 0.0), get(ref_distances, t, 0.0)))
+        end
+        @show positions
+        return positions
+    end
+
+    scatter!(selection_scene, dist_pos)
+    @show dist_pos[]
+    #=
     on(order) do r
         bins = r[3]
         binKeys = collect(keys(bins))
@@ -163,13 +187,16 @@ function build_selection_window(fig_size,
         xlims!(selection_scene, minimum(binKeys), maximum(binKeys))
         ylims!(selection_scene, minimum(binLengths), maximum(binLengths))
         reset_limits!(selection_scene)
-    end
+    end=#
 
     processed_data = lift(x -> load_data(data[x]), selected_data)
-
     currently_selected = Observable{Any}(Nothing)
-    swarm_plot!(selection_scene, order[][3], currently_selected, on_click)
+    #swarm_plot!(selection_scene, order[][3], currently_selected, on_click)
 
+
+
+
+    #=
     mat_2d = @lift begin
         mat = zeros(1, 1)
         if $currently_selected != Nothing
@@ -197,6 +224,7 @@ function build_selection_window(fig_size,
 
     matrix_plot = heatmap!(scene_2d, mat_2d, colorrange=(0.0, 1.0), colormap=:viridis)
     matrix_plot.inspectable[] = false
+    =#
 
     #= matrix view code
     # coords, colors for points

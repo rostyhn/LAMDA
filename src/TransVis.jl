@@ -75,7 +75,7 @@ function go()
     stateKDTree = active_trajectory["kdTree"]
     dms = active_trajectory["dms"]
 
-    #@show dms["graph"]
+    #@show keys() # dms["graph"]
 
     # transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
     transitionSequence = active_trajectory["transitions"]
@@ -175,7 +175,7 @@ function go()
         row = row + 1
     end
 
-    #build distance distanceMatrices
+    # build distance distanceMatrices
     # move this to cache as well
     invariantDistances = zeros(length(transitionInvariants1[firstTransition]), length(transitionInvariants1[firstTransition])) #nAtoms x nAtoms
     invariantDistances = Vector{Matrix}(undef, length(transitionInvariants1))
@@ -272,6 +272,6 @@ function go()
     available_matrices["transforms"] = transforms
     available_matrices["bondDeltas"] = bondDeltas
 
-    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (atomPositions[firstState], stateKDTree[firstState], num_atoms, firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), atomPositions, stateKDTree))
+    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (atomPositions[firstState], stateKDTree[firstState], num_atoms, firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), atomPositions, stateKDTree, dms))
 end
 end
