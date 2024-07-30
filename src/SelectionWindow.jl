@@ -75,7 +75,7 @@ function swarm_plot!(scene, bins, currently_selected, on_click)
     return sc
 end
 
-function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click)
+function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration)
     positions = @lift begin
         pos = Vector{Point2f}()
         for t in t_list
@@ -104,7 +104,11 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
             pos = position_on_plot(plot, idx)
             if !isnan(pos) && (plot == sc)
                 t = t_list[idx]
-                on_click(t, x -> ())
+                if events(scene).keyboardbutton[] == Makie.KeyEvent(Makie.Keyboard.left_control, Makie.Keyboard.press)
+                    reference_configuration[] = t
+                else
+                    on_click(t, x -> ())
+                end
             end
         end
         if event.button == Mouse.right && event.action == Mouse.press
@@ -260,24 +264,12 @@ function build_selection_window(fig_size,
     processed_data = lift(x -> load_data(data[x]), selected_data)
     currently_selected = Observable{Any}(Nothing)
 
-    dist_plot!(selection_scene, graph_dist, ref_distances, currently_selected, t_list, on_click)
+    dist_plot!(selection_scene, graph_dist, ref_distances, currently_selected, t_list, on_click, reference_configuration)
 
     mat_2d = @lift begin
         mat = zeros(1, 1)
         if $currently_selected != Nothing
             mat = $processed_data[$currently_selected]
-
-            #mat_mask = ones(size(mat))
-            #mask = findall(x -> x < $filterValue, mat)
-            #mat_mask[mask] .= NaN
-
-            # depends on the matrix! 
-            #sa = collect($selected_atoms)
-            # TODO throw in a test for if matrix_shape[1] == 2, then add columns
-            #mat_mask = fill(NaN, size(mat))
-            # mat_mask[sa, :] .= 1
-
-            #res = mat .* mat_mask
         end
         return mat
 
