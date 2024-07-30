@@ -217,7 +217,6 @@ function go()
         transforms[t] = (abs.(aligned - p1))
     end
 
-
     volAbsMax = Observable(0.0)
     lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
     molWindows = Vector()
@@ -272,6 +271,7 @@ function go()
     available_matrices["transforms"] = transforms
     available_matrices["bondDeltas"] = bondDeltas
 
-    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, (atomPositions[firstState], stateKDTree[firstState], num_atoms, firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), atomPositions, stateKDTree, dms))
+    # atomPositions, stateKDTree, numAtoms, firstTransition 
+    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), atomPositions, stateKDTree, dms))
 end
 end
