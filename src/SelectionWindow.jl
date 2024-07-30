@@ -75,6 +75,40 @@ function swarm_plot!(scene, bins, currently_selected, on_click)
     return sc
 end
 
+function dist_plot!(scene, positions, currently_selected, t_list, on_click)
+    colors = Observable(fill(:blue, length(positions[])))
+
+    sc = scatter!(scene, positions, color=colors)
+
+    on(events(scene).mouseposition) do mp
+        colors[] = fill(:blue, length(colors[]))
+        plot, idx = pick(scene)
+        if plot == sc
+            currently_selected[] = t_list[idx]
+            colors[][idx] = :red
+        end
+        notify(colors)
+    end
+
+    on(events(scene).mousebutton) do event
+        if event.button == Mouse.left && event.action == Mouse.press
+            plot, idx = pick(scene)
+            pos = position_on_plot(plot, idx)
+            if !isnan(pos) && (plot == sc)
+                t = t_list[idx]
+                on_click(t, x -> ())
+            end
+        end
+        if event.button == Mouse.right && event.action == Mouse.press
+            reset_limits!(scene)
+        end
+
+        return Consume(false)
+    end
+
+    return sc
+end
+
 function build_selection_window(fig_size,
     data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}},
     seq,
@@ -166,37 +200,23 @@ function build_selection_window(fig_size,
         graph_dist[t] = d
     end
 
+    minInvariant1, maxInvariant1, transitionInvariants1 = iv1
+    t_list = collect(keys(transitionInvariants1))
+
     dist_pos = @lift begin
         ref_distances = $order[4]
-        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
         positions = Vector{Point2f}()
-        for t in collect(keys(transitionInvariants1))
+        for t in t_list
             push!(positions, Point2f(get(graph_dist, t, 0.0), get(ref_distances, t, 0.0)))
         end
-        @show positions
         return positions
     end
 
-    scatter!(selection_scene, dist_pos)
-    @show dist_pos[]
-    #=
-    on(order) do r
-        bins = r[3]
-        binKeys = collect(keys(bins))
-        binLengths = map(x -> length(x), collect(values(bins)))
-        xlims!(selection_scene, minimum(binKeys), maximum(binKeys))
-        ylims!(selection_scene, minimum(binLengths), maximum(binLengths))
-        reset_limits!(selection_scene)
-    end=#
-
     processed_data = lift(x -> load_data(data[x]), selected_data)
     currently_selected = Observable{Any}(Nothing)
-    #swarm_plot!(selection_scene, order[][3], currently_selected, on_click)
+    dist_plot!(selection_scene, dist_pos, currently_selected, t_list, on_click)
 
 
-
-
-    #=
     mat_2d = @lift begin
         mat = zeros(1, 1)
         if $currently_selected != Nothing
@@ -224,7 +244,7 @@ function build_selection_window(fig_size,
 
     matrix_plot = heatmap!(scene_2d, mat_2d, colorrange=(0.0, 1.0), colormap=:viridis)
     matrix_plot.inspectable[] = false
-    =#
+
 
     #= matrix view code
     # coords, colors for points
