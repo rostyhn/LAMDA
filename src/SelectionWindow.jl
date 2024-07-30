@@ -75,7 +75,15 @@ function swarm_plot!(scene, bins, currently_selected, on_click)
     return sc
 end
 
-function dist_plot!(scene, positions, currently_selected, t_list, on_click)
+function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click)
+    positions = @lift begin
+        pos = Vector{Point2f}()
+        for t in t_list
+            push!(pos, Point2f(get($x_positions, t, 0.0), get($y_positions, t, 0.0)))
+        end
+        return pos
+    end
+
     colors = Observable(fill(:blue, length(positions[])))
 
     sc = scatter!(scene, positions, color=colors)
@@ -104,6 +112,16 @@ function dist_plot!(scene, positions, currently_selected, t_list, on_click)
         end
 
         return Consume(false)
+    end
+
+    on(x_positions) do d
+        vals = collect(values(d))
+        xlims!(minimum(vals), maximum(vals))
+    end
+
+    on(y_positions) do d
+        vals = collect(values(d))
+        ylims!(minimum(vals), maximum(vals))
     end
 
     return sc
@@ -139,7 +157,7 @@ function build_selection_window(fig_size,
 
     selection_scene = Axis(window[3, :])
 
-    order = @lift begin
+    ref_distances = @lift begin
         numberOfBins = 100
         minInvariant1, maxInvariant1, transitionInvariants1 = iv1
 
@@ -162,33 +180,10 @@ function build_selection_window(fig_size,
             ref_distances[t] = d
         end
 
-        dist_h = fit(StatsBase.Histogram, distancesToReference, nbins=100)
-
-        # builds a dict of bin indices to transitions
-        next = iterate(dist_h.edges[1])
-        binIdx = 1
-        bins = Dict()
-        while next !== nothing
-            (left, state) = next
-            next = iterate(dist_h.edges[1], state)
-            if next !== nothing
-                (right, _) = next
-                thisBin = Any[]
-                for z in zipped
-                    (key, val) = z
-                    if val >= left && val <= right
-                        push!(thisBin, key)
-                    end
-                end
-                bins[binIdx] = thisBin
-                binIdx += 1
-            end
-        end
-
-        sort!(zipped, by=x -> x[end])
-        return map(x -> x[1], zipped), distancesToReference, bins, ref_distances
+        return ref_distances
     end
 
+    # for now graph, but should be user-selectable
     m = dms["graph"]["matrix"]
     row_idx = dms["graph"]["t_to_idx"][reference_configuration[4]]
     row = m[row_idx, :]
@@ -203,19 +198,10 @@ function build_selection_window(fig_size,
     minInvariant1, maxInvariant1, transitionInvariants1 = iv1
     t_list = collect(keys(transitionInvariants1))
 
-    dist_pos = @lift begin
-        ref_distances = $order[4]
-        positions = Vector{Point2f}()
-        for t in t_list
-            push!(positions, Point2f(get(graph_dist, t, 0.0), get(ref_distances, t, 0.0)))
-        end
-        return positions
-    end
-
     processed_data = lift(x -> load_data(data[x]), selected_data)
     currently_selected = Observable{Any}(Nothing)
-    dist_plot!(selection_scene, dist_pos, currently_selected, t_list, on_click)
 
+    dist_plot!(selection_scene, Observable(graph_dist), ref_distances, currently_selected, t_list, on_click)
 
     mat_2d = @lift begin
         mat = zeros(1, 1)
