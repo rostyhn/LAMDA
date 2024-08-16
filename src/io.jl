@@ -342,42 +342,36 @@ function get_data_alt()
                 positions_pickle = joinpath(t, "positions.pickle")
                 connectivity_pickle = joinpath(t, "connectivity.pickle")
                 transitions_pickle = joinpath(t, "transitions.pickle")
+                alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
+
 
                 distanceMatrices = Dict{Int,Matrix}(Pickle.npyload(distances_pickle))
                 positions = Dict{Int,Matrix}(Pickle.npyload(positions_pickle))
                 connectivity = Dict{Int,Matrix}(Pickle.npyload(connectivity_pickle))
                 transitions = Set{Tuple{Int,Int}}(Pickle.npyload(transitions_pickle))
-
-                # stores aligned version of s2 for each transition
-                alignedS2Positions = Dict{Tuple{Int,Int},Matrix}()
-                for t in transitions
-                    s1, s2 = t
-                    p1 = positions[s1]
-                    p2 = positions[s2]
-                    alignedS2Positions[t] = alignAtomPositions(p1, p2)
-                end
+                alignedPositionsMatrices = Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}}(Pickle.npyload(alignedPositions_pickle))
 
                 (t1, t2, t3, stretchedPrincipalAxes) =
-                    computeTransitionInvariants(transitions, positions, alignedS2Positions, distanceMatrices)
+                    computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
                 # converts into array of Point3fs
-                atomPositions = Dict{Int,Vector{Point3f}}()
-                for (stateID, val) in positions
-                    atomPositions[stateID] = map(x -> Point3f(x), eachrow(val))
+                alignedAtomPositions = Dict{Tuple{Int,Int},Tuple{Vector{Point3f},Vector{Point3f}}}()
+                for (t, aligned) in alignedPositionsMatrices
+                    p1, p2 = aligned
+                    alignedAtomPositions[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
                 end
 
                 println("Computing KDTrees.")
-                stateKDTree = Dict{Int,KDTree}()
-                @time for (stateID, val) in atomPositions
-                    stateKDTree[stateID] = KDTree(val)
+                stateKDTree = Dict{Tuple{Int,Int},Tuple{KDTree,KDTree}}()
+                @time for (t, aligned) in alignedAtomPositions
+                    p1, p2 = aligned
+                    stateKDTree[t] = (KDTree(p1), KDTree(p2))
                 end
 
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
-                    "positions" => atomPositions,
-                    "positionMatrices" => positions,
-                    "connectivity" => connectivity,
+                    "alignedPositions" => alignedAtomPositions,
+                    "alignedPositionsMatrices" => alignedPositionsMatrices, "connectivity" => connectivity,
                     "transitions" => transitions,
-                    "alignedS2Positions" => alignedS2Positions,
                     "t1" => t1,
                     "t2" => t2,
                     "t3" => t3,

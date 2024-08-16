@@ -31,10 +31,11 @@ include("math.jl")
 
 export go
 
-function buildBonds(key, volumeDataDict, bondDelta, atomPositions)
+function buildBonds(positions, volumeDataDict, bondDelta)
     points = Vector{Tuple{Point3f,Point3f}}()
     weights = Vector{Float64}()
     indices = Vector{Tuple{Int64,Int64}}()
+
     for i in 1:length(bondDelta[1, :])
         for j in 1:i
             v1 = volumeDataDict[i]
@@ -45,7 +46,7 @@ function buildBonds(key, volumeDataDict, bondDelta, atomPositions)
             # 0.05 is the threshold val for filtering
             # check against bond weight to make sure we're only looking at "real" bonds
             if abs(bw) > 0.0
-                push!(points, (Point3f(atomPositions[key][i, :]), Point3f(atomPositions[key][j, :])))
+                push!(points, (Point3f(positions[i, :]), Point3f(positions[j, :])))
                 push!(weights, bw)
                 push!(indices, (i, j))
             end
@@ -84,14 +85,13 @@ function go()
     firstTransition = Iterators.first(transitionSequence)
     firstState = firstTransition[1]
 
-    positionMatrices = active_trajectory["positionMatrices"]
-    atomPositions = active_trajectory["positions"]
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
-    alignedS2Positions = active_trajectory["alignedS2Positions"]
+    alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
+    alignedPositions = active_trajectory["alignedPositions"] # positions as vec point3fs
 
     # get number of atoms
-    num_atoms = size(Iterators.first(values(positionMatrices)))[1]
+    num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
     #get min max of all transition invariants 1
     minInvariant1 = 1.0e10
@@ -110,32 +110,35 @@ function go()
 
     invariant1MaxRange = max(abs(minInvariant1), abs(maxInvariant2))
 
-    #get min max coordinates of atoms for bounding box
+    # get min max coordinates of atoms for bounding box
+    # we don't really need these positions anymore
     minX = 1.0e10
     minY = 1.0e10
     minZ = 1.0e10
     maxX = -1.0e10
     maxY = -1.0e10
     maxZ = -1.0e10
-    @time for (key, positions) in positionMatrices
-        for row in 1:length(positions[:, 1])
-            if minX > positions[row, 1]
-                minX = positions[row, 1]
+    @time for (key, positions) in alignedPositionsMatrices
+        p1, p2 = positions
+
+        for row in 1:length(p1[:, 1])
+            if minX > min(p1[row, 1], p2[row, 1])
+                minX = min(p1[row, 1], p2[row, 1])
             end
-            if maxX < positions[row, 1]
-                maxX = positions[row, 1]
+            if maxX < max(p1[row, 1], p2[row, 1])
+                maxX = max(p1[row, 1], p2[row, 1])
             end
-            if minY > positions[row, 2]
-                minY = positions[row, 2]
+            if minY > min(p1[row, 2], p2[row, 2])
+                minY = min(p1[row, 2], p2[row, 2])
             end
-            if maxY < positions[row, 2]
-                maxY = positions[row, 2]
+            if maxY < max(p1[row, 2], p2[row, 2])
+                maxY = max(p1[row, 2], p2[row, 2])
             end
-            if minZ > positions[row, 3]
-                minZ = positions[row, 3]
+            if minZ > min(p1[row, 3], p2[row, 3])
+                minZ = min(p1[row, 3], p2[row, 3])
             end
-            if maxZ < positions[row, 3]
-                maxZ = positions[row, 3]
+            if maxZ < max(p1[row, 3], p2[row, 3])
+                maxZ = max(p1[row, 3], p2[row, 3])
             end
         end
     end
@@ -209,12 +212,8 @@ function go()
         # for now it's total delta
         bondDeltas[t] = (dm2 - dm1)
 
-        p1 = positionMatrices[s1]
-        p2 = positionMatrices[s2]
-
-        # align p2 then calc difference
-        aligned = alignAtomPositions(p1, p2)
-        transforms[t] = (abs.(aligned - p1))
+        p1, p2 = get_from_t_dict(alignedPositionsMatrices, t)
+        transforms[t] = (abs.(p2 - p1))
     end
 
     volAbsMax = Observable(0.0)
@@ -222,24 +221,23 @@ function go()
     molWindows = Vector()
 
     function on_click(t, on_window_hover)
-        atomPosTuple = (atomPositions[t[1]], alignedS2Positions[t])
+        pos1, pos2 = alignedPositions[t]
+
         volData = zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ))
         volDataDict = Dict{Int,Any}()
 
         glyphResolution = 0.1
 
-        s1, _ = t
-
-        kdTree = stateKDTree[s1]
+        kdTree1, kdTree2 = stateKDTree[t]
 
         for i in eachindex(sampleRangeX) # x
             for j in eachindex(sampleRangeY) # y
                 for k in eachindex(sampleRangeZ) # z
                     point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
-                    knn, dists = NearestNeighbors.knn(kdTree, point, 5)
-                    kValue = sum(kernelFunction.(Ref(point), atomPositions[s1][knn], kernelWidth) .* transitionInvariants1[t][knn])
+                    knn, dists = NearestNeighbors.knn(kdTree1, point, 5)
+                    kValue = sum(kernelFunction.(Ref(point), pos1[knn], kernelWidth) .* transitionInvariants1[t][knn])
                     volData[i, j, k] = kValue
-                    idx, d = NearestNeighbors.nn(kdTree, point)
+                    idx, d = NearestNeighbors.nn(kdTree1, point)
                     volDataDict[idx] = kValue
                 end
             end
@@ -248,13 +246,13 @@ function go()
         volAbsMax[] = max(volAbsMax[], thisVolAbsMax)
 
         # 1.0 should be transitionGlyphSize
-        sq = superquadric.(1.0, atomPositions[s1], stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
-        ls = buildBonds(t[1], volDataDict, bondDeltas[t], positionMatrices)
+        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
+        ls = buildBonds(alignedPositionsMatrices[t][1], volDataDict, bondDeltas[t])
 
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        mw = build_mol_window((600, 400), t, atomPosTuple, volData, volAbsMax, volDataDict, sq, ls, KDTree(atomPositions[s1]), sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
+        mw = build_mol_window((600, 400), t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
 
         push!(molWindows, mw)
 
@@ -272,6 +270,6 @@ function go()
     available_matrices["bondDeltas"] = bondDeltas
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), atomPositions, stateKDTree, dms))
+    display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), alignedPositions, stateKDTree, dms))
 end
 end

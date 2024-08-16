@@ -4,8 +4,7 @@ function build_mol_window(fig_size, transition, atomPositions, volumeData, volum
 
     molWindow = Figure(size=fig_size)
 
-    ap1 = atomPositions[1]
-    ap2 = atomPositions[2]
+    ap1, ap2 = atomPositions
 
     beforeView = LScene(
         molWindow[1:2, 1:3],

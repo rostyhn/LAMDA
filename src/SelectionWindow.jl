@@ -133,9 +133,9 @@ end
 
 function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atomPositions, stateKDTree)
     a_data = @lift begin
-        s1, s2 = $ref_config
-        return atomPositions[s1], stateKDTree[s1]
+        return atomPositions[$ref_config][1], stateKDTree[$ref_config][1]
     end
+
     segment_selector = scatter!(scene, lift(x -> x[1], a_data),
         color=lift(x -> color_selected(x, num_atoms), selected_atoms)
     )
@@ -192,8 +192,8 @@ function build_selection_window(fig_size,
     num_atoms,
     reference_configuration,
     iv1,
-    atomPositions,
-    stateKDTree, dms)
+    alignedPositions,
+    transitionKDTree, dms)
 
     window = Figure(size=fig_size)
 
@@ -225,8 +225,11 @@ function build_selection_window(fig_size,
 
         transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
         @time for (t, values) in transitionInvariants1
-            s1, _ = t
-            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, atomPositions[s1], binEdges, 10, stateKDTree[s1])
+
+            p1, p2 = get_from_t_dict(alignedPositions, t)
+            k1, k2 = get_from_t_dict(transitionKDTree, t)
+
+            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, p1, binEdges, 10, k1)
         end
         @show "done with distributions"
 
@@ -282,7 +285,7 @@ function build_selection_window(fig_size,
         reset_limits!(scene_2d)
     end
 
-    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, atomPositions, stateKDTree)
+    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions, transitionKDTree)
     return window
 end
 

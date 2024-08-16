@@ -126,11 +126,18 @@ function computeDistances(invariants::Vector{Float64})::Matrix{Float64}
     return Symmetric(out)
 end
 
+function get_from_t_dict(d, t::Tuple{Int,Int})
+    val = get(d, t, Nothing)
+    if val === Nothing
+        s1, s2 = t
+        return get(d, (s2, s1), Nothing)
+    end
+    return val
+end
 
 function computeTransitionInvariants(
     transitions::Set{Tuple{Int,Int}},
-    positions::Dict{Int,Matrix},
-    alignedS2Positions::Dict{Tuple{Int,Int},Matrix},
+    alignedPositions::Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}},
     distances::Dict{Int,Matrix}
 )::Tuple{Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
     Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}}
@@ -144,9 +151,7 @@ function computeTransitionInvariants(
     println("Calculating transition invariants.")
     @showprogress for t in transitions
         s1, s2 = t
-        aPos1 = positions[s1]
-        aPos2 = alignedS2Positions[t]
-
+        aPos1, aPos2 = get_from_t_dict(alignedPositions, t)
         # creates matrices with INF values if distance sum has 0s
         weights = 1 ./ ((distances[s1] + distances[s2]) ./ 2)
 
