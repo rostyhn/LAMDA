@@ -220,6 +220,36 @@ function go()
     lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
     molWindows = Vector()
 
+    molScreen = GLMakie.Screen()
+    molGrid = Figure()
+
+    filterRange = Observable(LinRange(-0.05, 0.05, 100))
+
+    volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
+    Label(molGrid[1, 1:2], lift(x -> string(x), volFilter.interval))
+
+    colsize!(molGrid.layout, 1, Relative(1 / 2))
+    colsize!(molGrid.layout, 2, Relative(1 / 2))
+
+    views = Vector()
+    for i in 3:8
+        leftView = LScene(
+            molGrid[i, 1],
+            show_axis=false,
+            scenekw=(backgroundcolor=:black, clear=true),
+        )
+        rightView = LScene(
+            molGrid[i, 2],
+            show_axis=false,
+            scenekw=(backgroundcolor=:black, clear=true),
+        )
+        push!(views, (leftView, rightView))
+    end
+
+    display(molScreen, molGrid)
+
+    viewIdx = 1
+
     function on_click(t, on_window_hover)
         pos1, pos2 = alignedPositions[t]
 
@@ -243,6 +273,9 @@ function go()
             end
         end
         thisVolAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
+
+        # update min and max of filter
+
         volAbsMax[] = max(volAbsMax[], thisVolAbsMax)
 
         # 1.0 should be transitionGlyphSize
@@ -252,11 +285,20 @@ function go()
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        mw = build_mol_window((600, 400), t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema)
+        # https://discourse.julialang.org/t/is-it-possible-to-make-scrollable-window-in-glmakie/84450
+        # can't do an infinite layout unfortunately
 
-        push!(molWindows, mw)
+        l, r = views[viewIdx]
 
-        link_cameras_lscene(molWindows)
+        build_mol_window(l, r, t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, volFilter.interval)
+
+        #rowsize!(molGrid.layout, idx, Fixed(400))
+
+        if viewIdx < length(views)
+            viewIdx += 1
+        else
+            viewIdx = 1
+        end
     end
 
     # do a convex hull of values for each type of transitionInvariant ?
