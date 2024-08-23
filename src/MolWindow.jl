@@ -60,7 +60,6 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets
 )
 
-    cam = Camera3D(rootScene.scene, center=false, eyeposition=Vec3f(30, 30, 30))
     ip = initial_render_func(rootScene)
     rendered_plots = Vector()
     push!(rendered_plots, ip)

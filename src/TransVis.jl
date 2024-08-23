@@ -232,6 +232,7 @@ function go()
     colsize!(molGrid.layout, 2, Relative(1 / 2))
 
     views = Vector()
+    all_scenes = Vector()
     for i in 3:8
         l = LScene(
             molGrid[i, 1],
@@ -244,7 +245,14 @@ function go()
             scenekw=(backgroundcolor=:black, clear=true),
         )
         push!(views, (l, r))
+        push!(all_scenes, l)
+        push!(all_scenes, r)
+
+        Camera3D(l.scene, center=false, eyeposition=Vec3f(30, 30, 30))
+        Camera3D(r.scene, center=false, eyeposition=Vec3f(30, 30, 30))
     end
+
+    link_cameras_lscenes(all_scenes)
 
     cleanup_callbacks = Dict()
 
