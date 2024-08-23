@@ -246,6 +246,8 @@ function go()
         push!(views, (l, r))
     end
 
+    cleanup_callbacks = Dict()
+
     display(molScreen, molGrid)
     viewIdx = 1
 
@@ -289,7 +291,13 @@ function go()
 
         l, r = views[viewIdx]
 
-        build_mol_window(l, r, t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, volFilter.interval)
+        cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
+
+        cleanup_func()
+
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, volFilter.interval)
+
+        cleanup_callbacks[viewIdx] = cleanup
 
         #rowsize!(molGrid.layout, idx, Fixed(400))
 

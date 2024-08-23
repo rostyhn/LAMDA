@@ -1,8 +1,7 @@
-using Makie: clear_temporary_plots!, Orthographic, GridLayout
+using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
 function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, filterVal)
 
-    # idea is that right clicking will show a context menu that allows you to change the content of the scene, bbox, clear!
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
@@ -32,22 +31,39 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         return selectedLineSets
     end
 
-    bp = scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-    afp = scatter!(afterView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+    bp = function (scene)
+        return scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+    end
+
+    afp = function (scene)
+        return scatter!(scene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+    end
 
     # could pass down functions instead, the state view doesn't need all of this data at all
-    setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
-    setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
+    # Dict of strings to functions
 
+    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
+
+    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
+
+    cleanup = function ()
+        cl()
+        cr()
+    end
+
+    return cleanup
 end
 
 # could refactor to have less parameters
-function setup_state_view!(rootScene, initial_plot, ap1, ap2, aa1,
+function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ,
     lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets
 )
+
+    cam = Camera3D(rootScene.scene, center=false, eyeposition=Vec3f(30, 30, 30))
+    ip = initial_render_func(rootScene)
     rendered_plots = Vector()
-    push!(rendered_plots, initial_plot)
+    push!(rendered_plots, ip)
 
     tt = Scene(rootScene.scene)
     campixel!(tt)
@@ -56,20 +72,24 @@ function setup_state_view!(rootScene, initial_plot, ap1, ap2, aa1,
     current_view = Observable("State 1")
     m = Menu(tt, options=["State 1", "State 2", "Superquadric", "Volume Render"], default="State 1", is_open=true, bbox=menu_bbox)
 
-    on(events(rootScene).mousebutton, priority=1) do event
+    # this needs to be deleted as well
+    contextMenuListener = on(events(rootScene).mousebutton, priority=1) do event
         if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(rootScene)
             x, y = events(rootScene.parent).mouseposition[]
             menu_bbox[] = BBox(x, x + 100, y - 100, y)
             notify(menu_bbox)
             m.is_open = true
+
+            # block other events
+            return Consume(true)
         end
     end
 
-    on(m.selection) do selection
+    menuActionListener = on(m.selection) do selection
         current_view[] = selection
     end
 
-    on(current_view) do cw
+    cwListener = on(current_view) do cw
         cam = camera(rootScene)
         eyepos = cam.eyeposition[]
         lookat = cam.lookat[]
@@ -141,11 +161,21 @@ function setup_state_view!(rootScene, initial_plot, ap1, ap2, aa1,
         update_cam!(rootScene.scene, eyepos, lookat)
     end
 
+
     #=
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
     =#
     #on(events(molWindow).entered_window) do is_hovered
     # on_window_hover(transition, is_hovered)
     #end
+    cleanup = function ()
+        off(contextMenuListener)
+        off(cwListener)
+        off(menuActionListener)
 
+        empty!(rootScene)
+    end
+
+
+    return cleanup
 end
