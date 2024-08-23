@@ -32,22 +32,33 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         return selectedLineSets
     end
 
-    rendered_plots = Vector()
     bp = scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-    push!(rendered_plots, bp)
+    afp = scatter!(afterView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
 
-    scatter!(afterView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+    # could pass down functions instead, the state view doesn't need all of this data at all
+    setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
+    setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
 
-    tt = Scene(beforeView.scene)
+end
+
+# could refactor to have less parameters
+function setup_state_view!(rootScene, initial_plot, ap1, ap2, aa1,
+    superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ,
+    lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets
+)
+    rendered_plots = Vector()
+    push!(rendered_plots, initial_plot)
+
+    tt = Scene(rootScene.scene)
     campixel!(tt)
 
     menu_bbox = Observable(BBox(0, 0, 0, 0))
     current_view = Observable("State 1")
     m = Menu(tt, options=["State 1", "State 2", "Superquadric", "Volume Render"], default="State 1", is_open=true, bbox=menu_bbox)
 
-    on(events(beforeView).mousebutton, priority=1) do event
-        if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(beforeView)
-            x, y = events(beforeView.parent).mouseposition[]
+    on(events(rootScene).mousebutton, priority=1) do event
+        if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(rootScene)
+            x, y = events(rootScene.parent).mouseposition[]
             menu_bbox[] = BBox(x, x + 100, y - 100, y)
             notify(menu_bbox)
             m.is_open = true
@@ -59,26 +70,26 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     end
 
     on(current_view) do cw
-        cam = camera(beforeView)
+        cam = camera(rootScene)
         eyepos = cam.eyeposition[]
         lookat = cam.lookat[]
 
         for p in rendered_plots
-            delete!(beforeView, p)
+            delete!(rootScene, p)
         end
         empty!(rendered_plots)
 
         if cw == "State 1"
-            bp = scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+            bp = scatter!(rootScene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
             push!(rendered_plots, bp)
 
         elseif cw == "State 2"
-            bp = scatter!(beforeView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+            bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
             push!(rendered_plots, bp)
 
         elseif cw == "Superquadric"
             bp = mesh!(
-                beforeView,
+                rootScene,
                 lift(x -> superquadrics[x], selected),
                 color=lift(x -> aa1[x], selected),
                 # prevents it from recoloring each time the slider moves
@@ -90,7 +101,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
 
             bp.inspectable[] = false
 
-            ls = linesegments!(beforeView,
+            ls = linesegments!(rootScene,
                 lift(x -> lineSets[1][x], selectedLineSets),
                 color=lift(x -> lineSets[2][x], selectedLineSets),
                 colorrange=lift(x -> x, lsExtrema),
@@ -116,7 +127,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
                 return Consume(false)
             end=#
         else
-            bp = volume!(beforeView, sampleRangeX, sampleRangeY, sampleRangeZ,
+            bp = volume!(rootScene, sampleRangeX, sampleRangeY, sampleRangeZ,
                 volumeData;
                 colormap=cmap,
                 algorithm=:absorption,
@@ -127,7 +138,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
                 visible=true)
             push!(rendered_plots, bp)
         end
-        update_cam!(beforeView.scene, eyepos, lookat)
+        update_cam!(rootScene.scene, eyepos, lookat)
     end
 
     #=
@@ -136,4 +147,5 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     #on(events(molWindow).entered_window) do is_hovered
     # on_window_hover(transition, is_hovered)
     #end
+
 end
