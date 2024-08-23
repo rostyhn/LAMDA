@@ -233,21 +233,20 @@ function go()
 
     views = Vector()
     for i in 3:8
-        leftView = LScene(
+        l = LScene(
             molGrid[i, 1],
             show_axis=false,
             scenekw=(backgroundcolor=:black, clear=true),
         )
-        rightView = LScene(
+        r = LScene(
             molGrid[i, 2],
             show_axis=false,
             scenekw=(backgroundcolor=:black, clear=true),
         )
-        push!(views, (leftView, rightView))
+        push!(views, (l, r))
     end
 
     display(molScreen, molGrid)
-
     viewIdx = 1
 
     function on_click(t, on_window_hover)

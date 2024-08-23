@@ -2,19 +2,8 @@ using Makie: clear_temporary_plots!, Orthographic, GridLayout
 
 function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, filterVal)
 
+    # idea is that right clicking will show a context menu that allows you to change the content of the scene, bbox, clear!
     ap1, ap2 = atomPositions
-
-    #=atomView = LScene(
-        molWindow[3:5, 1:3],
-        show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
-    )
-
-    volumeView = LScene(
-        molWindow[3:5, 4:6],
-        show_axis=false,
-        scenekw=(backgroundcolor=:white, clear=true),
-    )=#
 
     # atom positions should be a tuple of both states involved
     aa1 = map(x -> get(volumeDataDict, x[1], 0.0), enumerate(eachrow(ap1)))
@@ -43,59 +32,105 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         return selectedLineSets
     end
 
-    #=glyps = mesh!(
-        atomView,
-        lift(x -> superquadrics[x], selected),
-        color=lift(x -> aa1[x], selected),
-        # prevents it from recoloring each time the slider moves
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
-        colormap=:bam,
-        fxaa=false,
-    )
-    glyps.inspectable[] = false=#
+    rendered_plots = Vector()
+    bp = scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+    push!(rendered_plots, bp)
 
-    # call these "context views"
-    scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-    # need to match atoms that moved on the other side!
     scatter!(afterView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
 
-    #=linesegments!(atomView,
-        lift(x -> lineSets[1][x], selectedLineSets),
-        color=lift(x -> lineSets[2][x], selectedLineSets),
-        colorrange=lift(x -> x, lsExtrema),
-        inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
-        lowclip=:black,
-        colormap=:bam)=#
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
+    tt = Scene(beforeView.scene)
+    campixel!(tt)
 
-    #=
-    inspector = DataInspector(atomView)
+    menu_bbox = Observable(BBox(0, 0, 0, 0))
+    current_view = Observable("State 1")
+    m = Menu(tt, options=["State 1", "State 2", "Superquadric", "Volume Render"], default="State 1", is_open=true, bbox=menu_bbox)
 
-    on(events(atomView).mouseposition) do mp
-        plot, idx = pick(glyps)
-        if plot == glyps.plots[1]
-            pos = position_on_plot(plot, idx)
-            idx, d = NearestNeighbors.nn(transitionKDTree, pos)
-            if !isnan(pos)
-                inspector.plot.text[] = string("Atom ", idx)
-                inspector.plot.visible[] = true
-                inspector.plot.position = mp
-                return Consume(true)
-            end
+    on(events(beforeView).mousebutton, priority=1) do event
+        if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(beforeView)
+            x, y = events(beforeView.parent).mouseposition[]
+            menu_bbox[] = BBox(x, x + 100, y - 100, y)
+            notify(menu_bbox)
+            m.is_open = true
         end
-        return Consume(false)
-    end=#
-    #=
-    vol = volume!(volumeView, sampleRangeX, sampleRangeY, sampleRangeZ,
-        volumeData;
-        colormap=cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
-        visible=true)
+    end
 
+    on(m.selection) do selection
+        current_view[] = selection
+    end
+
+    on(current_view) do cw
+        cam = camera(beforeView)
+        eyepos = cam.eyeposition[]
+        lookat = cam.lookat[]
+
+        for p in rendered_plots
+            delete!(beforeView, p)
+        end
+        empty!(rendered_plots)
+
+        if cw == "State 1"
+            bp = scatter!(beforeView, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+            push!(rendered_plots, bp)
+
+        elseif cw == "State 2"
+            bp = scatter!(beforeView, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+            push!(rendered_plots, bp)
+
+        elseif cw == "Superquadric"
+            bp = mesh!(
+                beforeView,
+                lift(x -> superquadrics[x], selected),
+                color=lift(x -> aa1[x], selected),
+                # prevents it from recoloring each time the slider moves
+                colorrange=lift(x -> (-x, x), volumeAbsMax),
+                colormap=:bam,
+                fxaa=false,
+            )
+            push!(rendered_plots, bp)
+
+            bp.inspectable[] = false
+
+            ls = linesegments!(beforeView,
+                lift(x -> lineSets[1][x], selectedLineSets),
+                color=lift(x -> lineSets[2][x], selectedLineSets),
+                colorrange=lift(x -> x, lsExtrema),
+                inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
+                lowclip=:black,
+                colormap=:bam)
+            push!(rendered_plots, ls)
+
+            #=inspector = DataInspector(atomView)
+
+            on(events(atomView).mouseposition) do mp
+                plot, idx = pick(glyps)
+                if plot == glyps.plots[1]
+                    pos = position_on_plot(plot, idx)
+                    idx, d = NearestNeighbors.nn(transitionKDTree, pos)
+                    if !isnan(pos)
+                        inspector.plot.text[] = string("Atom ", idx)
+                        inspector.plot.visible[] = true
+                        inspector.plot.position = mp
+                        return Consume(true)
+                    end
+                end
+                return Consume(false)
+            end=#
+        else
+            bp = volume!(beforeView, sampleRangeX, sampleRangeY, sampleRangeZ,
+                volumeData;
+                colormap=cmap,
+                algorithm=:absorption,
+                fxaa=false,
+                transparency=true,
+                shading=NoShading,
+                colorrange=lift(x -> (-x, x), volumeAbsMax),
+                visible=true)
+            push!(rendered_plots, bp)
+        end
+        update_cam!(beforeView.scene, eyepos, lookat)
+    end
+
+    #=
     Colorbar(molWindow[6, 4:6], vol, vertical=false)
     =#
     #on(events(molWindow).entered_window) do is_hovered
