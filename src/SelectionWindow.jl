@@ -16,14 +16,21 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
     scene.xlabel = x_label
     scene.ylabel = y_label
 
+    sc.inspectable[] = false
+    inspector = DataInspector(scene)
+
     on(events(scene).mouseposition) do mp
         colors[] = fill(:blue, length(colors[]))
         plot, idx = pick(scene)
         if plot == sc
             currently_selected[] = t_list[idx]
+            inspector.plot.text[] = string(t_list[idx])
+            inspector.plot.visible[] = true
+            inspector.plot.position = mp
             colors[][idx] = :red
         end
         notify(colors)
+        return Consume(true)
     end
 
     on(events(scene).mousebutton) do event
@@ -200,6 +207,7 @@ function build_selection_window(fig_size,
 
     matrix_plot = heatmap!(matrix_scene, mat_2d, colorrange=lift(x -> (x[2], x[3]), processed_data), colormap=:viridis)
     matrix_plot.inspectable[] = false
+
     Colorbar(window[1, 2], colormap=:viridis, limits=lift(x -> (x[2], x[3]), processed_data), vertical=false)
 
     on(mat_2d) do r
@@ -208,29 +216,6 @@ function build_selection_window(fig_size,
 
     atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions)
     return window
-end
-
-function get_center(idx, matrix_spacing, transition_spacing, matrix_shape)
-    x = idx * transition_spacing
-    y = (matrix_shape[1] / 2) * matrix_spacing
-    z = (matrix_shape[2] / 2) * matrix_spacing
-
-    return Vec3f(x, y, z)
-end
-
-function bBox(idx, matrix_spacing, transition_spacing, matrix_shape)
-    # give the box some width
-    minX = (idx * transition_spacing) - (transition_spacing / 2)
-    maxX = (idx * transition_spacing) + (transition_spacing / 2)
-
-    minY = 1
-    maxY = matrix_shape[1]
-
-    minZ = 1
-    maxZ = matrix_shape[2]
-
-    return Rect3f(Point3f(minX, minY, minZ),
-        Point3f(transition_spacing, (maxY - minY) * matrix_spacing, (maxZ - minZ) * matrix_spacing))
 end
 
 function color_selected(selected_atoms, num_atoms)
@@ -258,20 +243,4 @@ function load_data(data)
     return norm, min_val, max_val
 end
 
-function generate_points(data, matrix_shape, matrix_spacing, transition_spacing)
-    p = Vector{Point3f}()
-    alpha = Vector{Float64}()
 
-    num_matrices = length(data)
-
-    for z in 1:num_matrices
-        m = data[z]
-        for y in 1:matrix_shape[2]
-            for x in 1:matrix_shape[1]
-                push!(p, Point3f(float(z) * transition_spacing, float(x) * matrix_spacing, float(y) * matrix_spacing))
-                push!(alpha, m[x, y])
-            end
-        end
-    end
-    return p, alpha
-end
