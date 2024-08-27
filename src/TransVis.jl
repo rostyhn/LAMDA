@@ -214,23 +214,16 @@ function go()
         transforms[t] = (abs.(p2 - p1))
     end
 
-    volAbsMax = Observable(0.0)
+    volAbsMax = Observable(0.05)
     lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
 
     molScreen = GLMakie.Screen()
     molGrid = Figure()
 
-    filterRange = Observable(LinRange(-0.05, 0.05, 100))
-
-    volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
-    Label(molGrid[1, 1:2], lift(x -> string(x), volFilter.interval))
-
-    colsize!(molGrid.layout, 1, Relative(1 / 2))
-    colsize!(molGrid.layout, 2, Relative(1 / 2))
 
     views = Vector()
     all_scenes = Vector()
-    for i in 3:5
+    for i in 1:3
         l = LScene(
             molGrid[i, 1],
             show_axis=false,
@@ -248,8 +241,17 @@ function go()
         Camera3D(l.scene, center=false, eyeposition=Vec3f(30, 30, 30))
         Camera3D(r.scene, center=false, eyeposition=Vec3f(30, 30, 30))
     end
+    colsize!(molGrid.layout, 1, Relative(1 / 2))
+    colsize!(molGrid.layout, 2, Relative(1 / 2))
 
     link_cameras_lscenes(all_scenes)
+
+    filterRange = lift(x -> LinRange(-x, x, 100), volAbsMax)
+
+    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
+    Colorbar(molGrid[6, 1:2], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
+
+    Label(molGrid[4, 1:2], lift(x -> string(x), volFilter.interval))
 
     cleanup_callbacks = Dict()
 
@@ -279,8 +281,6 @@ function go()
             end
         end
         thisVolAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
-
-        # update min and max of filter
 
         volAbsMax[] = max(volAbsMax[], thisVolAbsMax)
 
