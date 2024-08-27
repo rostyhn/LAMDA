@@ -1,19 +1,18 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, volumeDataDict, superquadrics, lineSets, transitionKDTree, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, filterVal)
+function build_mol_window(beforeView, afterView, transition, atomPositions, volumeDat, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
 
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
-    aa1 = map(x -> get(volumeDataDict, x[1], 0.0), enumerate(eachrow(ap1)))
-    mm = extrema(aa1)
+    aa1 = lift(y -> map(x -> get(y[2], x[1], 0.0), enumerate(eachrow(ap1))), volumeDat)
 
     # pass down selected from main range filter
-    selected = lift(filterVal) do interval
+    selected = @lift begin
         selected = Vector{Int}()
-        for (i, v) in enumerate(aa1)
+        for (i, v) in enumerate($aa1)
             # inverse filter, blue area will be removed!
-            if v < interval[1] || v > interval[2]
+            if v < $filterVal[1] || v > $filterVal[2]
                 push!(selected, i)
             end
         end
@@ -42,9 +41,9 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     # could pass down functions instead, the state view doesn't need all of this data at all
     # Dict of strings to functions
 
-    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
+    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
 
-    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
+    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
 
     cleanup = function ()
         cl()
@@ -56,7 +55,7 @@ end
 
 # could refactor to have less parameters
 function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
-    superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ,
+    superquadrics, lineSets, sampleRanges,
     lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree
 )
 
@@ -105,7 +104,6 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
             bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
             push!(rendered_plots, bp)
         elseif cw == "Superquadric"
-
             ls = linesegments!(rootScene,
                 lift(x -> lineSets[1][x], selectedLineSets),
                 color=lift(x -> lineSets[2][x], selectedLineSets),
@@ -118,7 +116,7 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
             bp = mesh!(
                 rootScene,
                 lift(x -> superquadrics[x], selected),
-                color=lift(x -> aa1[x], selected),
+                color=lift((x, y) -> y[x], selected, aa1),
                 # prevents it from recoloring each time the slider moves
                 colorrange=lift(x -> (-x, x), volumeAbsMax),
                 colormap=:bam,
@@ -144,8 +142,11 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
                 return Consume(false)
             end
         else
-            bp = volume!(rootScene, sampleRangeX, sampleRangeY, sampleRangeZ,
-                volumeData;
+            bp = volume!(rootScene,
+                lift(x -> x[1], sampleRanges),
+                lift(x -> x[2], sampleRanges),
+                lift(x -> x[3], sampleRanges),
+                lift(x -> x[1], volumeData);
                 colormap=cmap,
                 algorithm=:absorption,
                 fxaa=false,

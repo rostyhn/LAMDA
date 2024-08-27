@@ -31,15 +31,13 @@ include("math.jl")
 
 export go
 
-function buildBonds(positions, volumeDataDict, bondDelta)
+function buildBonds(positions, bondDelta)
     points = Vector{Tuple{Point3f,Point3f}}()
     weights = Vector{Float64}()
     indices = Vector{Tuple{Int64,Int64}}()
 
     for i in 1:length(bondDelta[1, :])
         for j in 1:i
-            v1 = volumeDataDict[i]
-            v2 = volumeDataDict[j]
             bw = bondDelta[i, j]
 
             # avg = (abs((v1 + v2)) / 2) / volumeAbsMax
@@ -143,17 +141,6 @@ function go()
         end
     end
 
-    volumeResolution = 0.2
-
-    sampleRangeX = [minX-2*volumeResolution:volumeResolution:maxX+2*volumeResolution;]
-    sampleRangeY = [minY-2*volumeResolution:volumeResolution:maxY+2*volumeResolution;]
-    sampleRangeZ = [minZ-2*volumeResolution:volumeResolution:maxZ+2*volumeResolution;]
-
-    @show length(sampleRangeX)
-    @show length(sampleRangeY)
-    @show length(sampleRangeZ)
-
-    kernelWidth = 1.0
 
     featureVectorMatrix = zeros(
         length(values(transitionInvariants1)),
@@ -253,47 +240,68 @@ function go()
 
     volFilter = IntervalSlider(molGrid[5, 1:3], range=filterRange, startvalues=(0, 0))
     Colorbar(molGrid[6, 1:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
-
-    Label(molGrid[4, 1:3], lift(x -> string(x), volFilter.interval))
+    #Label(molGrid[4, 1:3], lift(x -> string(x), volFilter.interval))
 
     rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
+
+    sg = SliderGrid(molGrid[4, 1:3],
+        (label="Volume Resolution", range=0.0:0.1:1, startvalue=0.2),
+        (label="Kernel Width", range=0.0:0.1:2.0, startvalue=1.0),
+        (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
 
     cleanup_callbacks = Dict()
 
     display(molScreen, molGrid)
     viewIdx = 1
 
+    sgObservables = [s.value for s in sg.sliders]
+
+    sampleRanges = lift(sg.sliders[1].value) do vr
+        return [minX-2*vr:vr:maxX+2*vr;],
+        [minY-2*vr:vr:maxY+2*vr;],
+        [minZ-2*vr:vr:maxZ+2*vr;]
+    end
+
+    kernelWidth = lift(sg.sliders[2].value) do kw
+        return kw
+    end
+
+    num_neighbors = lift(sg.sliders[3].value) do nn
+        return nn
+    end
+
     function on_click(t, on_window_hover)
         pos1, pos2 = alignedPositions[t]
-
-        volData = zeros(length(sampleRangeX), length(sampleRangeY), length(sampleRangeZ))
-        volDataDict = Dict{Int,Any}()
-
-        glyphResolution = 0.1
-
         kdTree1, kdTree2 = stateKDTree[t]
 
-        for i in eachindex(sampleRangeX) # x
-            for j in eachindex(sampleRangeY) # y
-                for k in eachindex(sampleRangeZ) # z
-                    point = Point3f(sampleRangeX[i], sampleRangeY[j], sampleRangeZ[k])
-                    knn, dists = NearestNeighbors.knn(kdTree1, point, 5)
-                    kValue = sum(kernelFunction.(Ref(point), pos1[knn], kernelWidth) .* transitionInvariants1[t][knn])
-                    volData[i, j, k] = kValue
-                    idx, d = NearestNeighbors.nn(kdTree1, point)
-                    volDataDict[idx] = kValue
+        volumeData = @lift begin
+            volData = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
+            volDataDict = Dict{Int,Any}()
+
+            for i in eachindex($sampleRanges[1]) # x
+                for j in eachindex($sampleRanges[2]) # y
+                    for k in eachindex($sampleRanges[3]) # z
+                        point = Point3f($sampleRanges[1][i], $sampleRanges[1][j], $sampleRanges[1][k])
+                        knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
+                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants1[t][knn])
+                        volData[i, j, k] = kValue
+                        idx, d = NearestNeighbors.nn(kdTree1, point)
+                        volDataDict[idx] = kValue
+                    end
                 end
             end
-        end
-        thisVolAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
+            thisVolAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
+            $volAbsMax = max($volAbsMax, thisVolAbsMax)
 
-        volAbsMax[] = max(volAbsMax[], thisVolAbsMax)
+            return volData, volDataDict
+        end
+        glyphResolution = 0.1
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
-        ls = buildBonds(alignedPositionsMatrices[t][1], volDataDict, bondDeltas[t])
+        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t])
 
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
@@ -303,7 +311,7 @@ function go()
         cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
         cleanup_func()
 
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, volFilter.interval)
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData, volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
 
         lab.text = string(t)
 
