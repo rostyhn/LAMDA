@@ -101,11 +101,9 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
         if cw == "State 1"
             bp = scatter!(rootScene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
             push!(rendered_plots, bp)
-
         elseif cw == "State 2"
             bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
             push!(rendered_plots, bp)
-
         elseif cw == "Superquadric"
             bp = mesh!(
                 rootScene,

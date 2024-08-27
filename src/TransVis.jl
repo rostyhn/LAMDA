@@ -153,7 +153,6 @@ function go()
     @show length(sampleRangeY)
     @show length(sampleRangeZ)
 
-
     kernelWidth = 1.0
 
     featureVectorMatrix = zeros(
@@ -201,7 +200,6 @@ function go()
     @show "cmap Range"
     @show length(cmap)
 
-
     bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
     transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
     for t in transitionSequence
@@ -218,7 +216,6 @@ function go()
 
     volAbsMax = Observable(0.0)
     lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
-    molWindows = Vector()
 
     molScreen = GLMakie.Screen()
     molGrid = Figure()
@@ -294,20 +291,14 @@ function go()
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        # https://discourse.julialang.org/t/is-it-possible-to-make-scrollable-window-in-glmakie/84450
-        # can't do an infinite layout unfortunately
-
         l, r = views[viewIdx]
 
         cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
-
         cleanup_func()
 
         cleanup = build_mol_window(l, r, t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, volFilter.interval)
 
         cleanup_callbacks[viewIdx] = cleanup
-
-        #rowsize!(molGrid.layout, idx, Fixed(400))
 
         if viewIdx < length(views)
             viewIdx += 1

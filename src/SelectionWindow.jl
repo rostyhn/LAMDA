@@ -75,7 +75,7 @@ function swarm_plot!(scene, bins, currently_selected, on_click)
     return sc
 end
 
-function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration)
+function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration, x_label, y_label)
     positions = @lift begin
         pos = Vector{Point2f}()
         for t in t_list
@@ -87,6 +87,8 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
     colors = Observable(fill(:blue, length(positions[])))
 
     sc = scatter!(scene, positions, color=colors)
+    scene.xlabel = x_label
+    scene.ylabel = y_label
 
     on(events(scene).mouseposition) do mp
         colors[] = fill(:blue, length(colors[]))
@@ -267,7 +269,7 @@ function build_selection_window(fig_size,
     processed_data = lift(x -> load_data(data[x]), selected_data)
     currently_selected = Observable{Any}(Nothing)
 
-    dist_plot!(selection_scene, graph_dist, ref_distances, currently_selected, t_list, on_click, reference_configuration)
+    dist_plot!(selection_scene, graph_dist, ref_distances, currently_selected, t_list, on_click, reference_configuration, "Graph Distance", "LNCD Score")
 
     mat_2d = @lift begin
         mat = zeros(1, 1)
