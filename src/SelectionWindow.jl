@@ -59,12 +59,12 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
     return sc
 end
 
-function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atomPositions, stateKDTree)
+function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atomPositions)
     a_data = @lift begin
-        return atomPositions[$ref_config][1], stateKDTree[$ref_config][1]
+        return atomPositions[$ref_config][1]
     end
 
-    segment_selector = scatter!(scene, lift(x -> x[1], a_data),
+    segment_selector = scatter!(scene, lift(x -> x, a_data),
         color=lift(x -> color_selected(x, num_atoms), selected_atoms)
     )
     segment_selector.inspectable[] = false
@@ -77,8 +77,6 @@ function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atom
             if event.action == Mouse.press
                 plot, idx = pick(scene)
                 if plot == segment_selector
-                    pos = position_on_plot(plot, idx)
-                    idx, d = NearestNeighbors.nn(a_data[][2], pos)
                     if idx in selected_atoms[]
                         delete!(selected_atoms[], idx)
                     else
@@ -97,15 +95,10 @@ function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atom
     on(events(scene).mouseposition, priority=-1) do mp
         plot, idx = pick(scene)
         if plot == segment_selector
-            pos = position_on_plot(plot, idx)
-            if !isnan(pos)
-                idx, d = NearestNeighbors.nn(a_data[][2], pos)
-                inspector.plot.text[] = string("Atom ", idx)
-                inspector.plot.visible[] = true
-                inspector.plot.position = mp
-                return Consume(true)
-            end
-            return Consume(false)
+            inspector.plot.text[] = string("Atom ", idx)
+            inspector.plot.visible[] = true
+            inspector.plot.position = mp
+            return Consume(true)
         end
     end
 
@@ -136,8 +129,7 @@ function build_selection_window(fig_size,
 
     selected_atoms = Observable(Set(1))
 
-    atom_scene = LScene(window[2, 1], show_axis=false,
-        scenekw=scenekw = (backgroundcolor=:white, clear=true))
+    atom_scene = Axis3(window[2, 1], title=lift(x -> string(x), reference_configuration), aspect=:equal)
 
     matrix_scene = Axis(window[2, 2])
     hidedecorations!(matrix_scene)
@@ -214,7 +206,7 @@ function build_selection_window(fig_size,
         reset_limits!(matrix_scene)
     end
 
-    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions, transitionKDTree)
+    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions)
     return window
 end
 
@@ -256,8 +248,6 @@ function load_data(data)
     # simple min-max norm
     max_val = maximum(map((x) -> maximum(x), d))
     min_val = minimum(map((x) -> minimum(x), d))
-
-    @show min_val, max_val
 
     norm = Dict{Tuple{Int,Int},Matrix}()
 
