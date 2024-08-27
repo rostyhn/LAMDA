@@ -233,7 +233,7 @@ function go()
 
     views = Vector()
     all_scenes = Vector()
-    for i in 3:8
+    for i in 3:5
         l = LScene(
             molGrid[i, 1],
             show_axis=false,
