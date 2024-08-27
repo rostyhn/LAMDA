@@ -42,9 +42,9 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     # could pass down functions instead, the state view doesn't need all of this data at all
     # Dict of strings to functions
 
-    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
+    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
 
-    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets)
+    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ, lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
 
     cleanup = function ()
         cl()
@@ -57,7 +57,7 @@ end
 # could refactor to have less parameters
 function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     superquadrics, lineSets, sampleRangeX, sampleRangeY, sampleRangeZ,
-    lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets
+    lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree
 )
 
     ip = initial_render_func(rootScene)
@@ -105,18 +105,6 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
             bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
             push!(rendered_plots, bp)
         elseif cw == "Superquadric"
-            bp = mesh!(
-                rootScene,
-                lift(x -> superquadrics[x], selected),
-                color=lift(x -> aa1[x], selected),
-                # prevents it from recoloring each time the slider moves
-                colorrange=lift(x -> (-x, x), volumeAbsMax),
-                colormap=:bam,
-                fxaa=false,
-            )
-            push!(rendered_plots, bp)
-
-            bp.inspectable[] = false
 
             ls = linesegments!(rootScene,
                 lift(x -> lineSets[1][x], selectedLineSets),
@@ -127,11 +115,23 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
                 colormap=:bam)
             push!(rendered_plots, ls)
 
-            #=inspector = DataInspector(atomView)
+            bp = mesh!(
+                rootScene,
+                lift(x -> superquadrics[x], selected),
+                color=lift(x -> aa1[x], selected),
+                # prevents it from recoloring each time the slider moves
+                colorrange=lift(x -> (-x, x), volumeAbsMax),
+                colormap=:bam,
+                fxaa=false,
+            )
+            push!(rendered_plots, bp)
+            bp.inspectable[] = false
 
-            on(events(atomView).mouseposition) do mp
-                plot, idx = pick(glyps)
-                if plot == glyps.plots[1]
+            inspector = DataInspector(rootScene)
+
+            on(events(rootScene).mouseposition) do mp
+                plot, idx = pick(rootScene)
+                if plot != Nothing
                     pos = position_on_plot(plot, idx)
                     idx, d = NearestNeighbors.nn(transitionKDTree, pos)
                     if !isnan(pos)
@@ -142,7 +142,7 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
                     end
                 end
                 return Consume(false)
-            end=#
+            end
         else
             bp = volume!(rootScene, sampleRangeX, sampleRangeY, sampleRangeZ,
                 volumeData;
