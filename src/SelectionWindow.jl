@@ -55,12 +55,12 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
 
     on(x_positions) do d
         vals = collect(values(d))
-        xlims!(minimum(vals), maximum(vals))
+        xlims!(minimum(vals) - 0.1, maximum(vals) + 0.1)
     end
 
     on(y_positions) do d
         vals = collect(values(d))
-        ylims!(minimum(vals), maximum(vals))
+        ylims!(minimum(vals) - 0.01, maximum(vals) + 0.1)
     end
 
     return sc
