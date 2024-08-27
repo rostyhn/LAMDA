@@ -220,38 +220,45 @@ function go()
     molScreen = GLMakie.Screen()
     molGrid = Figure()
 
-
     views = Vector()
     all_scenes = Vector()
     for i in 1:3
+        lab = Label(molGrid[i, 1], "", rotation=pi / 2)
         l = LScene(
-            molGrid[i, 1],
-            show_axis=false,
-            scenekw=(backgroundcolor=:black, clear=true),
-        )
-        r = LScene(
             molGrid[i, 2],
             show_axis=false,
             scenekw=(backgroundcolor=:black, clear=true),
         )
-        push!(views, (l, r))
+        r = LScene(
+            molGrid[i, 3],
+            show_axis=false,
+            scenekw=(backgroundcolor=:black, clear=true),
+        )
+        push!(views, (lab, l, r))
         push!(all_scenes, l)
         push!(all_scenes, r)
 
         Camera3D(l.scene, center=false, eyeposition=Vec3f(30, 30, 30))
         Camera3D(r.scene, center=false, eyeposition=Vec3f(30, 30, 30))
+
+        rowsize!(molGrid.layout, i, Relative(0.25))
     end
-    colsize!(molGrid.layout, 1, Relative(1 / 2))
-    colsize!(molGrid.layout, 2, Relative(1 / 2))
+    colsize!(molGrid.layout, 1, Relative(0.05))
+    colsize!(molGrid.layout, 2, Relative(0.475))
+    colsize!(molGrid.layout, 3, Relative(0.475))
 
     link_cameras_lscenes(all_scenes)
 
     filterRange = lift(x -> LinRange(-x, x, 100), volAbsMax)
 
-    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
-    Colorbar(molGrid[6, 1:2], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
+    volFilter = IntervalSlider(molGrid[5, 1:3], range=filterRange, startvalues=(0, 0))
+    Colorbar(molGrid[6, 1:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
 
-    Label(molGrid[4, 1:2], lift(x -> string(x), volFilter.interval))
+    Label(molGrid[4, 1:3], lift(x -> string(x), volFilter.interval))
+
+    rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
+    rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
+    rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
 
     cleanup_callbacks = Dict()
 
@@ -291,12 +298,14 @@ function go()
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
 
-        l, r = views[viewIdx]
+        lab, l, r = views[viewIdx]
 
         cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
         cleanup_func()
 
         cleanup = build_mol_window(l, r, t, alignedPositions[t], volData, volAbsMax, volDataDict, sq, ls, kdTree1, sampleRangeX, sampleRangeY, sampleRangeZ, cmap, on_window_hover, lsExtrema, volFilter.interval)
+
+        lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup
 

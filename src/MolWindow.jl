@@ -158,10 +158,6 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
         update_cam!(rootScene.scene, eyepos, lookat)
     end
 
-
-    #=
-    Colorbar(molWindow[6, 4:6], vol, vertical=false)
-    =#
     #on(events(molWindow).entered_window) do is_hovered
     # on_window_hover(transition, is_hovered)
     #end
