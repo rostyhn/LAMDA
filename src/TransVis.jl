@@ -246,7 +246,7 @@ function go()
         (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
 
     volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
-    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(x), volFilter.interval))
+    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     Colorbar(molGrid[6, 1:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
 
@@ -325,9 +325,6 @@ function go()
         end
     end
 
-    # do a convex hull of values for each type of transitionInvariant ?
-    # layered radar plots?
-    # need to be entirely rotationally invariant
     @show typeof(transitionInvariants1), typeof(transitionInvariants2), typeof(transitionInvariants3)
     screen = GLMakie.Screen()
 
