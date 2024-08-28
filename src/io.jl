@@ -339,14 +339,11 @@ function get_data_alt()
                 end
 
                 distances_pickle = joinpath(t, "distances.pickle")
-                positions_pickle = joinpath(t, "positions.pickle")
                 connectivity_pickle = joinpath(t, "connectivity.pickle")
                 transitions_pickle = joinpath(t, "transitions.pickle")
                 alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
 
-
                 distanceMatrices = Dict{Int,Matrix}(Pickle.npyload(distances_pickle))
-                positions = Dict{Int,Matrix}(Pickle.npyload(positions_pickle))
                 connectivity = Dict{Int,Matrix}(Pickle.npyload(connectivity_pickle))
                 transitions = Set{Tuple{Int,Int}}(Pickle.npyload(transitions_pickle))
                 alignedPositionsMatrices = Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}}(Pickle.npyload(alignedPositions_pickle))
@@ -370,7 +367,8 @@ function get_data_alt()
 
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
                     "alignedPositions" => alignedAtomPositions,
-                    "alignedPositionsMatrices" => alignedPositionsMatrices, "connectivity" => connectivity,
+                    "alignedPositionsMatrices" => alignedPositionsMatrices,
+                    "connectivity" => connectivity,
                     "transitions" => transitions,
                     "t1" => t1,
                     "t2" => t2,

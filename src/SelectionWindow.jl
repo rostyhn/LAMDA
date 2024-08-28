@@ -72,41 +72,27 @@ function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atom
     end
 
     segment_selector = scatter!(scene, lift(x -> x, a_data),
-        color=lift(x -> color_selected(x, num_atoms), selected_atoms)
+        color=lift(x -> color_selected(x, num_atoms), selected_atoms),
+        inspector_label=(self, i, p) -> string("Atom ", i)
     )
-    segment_selector.inspectable[] = false
-
-    inspector = DataInspector(scene)
 
     # for now, let's just select individual atoms
     on(events(scene).mousebutton, priority=1) do event
-        if event.button == Mouse.left
-            if event.action == Mouse.press
-                plot, idx = pick(scene)
-                if plot == segment_selector
-                    if idx in selected_atoms[]
-                        delete!(selected_atoms[], idx)
-                    else
-                        push!(selected_atoms[], idx)
-                    end
-
-                    notify(selected_atoms)
-
-                    return Consume(true)
+        if event.button == Mouse.left && event.action == Mouse.press
+            plot, idx = pick(scene)
+            if plot == segment_selector
+                if idx in selected_atoms[]
+                    delete!(selected_atoms[], idx)
+                else
+                    push!(selected_atoms[], idx)
                 end
+
+                notify(selected_atoms)
+
+                return Consume(true)
             end
         end
         return Consume(false)
-    end
-
-    on(events(scene).mouseposition, priority=-1) do mp
-        plot, idx = pick(scene)
-        if plot == segment_selector
-            inspector.plot.text[] = string("Atom ", idx)
-            inspector.plot.visible[] = true
-            inspector.plot.position = mp
-            return Consume(true)
-        end
     end
 
     return segment_selector

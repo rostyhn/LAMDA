@@ -39,7 +39,6 @@ function buildBonds(positions, bondDelta)
     for i in 1:length(bondDelta[1, :])
         for j in 1:i
             bw = bondDelta[i, j]
-
             # avg = (abs((v1 + v2)) / 2) / volumeAbsMax
             # 0.05 is the threshold val for filtering
             # check against bond weight to make sure we're only looking at "real" bonds
@@ -195,7 +194,7 @@ function go()
         dm2 = distanceMatrices[s2] .* connectivity[s2]'
 
         # for now it's total delta
-        bondDeltas[t] = (dm2 - dm1)
+        bondDeltas[t] = dm2 - dm1
 
         p1, p2 = get_from_t_dict(alignedPositionsMatrices, t)
         transforms[t] = (abs.(p2 - p1))
@@ -274,8 +273,8 @@ function go()
     end
 
     function on_click(t, on_window_hover)
-        pos1, pos2 = alignedPositions[t]
-        kdTree1, kdTree2 = stateKDTree[t]
+        pos1, pos2 = get_from_t_dict(alignedPositions, t)
+        kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
 
         volumeData = @lift begin
             volData = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))

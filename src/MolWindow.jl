@@ -31,15 +31,13 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     end
 
     bp = function (scene)
-        s = scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-        s.inspectable[] = false
-        return s
+        return scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
+            inspector_label=(self, i, p) -> string("Atom ", i))
     end
 
     afp = function (scene)
-        s = scatter!(scene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-        s.inspectable[] = false
-        return s
+        return scatter!(scene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
+            inspector_label=(self, i, p) -> string("Atom ", i))
     end
 
     # could pass down functions instead, the state view doesn't need all of this data at all
@@ -65,6 +63,8 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
 )
 
     ip = initial_render_func(rootScene)
+    inspector = DataInspector(rootScene)
+
     rendered_plots = Vector()
     push!(rendered_plots, ip)
 
@@ -87,6 +87,7 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
             # block other events
             return Consume(true)
         end
+        return Consume(false)
     end
 
     cwListener = on(m.selection) do cw
@@ -105,23 +106,23 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
         end
 
         if cw == "State 1"
-            bp = scatter!(rootScene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-            bp.inspectable[] = false
-
+            bp = scatter!(rootScene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
+                inspector_label=(self, i, p) -> string("Atom ", i)
+            )
             push!(rendered_plots, bp)
         elseif cw == "State 2"
-            bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
-            bp.inspectable[] = false
-
+            bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
+                inspector_label=(self, i, p) -> string("Atom ", i)
+            )
             push!(rendered_plots, bp)
         elseif cw == "Superquadric"
             ls = linesegments!(rootScene,
                 lift(x -> lineSets[1][x], selectedLineSets),
                 color=lift(x -> lineSets[2][x], selectedLineSets),
                 colorrange=lift(x -> x, lsExtrema),
-                inspector_label=(self, idx, pos) -> string("Weight ", self.color[][idx]),
                 lowclip=:black,
                 colormap=:bam)
+            ls.inspectable[] = false
             push!(rendered_plots, ls)
 
             bp = mesh!(
@@ -136,24 +137,30 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
             push!(rendered_plots, bp)
             bp.inspectable[] = false
 
-            inspector = DataInspector(rootScene)
-
             sqHoverListener = on(events(rootScene).mouseposition) do mp
-                plot, idx = pick(rootScene)
-                if plot != Nothing && is_mouseinside(rootScene)
-                    pos = position_on_plot(plot, idx)
-                    idx, d = NearestNeighbors.nn(transitionKDTree, pos)
-                    if !isnan(pos)
-                        inspector.plot.text[] = string("Atom ", idx)
+                if is_mouseinside(rootScene)
+                    plot, idx = pick(rootScene)
+                    if plot == ls
+                        inspector.plot.text[] = string("Weight ", ls.color[][idx])
                         inspector.plot.visible[] = true
                         inspector.plot.position = mp
+                        return Consume(true)
+                    elseif plot != Nothing
+                        pos = position_on_plot(plot, idx)
+                        idx, d = NearestNeighbors.nn(transitionKDTree, pos)
+                        if !isnan(pos)
+                            inspector.plot.text[] = string("Atom ", idx)
+                            inspector.plot.visible[] = true
+                            inspector.plot.position = mp
+                            return Consume(true)
+                        end
+                    else
                         return Consume(true)
                     end
                 end
                 return Consume(false)
             end
 
-            # push!(inspectors, inspector)
             push!(scene_listeners, sqHoverListener)
         else
             bp = volume!(rootScene,
