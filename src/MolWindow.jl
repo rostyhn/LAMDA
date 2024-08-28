@@ -45,9 +45,9 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     # could pass down functions instead, the state view doesn't need all of this data at all
     # Dict of strings to functions
 
-    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
+    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree, "State 1")
 
-    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree)
+    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree, "State 2")
 
     cleanup = function ()
         cl()
@@ -60,7 +60,8 @@ end
 # could refactor to have less parameters
 function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     superquadrics, lineSets, sampleRanges,
-    lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree
+    lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree,
+    startState
 )
 
     ip = initial_render_func(rootScene)
@@ -73,8 +74,7 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     campixel!(tt)
 
     menu_bbox = Observable(BBox(0, 0, 0, 0))
-    current_view = Observable("State 1")
-    m = Menu(tt, options=["State 1", "State 2", "Superquadric", "Volume Render"], default="State 1", is_open=true, bbox=menu_bbox)
+    m = Menu(tt, options=["State 1", "State 2", "Superquadric", "Volume Render"], default=startState, is_open=true, bbox=menu_bbox)
 
     # this needs to be deleted as well
     contextMenuListener = on(events(rootScene).mousebutton, priority=1) do event
