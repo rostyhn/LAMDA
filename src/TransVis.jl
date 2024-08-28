@@ -201,7 +201,7 @@ function go()
     end
 
     volAbsMax = Observable(0.05)
-    lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
+    lsExtrema = Observable((-0.01, 0.01))
 
     # should move molScreen into a new file
     molScreen = GLMakie.Screen()
@@ -247,11 +247,15 @@ function go()
     volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
     Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
-    Colorbar(molGrid[6, 1:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
+    Label(molGrid[6, 1], "Volume")
+    Colorbar(molGrid[6, 2:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
+    Label(molGrid[7, 1], "Bond Delta")
+    Colorbar(molGrid[7, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
 
     rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
+    rowsize!(molGrid.layout, 6, Relative(0.25 / 6))
+    rowsize!(molGrid.layout, 7, Relative(0.25 / 6))
 
     cleanup_callbacks = Dict()
 
@@ -305,6 +309,8 @@ function go()
 
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
+
+        notify(lsExtrema)
 
         lab, l, r = views[viewIdx]
 

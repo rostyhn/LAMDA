@@ -121,7 +121,7 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
                 color=lift(x -> lineSets[2][x], selectedLineSets),
                 colorrange=lift(x -> x, lsExtrema),
                 lowclip=:black,
-                colormap=:bam)
+                colormap=:bwr)
             ls.inspectable[] = false
             push!(rendered_plots, ls)
 
