@@ -200,7 +200,7 @@ function go()
         transforms[t] = (abs.(p2 - p1))
     end
 
-    volAbsMax = Observable(0.05)
+    volAbsMax = Observable(0.01)
     lsExtrema = Observable((-0.01, 0.01))
 
     # should move molScreen into a new file
