@@ -204,6 +204,7 @@ function go()
     volAbsMax = Observable(0.05)
     lsExtrema = Observable((floatmax(Float64), floatmin(Float64)))
 
+    # should move molScreen into a new file
     molScreen = GLMakie.Screen()
     molGrid = Figure()
 
@@ -238,25 +239,25 @@ function go()
 
     filterRange = lift(x -> LinRange(-x, x, 100), volAbsMax)
 
-    volFilter = IntervalSlider(molGrid[5, 1:3], range=filterRange, startvalues=(0, 0))
+    Label(molGrid[4, 1], "Volume Controls", rotation=pi / 2)
+    sg = SliderGrid(molGrid[4, 2:3],
+        (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
+        (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
+        (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
+
+    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
+    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(x), volFilter.interval))
+
     Colorbar(molGrid[6, 1:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
-    #Label(molGrid[4, 1:3], lift(x -> string(x), volFilter.interval))
 
     rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
 
-    sg = SliderGrid(molGrid[4, 1:3],
-        (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
-        (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
-        (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
-
     cleanup_callbacks = Dict()
 
     display(molScreen, molGrid)
     viewIdx = 1
-
-    sgObservables = [s.value for s in sg.sliders]
 
     sampleRanges = lift(sg.sliders[1].value) do vr
         return [minX-2*vr:vr:maxX+2*vr;],
