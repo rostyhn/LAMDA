@@ -63,6 +63,8 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     rendered_plots = Vector()
     push!(rendered_plots, ip)
 
+    scene_listeners = Vector()
+
     tt = Scene(rootScene.scene)
     campixel!(tt)
 
@@ -83,11 +85,7 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
         end
     end
 
-    menuActionListener = on(m.selection) do selection
-        current_view[] = selection
-    end
-
-    cwListener = on(current_view) do cw
+    cwListener = on(m.selection) do cw
         cam = camera(rootScene)
         eyepos = cam.eyeposition[]
         lookat = cam.lookat[]
@@ -97,11 +95,20 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
         end
         empty!(rendered_plots)
 
+        for listener in scene_listeners
+            off(listener)
+            listener = Nothing
+        end
+
         if cw == "State 1"
             bp = scatter!(rootScene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+            bp.inspectable[] = false
+
             push!(rendered_plots, bp)
         elseif cw == "State 2"
             bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+            bp.inspectable[] = false
+
             push!(rendered_plots, bp)
         elseif cw == "Superquadric"
             ls = linesegments!(rootScene,
@@ -127,9 +134,9 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
 
             inspector = DataInspector(rootScene)
 
-            on(events(rootScene).mouseposition) do mp
+            sqHoverListener = on(events(rootScene).mouseposition) do mp
                 plot, idx = pick(rootScene)
-                if plot != Nothing
+                if plot != Nothing && is_mouseinside(rootScene)
                     pos = position_on_plot(plot, idx)
                     idx, d = NearestNeighbors.nn(transitionKDTree, pos)
                     if !isnan(pos)
@@ -141,6 +148,9 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
                 end
                 return Consume(false)
             end
+
+            # push!(inspectors, inspector)
+            push!(scene_listeners, sqHoverListener)
         else
             bp = volume!(rootScene,
                 lift(x -> x[1], sampleRanges),
@@ -154,6 +164,8 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
                 shading=NoShading,
                 colorrange=lift(x -> (-x, x), volumeAbsMax),
                 visible=true)
+
+            bp.inspectable[] = false
             push!(rendered_plots, bp)
         end
         update_cam!(rootScene.scene, eyepos, lookat)
@@ -164,9 +176,16 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
     #end
     cleanup = function ()
         off(contextMenuListener)
-        off(cwListener)
-        off(menuActionListener)
+        contextMenuListener = Nothing
 
+        off(cwListener)
+        cwListener = Nothing
+
+        for listener in scene_listeners
+            off(listener)
+            listener = Nothing
+        end
+        # inspectors should get cleared off here
         empty!(rootScene)
     end
 

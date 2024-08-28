@@ -247,8 +247,8 @@ function go()
     rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
 
     sg = SliderGrid(molGrid[4, 1:3],
-        (label="Volume Resolution", range=0.0:0.1:1, startvalue=0.2),
-        (label="Kernel Width", range=0.0:0.1:2.0, startvalue=1.0),
+        (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
+        (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
         (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
 
     cleanup_callbacks = Dict()
