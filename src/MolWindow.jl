@@ -31,11 +31,15 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     end
 
     bp = function (scene)
-        return scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+        s = scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+        s.inspectable[] = false
+        return s
     end
 
     afp = function (scene)
-        return scatter!(scene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+        s = scatter!(scene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected))
+        s.inspectable[] = false
+        return s
     end
 
     # could pass down functions instead, the state view doesn't need all of this data at all
