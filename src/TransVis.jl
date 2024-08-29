@@ -277,7 +277,7 @@ function go()
             for i in eachindex($sampleRanges[1]) # x
                 for j in eachindex($sampleRanges[2]) # y
                     for k in eachindex($sampleRanges[3]) # z
-                        point = Point3f($sampleRanges[1][i], $sampleRanges[1][j], $sampleRanges[1][k])
+                        point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
                         knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
                         kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants1[t][knn])
                         volData[i, j, k] = kValue
@@ -299,7 +299,6 @@ function go()
 
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
-
         notify(lsExtrema)
 
         lab, l, r = views[viewIdx]
@@ -308,7 +307,6 @@ function go()
         cleanup_func()
 
         cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData, volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
-
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup
