@@ -59,13 +59,6 @@ function go()
     trajectories, active_trajectory_name = get_data_alt()
     active_trajectory = trajectories[active_trajectory_name]
 
-    plotWindow = Figure(size=(600, 400))
-
-    axI1 = Axis(plotWindow[1:2, 1:4], xlabel="Atom Number", ylabel="K1")
-    axI2 = Axis(plotWindow[3:4, 1:4], xlabel="Atom Number", ylabel="K2")
-    axI3 = Axis(plotWindow[5:6, 1:4], xlabel="Atom Number", ylabel="mode(E)")
-    axDR = Axis(plotWindow[1:6, 5:7], title="t-SNE")
-
     transitionInvariants1 = active_trajectory["t1"]
     transitionInvariants2 = active_trajectory["t2"]
     transitionInvariants3 = active_trajectory["t3"]
@@ -73,9 +66,6 @@ function go()
     stateKDTree = active_trajectory["kdTree"]
     dms = active_trajectory["dms"]
 
-    #@show keys() # dms["graph"]
-
-    # transitionDistanceMatrix = combinedData["transitionDistanceMatrix"]["matrix"]
     transitionSequence = active_trajectory["transitions"]
 
     # sometimes need to grab first transition for setting sizes
@@ -330,9 +320,7 @@ function go()
         end
     end
 
-    @show typeof(transitionInvariants1), typeof(transitionInvariants2), typeof(transitionInvariants3)
     screen = GLMakie.Screen()
-
     available_matrices = Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}()
     available_matrices["transforms"] = transforms
     available_matrices["bondDeltas"] = bondDeltas

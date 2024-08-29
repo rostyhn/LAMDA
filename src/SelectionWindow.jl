@@ -112,8 +112,6 @@ function build_selection_window(fig_size,
     window = Figure(size=fig_size)
 
     selected_data = Observable(first(keys(data)))
-    num_transitions = length(seq)
-
     matrix_selection = Menu(window[1, 1], options=collect(keys(data)))
 
     on(matrix_selection.selection) do val
@@ -147,7 +145,6 @@ function build_selection_window(fig_size,
         @show "done with distributions"
 
         distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref($reference_configuration), keys(transitionInvariants1), Ref($selected_atoms))
-
         zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
 
         ref_distances = Dict()
@@ -160,22 +157,21 @@ function build_selection_window(fig_size,
 
     # for now graph, but should be user-selectable
     m = dms["graph"]["matrix"]
+    t_to_idx = dms["graph"]["t_to_idx"]
 
     graph_dist = @lift begin
         row_idx = dms["graph"]["t_to_idx"][$reference_configuration]
         row = m[row_idx, :]
 
-        t_to_idx = dms["graph"]["t_to_idx"]
         graph_dist = Dict()
         for (t, idx) in t_to_idx
-            d = row[idx]
-            graph_dist[t] = d
+            graph_dist[t] = row[idx]
         end
         return graph_dist
     end
 
     minInvariant1, maxInvariant1, transitionInvariants1 = iv1
-    t_list = collect(keys(transitionInvariants1))
+    t_list = collect(keys(t_to_idx))
 
     # data, min, max
     processed_data = lift(x -> load_data(data[x]), selected_data)
