@@ -23,8 +23,13 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
         colors[] = fill(:blue, length(colors[]))
         plot, idx = pick(scene)
         if plot == sc
-            currently_selected[] = t_list[idx]
-            inspector.plot.text[] = string(t_list[idx])
+            t = t_list[idx]
+            pos = positions[][idx]
+            x = round(pos[1], digits=3)
+            y = round(pos[2], digits=3)
+
+            currently_selected[] = t
+            inspector.plot.text[] = "$t\nX:$x Y:$y"
             inspector.plot.visible[] = true
             inspector.plot.position = mp
             colors[][idx] = :red
