@@ -40,6 +40,21 @@ function link_cameras_lscenes(scenes; step=0.01)
     end
 end
 
+# normalizes an array of matrices
+function normalize_matrices(data)
+    d = collect(values(data))
 
+    # simple min-max norm
+    max_val = maximum(map((x) -> maximum(x), d))
+    min_val = minimum(map((x) -> minimum(x), d))
+
+    norm = Dict{Tuple{Int,Int},Matrix}()
+
+    for (transition, val) in data
+        norm[transition] = (val .- min_val) / (max_val - min_val)
+    end
+
+    return norm, min_val, max_val
+end
 splitobs(o::Observable{Tuple{}}) = ()
 splitobs(o::Observable{<:Tuple}) = (lift(first, o), splitobs(lift(Base.tail, o))...)

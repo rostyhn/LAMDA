@@ -105,7 +105,7 @@ end
 
 
 function build_selection_window(fig_size,
-    data::Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}},
+    data,
     seq,
     on_click,
     num_atoms,
@@ -115,16 +115,16 @@ function build_selection_window(fig_size,
     transitionKDTree, dms)
 
     window = Figure(size=fig_size)
-
-    selected_data = Observable(first(keys(data)))
     matrix_selection = Menu(window[1, 1], options=collect(keys(data)))
 
+    selected_data = Observable(first(keys(data)))
     on(matrix_selection.selection) do val
         selected_data[] = val
     end
 
-    selected_atoms = Observable(Set(1))
+    processed_data = lift(x -> data[x], selected_data)
 
+    selected_atoms = Observable(Set(1))
     atom_scene = Axis3(window[2, 1], title=lift(x -> string(x), reference_configuration), aspect=:equal)
 
     matrix_scene = Axis(window[2, 2])
@@ -178,10 +178,7 @@ function build_selection_window(fig_size,
     minInvariant1, maxInvariant1, transitionInvariants1 = iv1
     t_list = collect(keys(t_to_idx))
 
-    # data, min, max
-    processed_data = lift(x -> load_data(data[x]), selected_data)
     currently_selected = Observable{Any}(Nothing)
-
     dist_plot!(selection_scene, graph_dist, ref_distances, currently_selected, t_list, on_click, reference_configuration, "Graph Distance", "LNCD Score")
 
     mat_2d = @lift begin
@@ -212,22 +209,3 @@ function color_selected(selected_atoms, num_atoms)
     end
     return colors
 end
-
-function load_data(data)
-    # order matrices by distance relative to i
-    d = collect(values(data))
-
-    # simple min-max norm
-    max_val = maximum(map((x) -> maximum(x), d))
-    min_val = minimum(map((x) -> minimum(x), d))
-
-    norm = Dict{Tuple{Int,Int},Matrix}()
-
-    for (transition, val) in data
-        norm[transition] = (val .- min_val) / (max_val - min_val)
-    end
-
-    return norm, min_val, max_val
-end
-
-

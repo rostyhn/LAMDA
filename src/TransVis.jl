@@ -190,6 +190,11 @@ function go()
         transforms[t] = (abs.(p2 - p1))
     end
 
+
+    available_matrices = Dict()
+    available_matrices["transforms"] = normalize_matrices(transforms)
+    available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
+
     volAbsMax = Observable(0.01)
     lsExtrema = Observable((-0.01, 0.01))
 
@@ -319,10 +324,6 @@ function go()
     end
 
     screen = GLMakie.Screen()
-    available_matrices = Dict{String,Dict{Tuple{Int,Int},Matrix{Float64}}}()
-    available_matrices["transforms"] = transforms
-    available_matrices["bondDeltas"] = bondDeltas
-
     # atomPositions, stateKDTree, numAtoms, firstTransition 
     display(screen, build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), alignedPositions, stateKDTree, dms))
 end
