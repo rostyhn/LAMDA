@@ -1,11 +1,11 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeDat, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
+function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
 
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
-    aa1 = lift(y -> map(x -> get(y[2], x[1], 0.0), enumerate(eachrow(ap1))), volumeDat)
+    aa1 = lift(y -> map(x -> get(y[2], x[1], 0.0), enumerate(eachrow(ap1))), volumeData)
 
     # pass down selected from main range filter
     selected = @lift begin
@@ -30,22 +30,89 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         return selectedLineSets
     end
 
-    bp = function (scene)
-        return scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))
+    # these functions must return a list of plots and listeners they created
+    bp = function (scene, inspector)
+        return [scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
+            inspector_label=(self, i, p) -> string("Atom ", i))], []
     end
 
-    afp = function (scene)
-        return scatter!(scene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))
+    afp = function (scene, inspector)
+        return [scatter!(scene, ap2,
+            color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
+            inspector_label=(self, i, p) -> string("Atom ", i))], []
     end
 
-    # could pass down functions instead, the state view doesn't need all of this data at all
-    # Dict of strings to functions
+    sq = function (scene, inspector)
+        ls = linesegments!(scene,
+            lift(x -> lineSets[1][x], selectedLineSets),
+            color=lift(x -> lineSets[2][x], selectedLineSets),
+            colorrange=lift(x -> x, lsExtrema),
+            lowclip=:black,
+            colormap=:bwr)
+        ls.inspectable[] = false
 
-    cl = setup_state_view!(beforeView, bp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree, "State 1")
+        m = mesh!(
+            scene,
+            lift(x -> superquadrics[x], selected),
+            color=lift((x, y) -> y[x], selected, aa1),
+            # prevents it from recoloring each time the slider moves
+            colorrange=lift(x -> (-x, x), volumeAbsMax),
+            colormap=:bam,
+            fxaa=false,
+        )
+        m.inspectable[] = false
 
-    cr = setup_state_view!(afterView, afp, ap1, ap2, aa1, superquadrics, lineSets, sampleRanges, lsExtrema, cmap, volumeDat, volumeAbsMax, selected, selectedLineSets, transitionKDTree, "State 2")
+        sqHoverListener = on(events(scene).mouseposition) do mp
+            if is_mouseinside(scene)
+                plot, idx = pick(scene)
+                if plot == ls
+                    inspector.plot.text[] = string("Weight ", ls.color[][idx])
+                    inspector.plot.visible[] = true
+                    inspector.plot.position = mp
+                    return Consume(true)
+                elseif plot != Nothing
+                    pos = position_on_plot(plot, idx)
+                    idx, d = NearestNeighbors.nn(transitionKDTree, pos)
+                    if !isnan(pos)
+                        inspector.plot.text[] = string("Atom ", idx)
+                        inspector.plot.visible[] = true
+                        inspector.plot.position = mp
+                        return Consume(true)
+                    end
+                else
+                    return Consume(true)
+                end
+            end
+            return Consume(false)
+        end
+        return [ls, m], [sqHoverListener]
+    end
+
+    vol = function (scene, inspector)
+        v = volume!(scene,
+            lift(x -> x[1], sampleRanges),
+            lift(x -> x[2], sampleRanges),
+            lift(x -> x[3], sampleRanges),
+            lift(x -> x[1], volumeData);
+            colormap=cmap,
+            algorithm=:absorption,
+            fxaa=false,
+            transparency=true,
+            shading=NoShading,
+            colorrange=lift(x -> (-x, x), volumeAbsMax),
+            visible=true)
+        v.inspectable[] = false
+        return [v], []
+    end
+
+    render_funcs = Dict()
+    render_funcs["State 1"] = bp
+    render_funcs["State 2"] = afp
+    render_funcs["Superquadrics"] = sq
+    render_funcs["Volume"] = vol
+
+    cl = setup_state_view!(beforeView, "State 1", render_funcs)
+    cr = setup_state_view!(afterView, "State 2", render_funcs)
 
     cleanup = function ()
         cl()
@@ -55,32 +122,36 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     return cleanup
 end
 
-# could refactor to have less parameters
-function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
-    superquadrics, lineSets, sampleRanges,
-    lsExtrema, cmap, volumeData, volumeAbsMax, selected, selectedLineSets, transitionKDTree,
-    startState
-)
-
-    ip = initial_render_func(rootScene)
+function setup_state_view!(rootScene, startState, render_funcs)
     inspector = DataInspector(rootScene)
 
-    rendered_plots = Vector()
-    push!(rendered_plots, ip)
+    initial_render_func = render_funcs[startState]
+    ip, il = initial_render_func(rootScene, inspector)
 
-    scene_listeners = Vector()
+    # need to do this because otherwise julia assumes the type of the output vector
+    # then tries to convert plots to different types
+    rendered_plots = Vector{Any}()
+    scene_listeners = Vector{Any}()
+
+    for p in ip
+        push!(rendered_plots, p)
+    end
+
+    for l in il
+        push!(scene_listeners, l)
+    end
 
     tt = Scene(rootScene.scene)
     campixel!(tt)
 
     menu_bbox = Observable(BBox(0, 0, 0, 0))
-    m = Menu(tt, options=["State 1", "State 2", "Superquadric", "Volume Render"], default=startState, is_open=true, bbox=menu_bbox)
+    m = Menu(tt, options=keys(render_funcs),
+        default=startState, is_open=true, bbox=menu_bbox)
 
-    # this needs to be deleted as well
     contextMenuListener = on(events(rootScene).mousebutton, priority=1) do event
         if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(rootScene)
             x, y = events(rootScene.parent).mouseposition[]
-            menu_bbox[] = BBox(x, x + 100, y - 100, y)
+            menu_bbox[] = BBox(x, x + 150, y - 100, y)
             notify(menu_bbox)
             m.is_open = true
 
@@ -104,80 +175,17 @@ function setup_state_view!(rootScene, initial_render_func, ap1, ap2, aa1,
             off(listener)
             listener = Nothing
         end
+        empty!(scene_listeners)
 
-        if cw == "State 1"
-            bp = scatter!(rootScene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-                inspector_label=(self, i, p) -> string("Atom ", i)
-            )
-            push!(rendered_plots, bp)
-        elseif cw == "State 2"
-            bp = scatter!(rootScene, ap2, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-                inspector_label=(self, i, p) -> string("Atom ", i)
-            )
-            push!(rendered_plots, bp)
-        elseif cw == "Superquadric"
-            ls = linesegments!(rootScene,
-                lift(x -> lineSets[1][x], selectedLineSets),
-                color=lift(x -> lineSets[2][x], selectedLineSets),
-                colorrange=lift(x -> x, lsExtrema),
-                lowclip=:black,
-                colormap=:bwr)
-            ls.inspectable[] = false
-            push!(rendered_plots, ls)
+        rf = render_funcs[cw]
+        plots, listeners = rf(rootScene, inspector)
 
-            bp = mesh!(
-                rootScene,
-                lift(x -> superquadrics[x], selected),
-                color=lift((x, y) -> y[x], selected, aa1),
-                # prevents it from recoloring each time the slider moves
-                colorrange=lift(x -> (-x, x), volumeAbsMax),
-                colormap=:bam,
-                fxaa=false,
-            )
-            push!(rendered_plots, bp)
-            bp.inspectable[] = false
+        for p in plots
+            push!(rendered_plots, p)
+        end
 
-            sqHoverListener = on(events(rootScene).mouseposition) do mp
-                if is_mouseinside(rootScene)
-                    plot, idx = pick(rootScene)
-                    if plot == ls
-                        inspector.plot.text[] = string("Weight ", ls.color[][idx])
-                        inspector.plot.visible[] = true
-                        inspector.plot.position = mp
-                        return Consume(true)
-                    elseif plot != Nothing
-                        pos = position_on_plot(plot, idx)
-                        idx, d = NearestNeighbors.nn(transitionKDTree, pos)
-                        if !isnan(pos)
-                            inspector.plot.text[] = string("Atom ", idx)
-                            inspector.plot.visible[] = true
-                            inspector.plot.position = mp
-                            return Consume(true)
-                        end
-                    else
-                        return Consume(true)
-                    end
-                end
-                return Consume(false)
-            end
-
-            push!(scene_listeners, sqHoverListener)
-        else
-            bp = volume!(rootScene,
-                lift(x -> x[1], sampleRanges),
-                lift(x -> x[2], sampleRanges),
-                lift(x -> x[3], sampleRanges),
-                lift(x -> x[1], volumeData);
-                colormap=cmap,
-                algorithm=:absorption,
-                fxaa=false,
-                transparency=true,
-                shading=NoShading,
-                colorrange=lift(x -> (-x, x), volumeAbsMax),
-                visible=true)
-
-            bp.inspectable[] = false
-            push!(rendered_plots, bp)
+        for l in listeners
+            push!(scene_listeners, l)
         end
         update_cam!(rootScene.scene, eyepos, lookat)
     end
