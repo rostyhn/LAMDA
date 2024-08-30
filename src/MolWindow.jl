@@ -1,6 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
+function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, matrices)
 
     ap1, ap2 = atomPositions
 
@@ -30,16 +30,17 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         return selectedLineSets
     end
 
-    # these functions must return a list of plots and listeners they created
+    # these functions must return:
+    # a list of plots, listeners, and scenes they created
     bp = function (scene, inspector)
         return [scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))], []
+            inspector_label=(self, i, p) -> string("Atom ", i))], [], []
     end
 
     afp = function (scene, inspector)
         return [scatter!(scene, ap2,
             color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))], []
+            inspector_label=(self, i, p) -> string("Atom ", i))], [], []
     end
 
     sq = function (scene, inspector)
@@ -85,10 +86,11 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             end
             return Consume(false)
         end
-        return [ls, m], [sqHoverListener]
+        return [ls, m], [sqHoverListener], []
     end
 
     vol = function (scene, inspector)
+        cam3d!(scene)
         v = volume!(scene,
             lift(x -> x[1], sampleRanges),
             lift(x -> x[2], sampleRanges),
@@ -102,7 +104,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             colorrange=lift(x -> (-x, x), volumeAbsMax),
             visible=true)
         v.inspectable[] = false
-        return [v], []
+        return [v], [], []
     end
 
     render_funcs = Dict()
@@ -110,6 +112,31 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     render_funcs["State 2"] = afp
     render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
+
+
+    for (k, v) in matrices
+        mat_func = function (scene, inspector)
+            # scene.scene because technically the scene being passed in is an lScene
+
+            # bit of a hack, place a 2D scene on top of the 3D scene
+            # get its actual pixel coords, then drop an axis ontop of that position
+            # this way, the 3D camera doesn't get messed up
+            scene_bbox = lift(pixelarea(scene.scene)) do r
+                x, y = origin(r)
+                w, h = widths(r)
+                return BBox(x, x + w, y, y + h)
+            end
+
+            overlay = Scene(scene.scene)
+            campixel!(overlay)
+
+            ax = Axis(overlay, bbox=scene_bbox)
+            h = heatmap!(ax, v[1], colorrange=(v[2], v[3]), colormap=:viridis)
+
+            return [], [], [overlay]
+        end
+        render_funcs[k] = mat_func
+    end
 
     cl = setup_state_view!(beforeView, "State 1", render_funcs)
     cr = setup_state_view!(afterView, "State 2", render_funcs)
@@ -126,12 +153,13 @@ function setup_state_view!(rootScene, startState, render_funcs)
     inspector = DataInspector(rootScene)
 
     initial_render_func = render_funcs[startState]
-    ip, il = initial_render_func(rootScene, inspector)
+    ip, il, is = initial_render_func(rootScene, inspector)
 
     # need to do this because otherwise julia assumes the type of the output vector
     # then tries to convert plots to different types
     rendered_plots = Vector{Any}()
     scene_listeners = Vector{Any}()
+    overlays = Vector{Any}()
 
     for p in ip
         push!(rendered_plots, p)
@@ -139,6 +167,10 @@ function setup_state_view!(rootScene, startState, render_funcs)
 
     for l in il
         push!(scene_listeners, l)
+    end
+
+    for s in is
+        push!(overlays, s)
     end
 
     tt = Scene(rootScene.scene)
@@ -177,8 +209,15 @@ function setup_state_view!(rootScene, startState, render_funcs)
         end
         empty!(scene_listeners)
 
+        # works, but is probably causing a memory leak -
+        # the scene is still in memory
+        for s in overlays
+            empty!(s)
+        end
+        empty!(overlays)
+
         rf = render_funcs[cw]
-        plots, listeners = rf(rootScene, inspector)
+        plots, listeners, scenes = rf(rootScene, inspector)
 
         for p in plots
             push!(rendered_plots, p)
@@ -186,6 +225,10 @@ function setup_state_view!(rootScene, startState, render_funcs)
 
         for l in listeners
             push!(scene_listeners, l)
+        end
+
+        for s in scenes
+            push!(overlays, s)
         end
         update_cam!(rootScene.scene, eyepos, lookat)
     end

@@ -311,7 +311,12 @@ function go()
         cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
         cleanup_func()
 
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData, volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
+        matrices = Dict()
+        for (k, v) in available_matrices
+            matrices[k] = (v[1][t], v[2], v[3])
+        end
+
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData, volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup
