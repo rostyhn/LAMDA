@@ -130,6 +130,9 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             overlay = Scene(scene.scene)
             campixel!(overlay)
 
+            # this would work if we properly destroyed the scene
+            DataInspector(overlay)
+
             ax = Axis(overlay, bbox=scene_bbox)
             h = heatmap!(ax, v[1], colorrange=(v[2], v[3]), colormap=:viridis)
 
