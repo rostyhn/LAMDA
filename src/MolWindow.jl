@@ -130,7 +130,6 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             overlay = Scene(scene.scene)
             campixel!(overlay)
 
-            # this would work if we properly destroyed the scene
             DataInspector(overlay)
 
             ax = Axis(overlay, bbox=scene_bbox)
@@ -215,6 +214,7 @@ function setup_state_view!(rootScene, startState, render_funcs)
         # works, but is probably causing a memory leak -
         # the scene is still in memory
         for s in overlays
+            filter!(x -> x != s, rootScene.scene.children)
             empty!(s)
         end
         empty!(overlays)
