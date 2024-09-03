@@ -90,7 +90,6 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     end
 
     vol = function (scene, inspector)
-        cam3d!(scene)
         v = volume!(scene,
             lift(x -> x[1], sampleRanges),
             lift(x -> x[2], sampleRanges),
@@ -112,7 +111,6 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     render_funcs["State 2"] = afp
     render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
-
 
     for (k, v) in matrices
         mat_func = function (scene, inspector)
