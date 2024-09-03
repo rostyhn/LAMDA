@@ -71,13 +71,19 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
     return sc
 end
 
-function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atomPositions)
+function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atomPositions, highlighted_atoms)
     a_data = @lift begin
         return atomPositions[$ref_config][1]
     end
 
+    color = @lift begin
+        colored = color_selected($selected_atoms, num_atoms)
+        colored[$highlighted_atoms] .= :pink
+        return colored
+    end
+
     segment_selector = scatter!(scene, lift(x -> x, a_data),
-        color=lift(x -> color_selected(x, num_atoms), selected_atoms),
+        color=color,
         inspector_label=(self, i, p) -> string("Atom ", i)
     )
 
@@ -189,8 +195,39 @@ function build_selection_window(fig_size,
         return mat
     end
 
+
     matrix_plot = heatmap!(matrix_scene, mat_2d, colorrange=lift(x -> (x[2], x[3]), processed_data), colormap=:viridis)
     matrix_plot.inspectable[] = false
+
+    m_inspector = DataInspector(matrix_scene.scene)
+
+    highlighted_atoms = Observable([])
+
+    on(events(matrix_scene).mouseposition, priority=1) do mp
+        if is_mouseinside(matrix_scene)
+            empty!(highlighted_atoms[])
+            xy = mouseposition(matrix_scene)
+            i, j = floor.(Int, round.(xy))
+            val = round(mat_2d[][i, j], digits=3)
+
+            m_inspector.plot.text[] = "($i, $j) = $val"
+            m_inspector.plot.visible[] = true
+            m_inspector.plot.position = mp
+
+            # check axis to see if it matches atom count, if so, we should highlight this value
+            x, y = size(mat_2d[])
+            if x == num_atoms
+                push!(highlighted_atoms[], i)
+            end
+
+            if y == num_atoms
+                push!(highlighted_atoms[], j)
+            end
+
+            notify(highlighted_atoms)
+        end
+        return Consume(false)
+    end
 
     Colorbar(window[1, 2], colormap=:viridis, limits=lift(x -> (x[2], x[3]), processed_data), vertical=false)
 
@@ -198,7 +235,7 @@ function build_selection_window(fig_size,
         reset_limits!(matrix_scene)
     end
 
-    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions)
+    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions, highlighted_atoms)
     return window
 end
 
