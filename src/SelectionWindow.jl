@@ -13,8 +13,17 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
     colors = Observable(fill(:blue, length(positions[])))
 
     sc = scatter!(scene, positions, color=colors)
-    scene.xlabel = x_label
-    scene.ylabel = y_label
+
+    scene.xlabel = x_label[]
+    scene.ylabel = y_label[]
+
+    on(x_label) do val
+        scene.xlabel = val
+    end
+
+    on(y_label) do val
+        scene.ylabel = val
+    end
 
     sc.inspectable[] = false
     inspector = DataInspector(scene)
@@ -109,6 +118,50 @@ function atom_selection_view!(scene, ref_config, selected_atoms, num_atoms, atom
     return segment_selector
 end
 
+function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv1, alignedPositions, transitionKDTree)
+    if label == "LNCD"
+        numberOfBins = 100
+        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
+
+        @show stepSize = (maxInvariant1 - minInvariant1) / numberOfBins
+        binEdges = [minInvariant1:stepSize:maxInvariant1;]
+
+        transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
+        @time for (t, values) in transitionInvariants1
+
+            p1, p2 = get_from_t_dict(alignedPositions, t)
+            k1, k2 = get_from_t_dict(transitionKDTree, t)
+
+            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, p1, binEdges, 10, k1)
+        end
+        @show "done with distributions"
+
+        distancesToReference = computeLNCD.(Ref(transitionDistribution),
+            Ref(reference_configuration),
+            keys(transitionInvariants1),
+            Ref(selected_atoms))
+        zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
+
+        ref_distances = Dict()
+        for (t, d) in zipped
+            ref_distances[t] = d
+        end
+
+        return ref_distances
+    end
+
+    m = dms[label]["matrix"]
+    t_to_idx = dms[label]["t_to_idx"]
+    row_idx = t_to_idx[reference_configuration]
+    row = m[row_idx, :]
+
+    graph_dist = Dict()
+    for (t, idx) in t_to_idx
+        graph_dist[t] = row[idx]
+    end
+
+    return graph_dist
+end
 
 function build_selection_window(fig_size,
     data,
@@ -130,62 +183,42 @@ function build_selection_window(fig_size,
 
     processed_data = lift(x -> data[x], selected_data)
 
-    selected_atoms = Observable(Set(1))
+    selected_atoms = Observable(Set(collect(1)))
     atom_scene = Axis3(window[2, 1], title=lift(x -> string(x), reference_configuration), aspect=:equal)
 
     matrix_scene = Axis(window[2, 2])
     hidedecorations!(matrix_scene)
 
-    selection_scene = Axis(window[3, :])
+    options = push!(collect(keys(dms)), "LNCD")
 
-    ref_distances = @lift begin
-        numberOfBins = 100
-        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
+    x_selection = Menu(window[3, 1], options=options)
+    y_selection = Menu(window[3, 2], options=options, default=last(options))
 
-        @show stepSize = (maxInvariant1 - minInvariant1) / numberOfBins
-        binEdges = [minInvariant1:stepSize:maxInvariant1;]
+    x_axis = Observable(first(options))
+    y_axis = Observable(last(options))
 
-        transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
-        @time for (t, values) in transitionInvariants1
-
-            p1, p2 = get_from_t_dict(alignedPositions, t)
-            k1, k2 = get_from_t_dict(transitionKDTree, t)
-
-            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, p1, binEdges, 10, k1)
-        end
-        @show "done with distributions"
-
-        distancesToReference = computeLNCD.(Ref(transitionDistribution), Ref($reference_configuration), keys(transitionInvariants1), Ref($selected_atoms))
-        zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
-
-        ref_distances = Dict()
-        for (t, d) in zipped
-            ref_distances[t] = d
-        end
-
-        return ref_distances
+    on(x_selection.selection) do val
+        x_axis[] = val
     end
 
-    # for now graph, but should be user-selectable
-    m = dms["graph"]["matrix"]
-    t_to_idx = dms["graph"]["t_to_idx"]
-
-    graph_dist = @lift begin
-        row_idx = dms["graph"]["t_to_idx"][$reference_configuration]
-        row = m[row_idx, :]
-
-        graph_dist = Dict()
-        for (t, idx) in t_to_idx
-            graph_dist[t] = row[idx]
-        end
-        return graph_dist
+    on(y_selection.selection) do val
+        y_axis[] = val
     end
 
-    minInvariant1, maxInvariant1, transitionInvariants1 = iv1
-    t_list = collect(keys(t_to_idx))
+    selection_scene = Axis(window[4, :])
+
+    x_data = @lift begin
+        return get_matrix_data($x_axis, dms, $reference_configuration, $selected_atoms, iv1, alignedPositions, transitionKDTree)
+    end
+
+    y_data = @lift begin
+        return get_matrix_data($y_axis, dms, $reference_configuration, $selected_atoms, iv1, alignedPositions, transitionKDTree)
+    end
+
+    t_list = collect(keys(dms["graph"]["t_to_idx"]))
 
     currently_selected = Observable{Any}(Nothing)
-    dist_plot!(selection_scene, graph_dist, ref_distances, currently_selected, t_list, on_click, reference_configuration, "Graph Distance", "LNCD Score")
+    dist_plot!(selection_scene, x_data, y_data, currently_selected, t_list, on_click, reference_configuration, x_axis, y_axis)
 
     mat_2d = @lift begin
         mat = zeros(1, 1)
