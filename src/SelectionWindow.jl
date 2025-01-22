@@ -5,6 +5,7 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
     positions = @lift begin
         pos = Vector{Point2f}()
         for t in t_list
+            # invalid values will be 0
             push!(pos, Point2f(get($x_positions, t, 0.0), get($y_positions, t, 0.0)))
         end
         return pos
@@ -12,7 +13,7 @@ function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list,
 
     colors = Observable(fill(:blue, length(positions[])))
 
-    sc = scatter!(scene, positions, color=colors)
+    sc = scatter!(scene, positions, color=colors, markersize=5)
 
     scene.xlabel = x_label[]
     scene.ylabel = y_label[]
@@ -215,7 +216,7 @@ function build_selection_window(fig_size,
         return get_matrix_data($y_axis, dms, $reference_configuration, $selected_atoms, iv1, alignedPositions, transitionKDTree)
     end
 
-    t_list = collect(keys(dms["graph"]["t_to_idx"]))
+    t_list = collect(seq)
 
     currently_selected = Observable{Any}(Nothing)
     dist_plot!(selection_scene, x_data, y_data, currently_selected, t_list, on_click, reference_configuration, x_axis, y_axis)

@@ -1,3 +1,5 @@
+export get_data_alt
+
 function getDataSets(
     stateDataPath::String,
     sequencePath::String,
@@ -268,7 +270,7 @@ function check_directory_format(dir)
     return "distances.pickle" in contents &&
            "transitions.pickle" in contents &&
            "connectivity.pickle" in contents &&
-           "positions.pickle" in contents
+           "aligned_positions.pickle" in contents
 end
 
 function get_data_folders(path)
@@ -314,6 +316,18 @@ function get_data_alt()
         trajectories = get_data_folders(dataPath)
         for t in trajectories
             trajectory_name = basename(t)
+        
+            dmf = joinpath(t, "dms")
+            if !isdir(dmf)
+                return error("Distance matrix folder not found")
+            end
+
+            dms = readDistanceMatrixFolder(dmf)
+
+            if isempty(dms)
+                return error("No distance matrices found.")
+            end
+           
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
@@ -322,20 +336,8 @@ function get_data_alt()
                 end
             else
                 println("Calculating data for $(trajectory_name).")
-
                 if !isdir(cachePath)
                     mkdir(cachePath)
-                end
-
-                dmf = joinpath(t, "dms")
-                if !isdir(dmf)
-                    return error("Distance matrix folder not found")
-                end
-
-                dms = readDistanceMatrixFolder(dmf)
-
-                if isempty(dms)
-                    return error("No distance matrices found.")
                 end
 
                 distances_pickle = joinpath(t, "distances.pickle")
@@ -364,7 +366,7 @@ function get_data_alt()
                     p1, p2 = aligned
                     stateKDTree[t] = (KDTree(p1), KDTree(p2))
                 end
-
+                
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
                     "alignedPositions" => alignedAtomPositions,
                     "alignedPositionsMatrices" => alignedPositionsMatrices,
@@ -374,11 +376,12 @@ function get_data_alt()
                     "t2" => t2,
                     "t3" => t3,
                     "kdTree" => stateKDTree,
-                    "stretchedPrincipalAxes" => stretchedPrincipalAxes,
-                    "dms" => dms)
+                    "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
                 @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
             end
+
+            trajectory_data["dms"] = dms
             all_data[trajectory_name] = trajectory_data
             current_active = trajectory_name
         end
