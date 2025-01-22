@@ -52,12 +52,10 @@ function buildBonds(positions, bondDelta)
     return (points, weights, indices)
 end
 
-function go()
+function go(trajectory_name::String)
 
     GLMakie.closeall() #close all windows for rerun!
-
-    trajectories, active_trajectory_name = get_data_alt()
-    active_trajectory = trajectories[active_trajectory_name]
+    active_trajectory = get_data_alt(trajectory_name)
 
     transitionInvariants1 = active_trajectory["t1"]
     transitionInvariants2 = active_trajectory["t2"]

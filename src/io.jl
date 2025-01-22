@@ -305,18 +305,17 @@ function readDistanceMatrixFolder(folder)
     return dms
 end
 
-function get_data_alt()
+function get_data_alt(trajectory_name)
     rootPath = dirname(dirname(@__FILE__))
     dataPath = joinpath(rootPath, "data")
     cachePath = joinpath(rootPath, "cache")
 
-    current_active = Nothing
     all_data = Dict()
     if isdir(dataPath)
-        trajectories = get_data_folders(dataPath)
-        for t in trajectories
-            trajectory_name = basename(t)
+        trajectories = Dict(map(x -> (basename(x), x), get_data_folders(dataPath)))
         
+        if trajectory_name in keys(trajectories)
+            t = trajectories[trajectory_name] 
             dmf = joinpath(t, "dms")
             if !isdir(dmf)
                 return error("Distance matrix folder not found")
@@ -382,13 +381,12 @@ function get_data_alt()
             end
 
             trajectory_data["dms"] = dms
-            all_data[trajectory_name] = trajectory_data
-            current_active = trajectory_name
+        else 
+            return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
         end
     else
         return error("Data folder does not exist.")
     end
 
-    # current_active is the name of the last trajectory it read
-    return (all_data, current_active)
+    return trajectory_data 
 end

@@ -12,7 +12,7 @@ Building:
 
 In julia REPL (active TransVis Project)
 - 'using TransVis' to precompile and export functions
-- 'go()' is our current main function
+- 'go()' is our current main function; needs trajectory name as a string e.g. `go("trajectory_name")`.
 
 - first computation could take longer, as gradients need to be computed. Those will be stored for quick access in the "cache/" (Note that they are currently uniquely identified only by by their sequence. )
   
