@@ -197,7 +197,8 @@ function build_selection_window(fig_size,
     threshold = sg.sliders[1].value
     
     selection_scene = Axis(window[2, :])
-
+    deregister_interaction!(selection_scene, :rectanglezoom)
+    
     dist_graph = @lift begin
         m = dms[$selected_dm]["matrix"]
         return calc_graph_connectivity(m, $threshold)
@@ -218,15 +219,22 @@ function build_selection_window(fig_size,
 
     @show edge_weights
     # layout=lift(x->NetworkLayout.Stress(;weights=dms[x]["matrix"]), selected_dm)
-    p = graphplot!(selection_scene, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1)
+    p = graphplot!(selection_scene, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1, node_size=[10 for i in 1:nv(dist_graph[])])
     hidedecorations!(selection_scene)
+
 
     function onNodeClick(idx, e, ax)
         @show idx, t_list[idx]
         on_click(t_list[idx], x -> ())
     end
 
+    function onNodeHover(state, idx, event, axis)
+        p.node_size[][idx] = state ? 20 : 10
+        p.node_size[] = p.node_size[] # trigger observable
+    end
+    
     register_interaction!(selection_scene, :nodeclick, NodeClickHandler(onNodeClick))
+    register_interaction!(selection_scene, :nodehover, NodeHoverHandler(onNodeHover))
 
     return window
 end
