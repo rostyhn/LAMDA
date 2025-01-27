@@ -2,6 +2,7 @@ using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
 using Graphs
 using GraphMakie
+using NetworkLayout
 
 function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration, x_label, y_label)
     positions = @lift begin
@@ -166,19 +167,10 @@ function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv
     return graph_dist
 end
 
-function calc_graph_connectivity(dm, num_vertices, threshold)
-    ci = Tuple.(findall(x-> x < threshold && x != 0, dm))
-    g = SimpleGraph(num_vertices)
-    for idx in ci
-        s1, s2 = idx
-        add_edge!(g, s1, s2) 
-    end
-    
+function calc_graph_connectivity(dm, threshold)
+    ci = Graphs.SimpleEdge.(Tuple.(findall(x-> x < threshold && x != 0, dm)))
+    g = SimpleGraphFromIterator(ci)
     return g
-end
-
-function selection_graph()
-
 end
 
 function build_selection_window(fig_size,
@@ -201,25 +193,33 @@ function build_selection_window(fig_size,
     end
 
     sg = SliderGrid(window[1,2],
-                    (label = "Distance threshold", range = 0.01:0.01:1, startvalue=0.2))
+                    (label = "Distance threshold", range = 0.01:0.01:1, startvalue=0.05))
     threshold = sg.sliders[1].value
     
     selection_scene = Axis(window[2, :])
 
-    graph_connectivity = @lift begin
+    dist_graph = @lift begin
         m = dms[$selected_dm]["matrix"]
-        # t_to_idx = dms[$selected_dm]["t_to_idx"]
-        return calc_graph_connectivity(m, length(t_list), $threshold)
+        return calc_graph_connectivity(m, $threshold)
     end
 
     node_labels = @lift begin
         # assume that vertex 1 in the graph corresponds to transition 1 in t_list 
         t_to_idx = dms[$selected_dm]["t_to_idx"]
-        n = vertices($graph_connectivity)
+        n = vertices($dist_graph)
         return map(x -> string(t_list[x]), n)
     end
 
-    p = graphplot!(selection_scene, graph_connectivity, nlabels=node_labels[], edge_color=:gray, edge_width=1)
+    edge_weights = @lift begin
+        m = dms[$selected_dm]["matrix"]
+        # inverse map val to 1 -> 0, making closer distances more apparent
+        return map(x -> (:gray, 1 - (m[src(x),dst(x)] / $threshold)), collect(edges($dist_graph)))
+    end
+
+    @show edge_weights
+    # layout=lift(x->NetworkLayout.Stress(;weights=dms[x]["matrix"]), selected_dm)
+    p = graphplot!(selection_scene, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1)
+    hidedecorations!(selection_scene)
 
     function onNodeClick(idx, e, ax)
         @show idx, t_list[idx]
