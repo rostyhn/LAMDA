@@ -346,7 +346,7 @@ function get_data_alt(trajectory_name)
 
                 distanceMatrices = Dict{Int,Matrix}(Pickle.npyload(distances_pickle))
                 connectivity = Dict{Int,Matrix}(Pickle.npyload(connectivity_pickle))
-                transitions = Set{Tuple{Int,Int}}(Pickle.npyload(transitions_pickle))
+                transitions = Vector{Tuple{Int,Int}}(Pickle.npyload(transitions_pickle))
                 alignedPositionsMatrices = Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}}(Pickle.npyload(alignedPositions_pickle))
 
                 (t1, t2, t3, stretchedPrincipalAxes) =

@@ -1,4 +1,4 @@
-Tested in julia 1.10.1
+Tested in julia 1.10.4
 For current version see: 
 https://julialang.org/downloads/
 

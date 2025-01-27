@@ -1,5 +1,7 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
+using Graphs
+using GraphMakie
 
 function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration, x_label, y_label)
     positions = @lift begin
@@ -164,9 +166,24 @@ function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv
     return graph_dist
 end
 
+function calc_graph_connectivity(dm, num_vertices, threshold)
+    ci = Tuple.(findall(x-> x < threshold && x != 0, dm))
+    g = SimpleGraph(num_vertices)
+    for idx in ci
+        s1, s2 = idx
+        add_edge!(g, s1, s2) 
+    end
+    
+    return g
+end
+
+function selection_graph()
+
+end
+
 function build_selection_window(fig_size,
     data,
-    seq,
+    t_list,
     on_click,
     num_atoms,
     reference_configuration,
@@ -175,101 +192,42 @@ function build_selection_window(fig_size,
     transitionKDTree, dms)
 
     window = Figure(size=fig_size)
-    matrix_selection = Menu(window[1, 1], options=collect(keys(data)))
 
-    selected_data = Observable(first(keys(data)))
-    on(matrix_selection.selection) do val
-        selected_data[] = val
+    #options = push!(collect(keys(dms)), "LNCD")
+    selected_dm = Observable(first(keys(dms)))
+    dm_menu = Menu(window[1, 1], options=collect(keys(dms)))
+    on(dm_menu.selection) do val
+        selected_dm[] = val
     end
 
-    processed_data = lift(x -> data[x], selected_data)
+    sg = SliderGrid(window[1,2],
+                    (label = "Distance threshold", range = 0.01:0.01:1, startvalue=0.2))
+    threshold = sg.sliders[1].value
+    
+    selection_scene = Axis(window[2, :])
 
-    selected_atoms = Observable(Set(collect(1)))
-    atom_scene = Axis3(window[2, 1], title=lift(x -> string(x), reference_configuration), aspect=:equal)
-
-    matrix_scene = Axis(window[2, 2])
-    hidedecorations!(matrix_scene)
-
-    options = push!(collect(keys(dms)), "LNCD")
-
-    x_selection = Menu(window[3, 1], options=options)
-    y_selection = Menu(window[3, 2], options=options, default=last(options))
-
-    x_axis = Observable(first(options))
-    y_axis = Observable(last(options))
-
-    on(x_selection.selection) do val
-        x_axis[] = val
+    graph_connectivity = @lift begin
+        m = dms[$selected_dm]["matrix"]
+        # t_to_idx = dms[$selected_dm]["t_to_idx"]
+        return calc_graph_connectivity(m, length(t_list), $threshold)
     end
 
-    on(y_selection.selection) do val
-        y_axis[] = val
+    node_labels = @lift begin
+        # assume that vertex 1 in the graph corresponds to transition 1 in t_list 
+        t_to_idx = dms[$selected_dm]["t_to_idx"]
+        n = vertices($graph_connectivity)
+        return map(x -> string(t_list[x]), n)
     end
 
-    selection_scene = Axis(window[4, :])
+    p = graphplot!(selection_scene, graph_connectivity, nlabels=node_labels[], edge_color=:gray, edge_width=1)
 
-    x_data = @lift begin
-        return get_matrix_data($x_axis, dms, $reference_configuration, $selected_atoms, iv1, alignedPositions, transitionKDTree)
+    function onNodeClick(idx, e, ax)
+        @show idx, t_list[idx]
+        on_click(t_list[idx], x -> ())
     end
 
-    y_data = @lift begin
-        return get_matrix_data($y_axis, dms, $reference_configuration, $selected_atoms, iv1, alignedPositions, transitionKDTree)
-    end
+    register_interaction!(selection_scene, :nodeclick, NodeClickHandler(onNodeClick))
 
-    t_list = collect(seq)
-
-    currently_selected = Observable{Any}(Nothing)
-    dist_plot!(selection_scene, x_data, y_data, currently_selected, t_list, on_click, reference_configuration, x_axis, y_axis)
-
-    mat_2d = @lift begin
-        mat = zeros(1, 1)
-        if $currently_selected != Nothing
-            mat = $processed_data[1][$currently_selected]
-        end
-        return mat
-    end
-
-
-    matrix_plot = heatmap!(matrix_scene, mat_2d, colorrange=lift(x -> (x[2], x[3]), processed_data), colormap=:viridis)
-    matrix_plot.inspectable[] = false
-
-    m_inspector = DataInspector(matrix_scene.scene)
-
-    highlighted_atoms = Observable([])
-
-    on(events(matrix_scene).mouseposition, priority=1) do mp
-        if is_mouseinside(matrix_scene)
-            empty!(highlighted_atoms[])
-            xy = mouseposition(matrix_scene)
-            i, j = floor.(Int, round.(xy))
-            val = round(mat_2d[][i, j], digits=3)
-
-            m_inspector.plot.text[] = "($i, $j) = $val"
-            m_inspector.plot.visible[] = true
-            m_inspector.plot.position = mp
-
-            # check axis to see if it matches atom count, if so, we should highlight this value
-            x, y = size(mat_2d[])
-            if x == num_atoms
-                push!(highlighted_atoms[], i)
-            end
-
-            if y == num_atoms
-                push!(highlighted_atoms[], j)
-            end
-
-            notify(highlighted_atoms)
-        end
-        return Consume(false)
-    end
-
-    Colorbar(window[1, 2], colormap=:viridis, limits=lift(x -> (x[2], x[3]), processed_data), vertical=false)
-
-    on(mat_2d) do r
-        reset_limits!(matrix_scene)
-    end
-
-    atom_selection_view!(atom_scene, reference_configuration, selected_atoms, num_atoms, alignedPositions, highlighted_atoms)
     return window
 end
 

@@ -128,46 +128,6 @@ function go(trajectory_name::String)
         end
     end
 
-
-    featureVectorMatrix = zeros(
-        length(values(transitionInvariants1)),
-        length(values(transitionInvariants1) |> first) * 1,
-    )
-    mapNameToIdx = Dict{Tuple{Int,Int},Int64}()
-    mapIdxToName = Vector{Tuple{Int,Int}}()
-
-    row = 1
-    for (transition, invariants1) in transitionInvariants1
-        mapNameToIdx[transition] = row
-        push!(mapIdxToName, transition)
-
-        col = 1
-        for invariant in invariants1
-            featureVectorMatrix[row, col] = invariant |> abs
-            col = col + 1
-        end
-
-        s1, s2 = transition
-        row = row + 1
-    end
-
-    # build distance distanceMatrices
-    # move this to cache as well
-    invariantDistances = zeros(length(transitionInvariants1[firstTransition]), length(transitionInvariants1[firstTransition])) #nAtoms x nAtoms
-    invariantDistances = Vector{Matrix}(undef, length(transitionInvariants1))
-    @time for (key, value) in transitionInvariants1
-        invariantDistances[mapNameToIdx[key]] = computeDistances(value)
-    end
-
-    maxMoment = 10
-    invariantMomentFeatures = zeros(length(transitionInvariants1), maxMoment)
-    @time for (key, value) in transitionInvariants1
-        row = mapNameToIdx[key]
-        for moment in 1:maxMoment
-            invariantMomentFeatures[row, moment] = computeMoment(value, moment)
-        end
-    end
-
     # 6 is the slope - should only be even odds
     # 0.1 is the thickness of the white part
     cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)

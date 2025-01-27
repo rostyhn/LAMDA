@@ -136,7 +136,7 @@ function get_from_t_dict(d, t::Tuple{Int,Int})
 end
 
 function computeTransitionInvariants(
-    transitions::Set{Tuple{Int,Int}},
+    transitions::Vector{Tuple{Int,Int}},
     alignedPositions::Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}},
     distances::Dict{Int,Matrix}
 )::Tuple{Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
