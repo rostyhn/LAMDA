@@ -217,24 +217,15 @@ function build_selection_window(fig_size,
         return map(x -> (:gray, 1 - (m[src(x),dst(x)] / $threshold)), collect(edges($dist_graph)))
     end
 
-    @show edge_weights
-    # layout=lift(x->NetworkLayout.Stress(;weights=dms[x]["matrix"]), selected_dm)
-    p = graphplot!(selection_scene, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1, node_size=[10 for i in 1:nv(dist_graph[])])
+    p = graphplot!(selection_scene, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1)
     hidedecorations!(selection_scene)
-
 
     function onNodeClick(idx, e, ax)
         @show idx, t_list[idx]
         on_click(t_list[idx], x -> ())
     end
-
-    function onNodeHover(state, idx, event, axis)
-        p.node_size[][idx] = state ? 20 : 10
-        p.node_size[] = p.node_size[] # trigger observable
-    end
     
     register_interaction!(selection_scene, :nodeclick, NodeClickHandler(onNodeClick))
-    register_interaction!(selection_scene, :nodehover, NodeHoverHandler(onNodeHover))
 
     return window
 end
