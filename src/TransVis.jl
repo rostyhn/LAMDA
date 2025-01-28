@@ -221,7 +221,7 @@ function go(trajectory_name::String)
                     for k in eachindex($sampleRanges[3]) # z
                         point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
                         knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
-                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants2[t][knn])
+                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants1[t][knn])
                         vd[i, j, k] = kValue
                         absMax = max(abs(kValue), absMax)
                     end

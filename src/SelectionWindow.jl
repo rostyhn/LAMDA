@@ -196,7 +196,7 @@ function build_selection_window(fig_size,
         (label="Distance threshold", range=0.01:0.01:1, startvalue=0.05))
     threshold = sg.sliders[1].value
 
-    graph_ax = Axis(window[2, :])
+    graph_ax = Axis(window[2, :], backgroundcolor=:transparent)
     deregister_interaction!(graph_ax, :rectanglezoom)
 
     dist_graph = @lift begin
@@ -224,23 +224,28 @@ function build_selection_window(fig_size,
     hovered = Observable(first(t_list))
     tt_bbox = Observable(BBox(0, 0, 0, 0))
 
-    tt = Scene(graph_ax.scene)
-    #Camera3D(tt, center=false, eyeposition=Vec3f(30, 30, 30))
-    #=  ax3d = axis3d!(tt)
+    campixel!(graph_ax.scene)
+    ax3d = LScene(graph_ax.scene, show_axis=false, bbox=tt_bbox, scenekw=(backgroundcolor=:black, clear=true, size=(250, 250), zorder=100), height=250, width=250)
+    ax3d.scene.visible[] = false
 
-     v = volume!(ax3d,
-         lift(x -> x[1], sampleRanges),
-         lift(x -> x[2], sampleRanges),
-         lift(x -> x[3], sampleRanges),
-         lift(x -> volData[][x], hovered);
-         colormap=cmap,
-         algorithm=:absorption,
-         fxaa=false,
-         transparency=true,
-         shading=NoShading,
-         colorrange=lift(x -> (-x, x), volumeAbsMax),
-         visible=true)
-     v.inspectable[] = false =#
+    v = volume!(ax3d,
+        lift(x -> x[1], sampleRanges),
+        lift(x -> x[2], sampleRanges),
+        lift(x -> x[3], sampleRanges),
+        lift((x, y) -> y[x], hovered, volData);
+        colormap=cmap,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
+        overdraw=true,
+        visible=true)
+    v.inspectable[] = false
+    translate!(ax3d.scene, 0, 0, 10)
+
+    center!(ax3d.scene)
+    center!(graph_ax.scene)
 
     function onNodeClick(idx, e, ax)
         @show idx, t_list[idx]
@@ -248,17 +253,21 @@ function build_selection_window(fig_size,
     end
 
     function onNodeHover(state, idx, event, axis)
-        @show t_list[idx]
         if state
             x, y = events(graph_ax.parent).mouseposition[]
             tt_bbox[] = BBox(x, x + 250, y - 250, y)
             hovered[] = t_list[idx]
+            ax3d.scene.visible[] = true
+            notify(hovered)
             notify(tt_bbox)
+            center!(ax3d.scene)
+        else
+            ax3d.scene.visible[] = false
         end
     end
 
     register_interaction!(graph_ax, :nodeclick, NodeClickHandler(onNodeClick))
-    #register_interaction!(graph_ax, :nodehover, NodeHoverHandler(onNodeHover))
+    register_interaction!(graph_ax, :nodehover, NodeHoverHandler(onNodeHover))
 
     return window
 end
