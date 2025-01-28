@@ -2,25 +2,26 @@ using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
 function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, matrices)
 
+    @show volumeAbsMax
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
-    aa1 = lift(y -> map(x -> get(y[2], x[1], 0.0), enumerate(eachrow(ap1))), volumeData)
+    #aa1 = lift(y -> map(x -> get(y, x[1], 0.0), enumerate(eachrow(ap1))), volumeData)
 
     # pass down selected from main range filter
-    selected = @lift begin
-        selected = Vector{Int}()
-        for (i, v) in enumerate($aa1)
-            # inverse filter, blue area will be removed!
-            if v < $filterVal[1] || v > $filterVal[2]
-                push!(selected, i)
-            end
-        end
-        return selected
-    end
+    #selected = @lift begin
+    #    selected = Vector{Int}()
+    #    for (i, v) in enumerate($aa1)
+    #        # inverse filter, blue area will be removed!
+    #        if v < $filterVal[1] || v > $filterVal[2]
+    #            push!(selected, i)
+    #        end
+    #    end
+    #    return selected
+    #end
 
     # need to filter out linesets
-    selectedLineSets = lift(selected) do kept
+    #= selectedLineSets = lift(selected) do kept
         selectedLineSets = Vector{Int}()
         for (i, e) in enumerate(lineSets[3])
             if e[1] in kept && e[2] in kept
@@ -29,10 +30,11 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         end
         return selectedLineSets
     end
+    =#
 
     # these functions must return:
     # a list of plots, listeners, and scenes they created
-    bp = function (scene, inspector)
+    #= bp = function (scene, inspector)
         return [scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
             inspector_label=(self, i, p) -> string("Atom ", i))], [], []
     end
@@ -87,14 +89,14 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             return Consume(false)
         end
         return [ls, m], [sqHoverListener], []
-    end
+    end =#
 
     vol = function (scene, inspector)
         v = volume!(scene,
             lift(x -> x[1], sampleRanges),
             lift(x -> x[2], sampleRanges),
             lift(x -> x[3], sampleRanges),
-            lift(x -> x[1], volumeData);
+            volumeData;
             colormap=cmap,
             algorithm=:absorption,
             fxaa=false,
@@ -107,9 +109,9 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     end
 
     render_funcs = Dict()
-    render_funcs["State 1"] = bp
-    render_funcs["State 2"] = afp
-    render_funcs["Superquadrics"] = sq
+    #render_funcs["State 1"] = bp
+    #render_funcs["State 2"] = afp
+    #render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
 
     for (k, v) in matrices
@@ -138,8 +140,8 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         render_funcs[k] = mat_func
     end
 
-    cl = setup_state_view!(beforeView, "State 1", render_funcs)
-    cr = setup_state_view!(afterView, "State 2", render_funcs)
+    cl = setup_state_view!(beforeView, "Volume", render_funcs)
+    cr = setup_state_view!(afterView, "Volume", render_funcs)
 
     cleanup = function ()
         cl()

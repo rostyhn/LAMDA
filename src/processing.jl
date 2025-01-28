@@ -1,4 +1,5 @@
 using StatsBase, SparseArrays, Distances
+using LinearAlgebra
 
 function squaredNorm(a::Point3f)::Float32
     return a[1] * a[1] + a[2] * a[2] + a[3] * a[3]
@@ -177,12 +178,8 @@ function computeTransitionInvariants(
             F[m] = A * inv(D)
         end
 
-        I = zeros(3, 3)
-        I[1, 1] = 1.0
-        I[2, 2] = 1.0
-        I[3, 3] = 1.0
-
-        E = 0.5 .* (transpose.(F) .* F .- Ref(I))   #lagrangian Green
+        i = Matrix(1.0I, 3, 3)
+        E = 0.5 .* (transpose.(F) .* F .- Ref(i))   #lagrangian Green
         eigenSystems = eigen.(E)
 
         getStretchedEigVec(eigenSys) = [
@@ -193,7 +190,7 @@ function computeTransitionInvariants(
 
         stretchedPrincipalAxes[t] = [Vec3f.(getStretchedEigVec(eigSys)) for eigSys in eigenSystems]
 
-        deviator = E .- (1 / 3 * tr.(E) .* Ref(I))
+        deviator = E .- (1 / 3 * tr.(E) .* Ref(i))
         eigenSystemsDeviator = eigen.(deviator)
 
         I1(ev::Vector{Float64}) = ev[1] + ev[2] + ev[3]

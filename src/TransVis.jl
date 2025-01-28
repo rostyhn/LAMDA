@@ -153,7 +153,7 @@ function go(trajectory_name::String)
     available_matrices["transforms"] = normalize_matrices(transforms)
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
-    volAbsMax = Observable(0.01)
+    volAbsMax = Observable(floatmin(Float64))
     lsExtrema = Observable((-0.01, 0.01))
 
     # should move molScreen into a new file
@@ -189,31 +189,11 @@ function go(trajectory_name::String)
 
     link_cameras_lscenes(all_scenes)
 
-    filterRange = lift(x -> LinRange(-x, x, 100), volAbsMax)
-
     Label(molGrid[4, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],
         (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
         (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
         (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
-
-    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
-    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
-
-    Label(molGrid[6, 1], "Volume")
-    Colorbar(molGrid[6, 2:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
-    Label(molGrid[7, 1], "Bond Delta")
-    Colorbar(molGrid[7, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
-
-    rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 6, Relative(0.25 / 6))
-    rowsize!(molGrid.layout, 7, Relative(0.25 / 6))
-
-    cleanup_callbacks = Dict()
-
-    display(molScreen, molGrid)
-    viewIdx = 1
 
     sampleRanges = lift(sg.sliders[1].value) do vr
         return [minX-2*vr:vr:maxX+2*vr;],
@@ -229,31 +209,52 @@ function go(trajectory_name::String)
         return nn
     end
 
-    function on_click(t, on_window_hover)
-        pos1, pos2 = get_from_t_dict(alignedPositions, t)
-        kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
-
-        volumeData = @lift begin
-            volData = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
-            volDataDict = Dict{Int,Any}()
-
+    volumeData = @lift begin
+        volData = Dict{Tuple{Int,Int},Any}()
+        absMax = floatmin(Float64)
+        Threads.@threads for t in transitionSequence
+            vd = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
+            pos1, pos2 = get_from_t_dict(alignedPositions, t)
+            kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
             for i in eachindex($sampleRanges[1]) # x
                 for j in eachindex($sampleRanges[2]) # y
                     for k in eachindex($sampleRanges[3]) # z
                         point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
                         knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
-                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants1[t][knn])
-                        volData[i, j, k] = kValue
-                        idx, d = NearestNeighbors.nn(kdTree1, point)
-                        volDataDict[idx] = kValue
+                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants2[t][knn])
+                        vd[i, j, k] = kValue
+                        absMax = max(abs(kValue), absMax)
                     end
                 end
             end
-            thisVolAbsMax = max(abs(minimum(volData)), abs(maximum(volData)))
-            $volAbsMax = max($volAbsMax, thisVolAbsMax)
-
-            return volData, volDataDict
+            volData[t] = vd
         end
+        volAbsMax[] = max($volAbsMax, absMax)
+        notify(volAbsMax)
+
+        return volData
+    end
+
+    filterRange = lift(x -> LinRange(-x, x, 100), volAbsMax)
+    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
+    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
+
+    Label(molGrid[6, 1], "Volume")
+    Colorbar(molGrid[6, 2:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
+    Label(molGrid[7, 1], "Bond Delta")
+    Colorbar(molGrid[7, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
+    rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
+    rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
+    rowsize!(molGrid.layout, 6, Relative(0.25 / 6))
+    rowsize!(molGrid.layout, 7, Relative(0.25 / 6))
+    cleanup_callbacks = Dict()
+
+    display(molScreen, molGrid)
+    viewIdx = 1
+
+    function on_click(t, on_window_hover)
+        pos1, pos2 = get_from_t_dict(alignedPositions, t)
+        kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
         glyphResolution = 0.1
 
         # 1.0 should be transitionGlyphSize
@@ -274,7 +275,7 @@ function go(trajectory_name::String)
             matrices[k] = (v[1][t], v[2], v[3])
         end
 
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData, volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData[][t], volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup
@@ -288,7 +289,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), alignedPositions, stateKDTree, dms)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volAbsMax, cmap)
 
     display(screen, window)
 end

@@ -168,7 +168,7 @@ function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv
 end
 
 function calc_graph_connectivity(dm, threshold)
-    ci = Graphs.SimpleEdge.(Tuple.(findall(x-> x < threshold && x != 0, dm)))
+    ci = Graphs.SimpleEdge.(Tuple.(findall(x -> x < threshold && x != 0, dm)))
     g = SimpleGraphFromIterator(ci)
     return g
 end
@@ -181,7 +181,7 @@ function build_selection_window(fig_size,
     reference_configuration,
     iv1,
     alignedPositions,
-    transitionKDTree, dms)
+    transitionKDTree, dms, volData, sampleRanges, volumeAbsMax, cmap)
 
     window = Figure(size=fig_size)
 
@@ -192,13 +192,13 @@ function build_selection_window(fig_size,
         selected_dm[] = val
     end
 
-    sg = SliderGrid(window[1,2],
-                    (label = "Distance threshold", range = 0.01:0.01:1, startvalue=0.05))
+    sg = SliderGrid(window[1, 2],
+        (label="Distance threshold", range=0.01:0.01:1, startvalue=0.05))
     threshold = sg.sliders[1].value
-    
-    selection_scene = Axis(window[2, :])
-    deregister_interaction!(selection_scene, :rectanglezoom)
-    
+
+    graph_ax = Axis(window[2, :])
+    deregister_interaction!(graph_ax, :rectanglezoom)
+
     dist_graph = @lift begin
         m = dms[$selected_dm]["matrix"]
         return calc_graph_connectivity(m, $threshold)
@@ -214,18 +214,51 @@ function build_selection_window(fig_size,
     edge_weights = @lift begin
         m = dms[$selected_dm]["matrix"]
         # inverse map val to 1 -> 0, making closer distances more apparent
-        return map(x -> (:gray, 1 - (m[src(x),dst(x)] / $threshold)), collect(edges($dist_graph)))
+        return map(x -> (:gray, 1 - (m[src(x), dst(x)] / $threshold)), collect(edges($dist_graph)))
     end
 
-    p = graphplot!(selection_scene, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1)
-    hidedecorations!(selection_scene)
+    # layout=lift(x->NetworkLayout.Stress(;weights=dms[x]["matrix"]), selected_dm)
+    p = graphplot!(graph_ax, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1)
+    hidedecorations!(graph_ax)
+
+    hovered = Observable(first(t_list))
+    tt_bbox = Observable(BBox(0, 0, 0, 0))
+
+    tt = Scene(graph_ax.scene)
+    #Camera3D(tt, center=false, eyeposition=Vec3f(30, 30, 30))
+    #=  ax3d = axis3d!(tt)
+
+     v = volume!(ax3d,
+         lift(x -> x[1], sampleRanges),
+         lift(x -> x[2], sampleRanges),
+         lift(x -> x[3], sampleRanges),
+         lift(x -> volData[][x], hovered);
+         colormap=cmap,
+         algorithm=:absorption,
+         fxaa=false,
+         transparency=true,
+         shading=NoShading,
+         colorrange=lift(x -> (-x, x), volumeAbsMax),
+         visible=true)
+     v.inspectable[] = false =#
 
     function onNodeClick(idx, e, ax)
         @show idx, t_list[idx]
         on_click(t_list[idx], x -> ())
     end
-    
-    register_interaction!(selection_scene, :nodeclick, NodeClickHandler(onNodeClick))
+
+    function onNodeHover(state, idx, event, axis)
+        @show t_list[idx]
+        if state
+            x, y = events(graph_ax.parent).mouseposition[]
+            tt_bbox[] = BBox(x, x + 250, y - 250, y)
+            hovered[] = t_list[idx]
+            notify(tt_bbox)
+        end
+    end
+
+    register_interaction!(graph_ax, :nodeclick, NodeClickHandler(onNodeClick))
+    #register_interaction!(graph_ax, :nodehover, NodeHoverHandler(onNodeHover))
 
     return window
 end
