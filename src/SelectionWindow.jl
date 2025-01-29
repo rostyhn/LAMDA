@@ -167,9 +167,15 @@ function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv
     return graph_dist
 end
 
-function calc_graph_connectivity(dm, threshold)
-    ci = Graphs.SimpleEdge.(Tuple.(findall(x -> x < threshold && x != 0, dm)))
-    g = SimpleGraphFromIterator(ci)
+function calc_graph_connectivity(num_vertices, dm, threshold)
+    # need to do it this way so that all nodes are rendered at first and indices remain consistent
+    ci = Tuple.(findall(x -> x < threshold && x != 0, dm))
+    g = SimpleGraph(num_vertices)
+    for idx in ci
+        s1, s2 = idx
+        add_edge!(g, s1, s2)
+    end
+
     return g
 end
 
@@ -201,7 +207,7 @@ function build_selection_window(fig_size,
 
     dist_graph = @lift begin
         m = dms[$selected_dm]["matrix"]
-        return calc_graph_connectivity(m, $threshold)
+        return calc_graph_connectivity(length(t_list), m, $threshold)
     end
 
     node_labels = @lift begin
@@ -248,7 +254,6 @@ function build_selection_window(fig_size,
     center!(graph_ax.scene)
 
     function onNodeClick(idx, e, ax)
-        @show idx, t_list[idx]
         on_click(t_list[idx], x -> ())
     end
 
