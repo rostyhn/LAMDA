@@ -3,6 +3,7 @@ using StatsBase
 using Graphs
 using GraphMakie
 using NetworkLayout
+using UMAP
 
 function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration, x_label, y_label)
     positions = @lift begin
@@ -191,7 +192,7 @@ function build_selection_window(fig_size,
 
     window = Figure(size=fig_size)
 
-    #options = push!(collect(keys(dms)), "LNCD")
+    user_groups = Observable(Dict())
     selected_dm = Observable(first(keys(dms)))
     dm_menu = Menu(window[1, 1], options=collect(keys(dms)))
     on(dm_menu.selection) do val
@@ -202,33 +203,27 @@ function build_selection_window(fig_size,
         (label="Distance threshold", range=0.01:0.01:1, startvalue=0.05))
     threshold = sg.sliders[1].value
 
-    graph_ax = Axis(window[2, :], backgroundcolor=:transparent)
+    graph_ax = Axis(window[2, 1], backgroundcolor=:transparent)
+    hm_ax, hm = heatmap(window[2, 2], lift(x -> dms[x]["matrix"], selected_dm))
+    deregister_interaction!(hm_ax, :rectanglezoom)
+    deregister_interaction!(hm_ax, :dragpan)
+    deregister_interaction!(hm_ax, :scrollzoom)
+
     deregister_interaction!(graph_ax, :rectanglezoom)
 
-    dist_graph = @lift begin
-        m = dms[$selected_dm]["matrix"]
-        return calc_graph_connectivity(length(t_list), m, $threshold)
+    embedding = @lift begin
+        em = transpose(umap(transpose(dms[$selected_dm]["matrix"]), 2; metric=:precomputed))
+        embedding = map(x -> Point2f(x), eachrow(em))
     end
-
-    node_labels = @lift begin
-        # assume that vertex 1 in the graph corresponds to transition 1 in t_list 
-        t_to_idx = dms[$selected_dm]["t_to_idx"]
-        n = vertices($dist_graph)
-        return map(x -> string(t_list[x]), n)
-    end
-
-    edge_weights = @lift begin
-        m = dms[$selected_dm]["matrix"]
-        # inverse map val to 1 -> 0, making closer distances more apparent
-        return map(x -> (:gray, 1 - (m[src(x), dst(x)] / $threshold)), collect(edges($dist_graph)))
-    end
-
-    # layout=lift(x->NetworkLayout.Stress(;weights=dms[x]["matrix"]), selected_dm)
-    p = graphplot!(graph_ax, dist_graph, nlabels=node_labels, edge_color=edge_weights, edge_width=1)
-    hidedecorations!(graph_ax)
 
     hovered = Observable(first(t_list))
     tt_bbox = Observable(BBox(0, 0, 0, 0))
+
+    colors = Observable(fill(:blue, length(embedding[])))
+
+    sc = scatter!(graph_ax, embedding; color=colors)
+    text!(graph_ax, embedding; text=map(x -> string(x), t_list))
+    hidedecorations!(graph_ax)
 
     campixel!(graph_ax.scene)
     ax3d = LScene(graph_ax.scene, show_axis=false, bbox=tt_bbox, scenekw=(backgroundcolor=:black, clear=true, size=(250, 250), zorder=100), height=250, width=250)
@@ -253,14 +248,12 @@ function build_selection_window(fig_size,
     center!(ax3d.scene)
     center!(graph_ax.scene)
 
-    function onNodeClick(idx, e, ax)
-        on_click(t_list[idx], x -> ())
-    end
-
-    function onNodeHover(state, idx, event, axis)
-        if state
+    on(events(graph_ax).mouseposition) do mp
+        plot, idx = pick(graph_ax)
+        if plot == sc
+            t = t_list[idx]
             x, y = events(graph_ax.parent).mouseposition[]
-            tt_bbox[] = BBox(x, x + 250, y - 250, y)
+            tt_bbox[] = BBox(x + 15, x + 265, y - 265, y - 15)
             hovered[] = t_list[idx]
             ax3d.scene.visible[] = true
             notify(hovered)
@@ -269,10 +262,39 @@ function build_selection_window(fig_size,
         else
             ax3d.scene.visible[] = false
         end
+
+        return Consume(false)
     end
 
-    register_interaction!(graph_ax, :nodeclick, NodeClickHandler(onNodeClick))
-    register_interaction!(graph_ax, :nodehover, NodeHoverHandler(onNodeHover))
+    on(events(graph_ax).mousebutton) do event
+        if event.button == Mouse.left && event.action == Mouse.press
+            plot, idx = pick(graph_ax)
+            pos = position_on_plot(plot, idx)
+            if !isnan(pos) && (plot == sc)
+                on_click(t_list[idx], x -> ())
+            end
+        end
+        return Consume(true)
+    end
+
+    on(events(hm_ax).mouseposition) do mp
+        colors[] = fill(:blue, length(colors[]))
+        plot, _ = pick(hm_ax)
+        if plot == hm
+            xy = mouseposition(hm_ax)
+            i, j = Int.(round.(xy))
+            colors[][i] = :red
+            colors[][j] = :red
+            notify(colors)
+        end
+        #t = t_list[idx]
+        #hovered[] = t_list[idx]
+        #ax3d.scene.visible[] = true
+        #notify(hovered)
+        #notify(tt_bbox)
+        #center!(ax3d.scene)
+        return Consume(false)
+    end
 
     return window
 end

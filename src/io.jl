@@ -313,9 +313,9 @@ function get_data_alt(trajectory_name)
     all_data = Dict()
     if isdir(dataPath)
         trajectories = Dict(map(x -> (basename(x), x), get_data_folders(dataPath)))
-        
+
         if trajectory_name in keys(trajectories)
-            t = trajectories[trajectory_name] 
+            t = trajectories[trajectory_name]
             dmf = joinpath(t, "dms")
             if !isdir(dmf)
                 return error("Distance matrix folder not found")
@@ -326,7 +326,7 @@ function get_data_alt(trajectory_name)
             if isempty(dms)
                 return error("No distance matrices found.")
             end
-           
+
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
@@ -365,7 +365,7 @@ function get_data_alt(trajectory_name)
                     p1, p2 = aligned
                     stateKDTree[t] = (KDTree(p1), KDTree(p2))
                 end
-                
+
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
                     "alignedPositions" => alignedAtomPositions,
                     "alignedPositionsMatrices" => alignedPositionsMatrices,
@@ -381,12 +381,12 @@ function get_data_alt(trajectory_name)
             end
 
             trajectory_data["dms"] = dms
-        else 
+        else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
         end
     else
         return error("Data folder does not exist.")
     end
 
-    return trajectory_data 
+    return trajectory_data
 end
