@@ -4,6 +4,7 @@ using Graphs
 using GraphMakie
 using NetworkLayout
 using UMAP
+using Clustering
 
 function dist_plot!(scene, x_positions, y_positions, currently_selected, t_list, on_click, reference_configuration, x_label, y_label)
     positions = @lift begin
@@ -199,12 +200,32 @@ function build_selection_window(fig_size,
         selected_dm[] = val
     end
 
+    t_to_idx = Dict()
+    for (i, t) in enumerate(t_list)
+        t_to_idx[t] = i
+    end
+
+    reordered_matrix = @lift begin
+        m = dms[$selected_dm]["matrix"]
+        res = hclust(m, linkage=:ward, branchorder=:barjoseph)
+        rm = zeros(size(m))
+
+        # gets the correct 
+        mtx_to_t = Dict()
+        for (i, r) in enumerate(res.order)
+            rm[i, :] = map(x -> m[r, :][x], res.order)
+            mtx_to_t[i] = t_list[r]
+        end
+
+        return rm, mtx_to_t
+    end
+
     sg = SliderGrid(window[1, 2],
         (label="Distance threshold", range=0.01:0.01:1, startvalue=0.05))
     threshold = sg.sliders[1].value
 
     graph_ax = Axis(window[2, 1], backgroundcolor=:transparent)
-    hm_ax, hm = heatmap(window[2, 2], lift(x -> dms[x]["matrix"], selected_dm))
+    hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
     deregister_interaction!(hm_ax, :rectanglezoom)
     deregister_interaction!(hm_ax, :dragpan)
     deregister_interaction!(hm_ax, :scrollzoom)
@@ -212,7 +233,7 @@ function build_selection_window(fig_size,
     deregister_interaction!(graph_ax, :rectanglezoom)
 
     embedding = @lift begin
-        em = transpose(umap(transpose(dms[$selected_dm]["matrix"]), 2; metric=:precomputed))
+        em = transpose(umap(dms[$selected_dm]["matrix"], 2; metric=:precomputed))
         embedding = map(x -> Point2f(x), eachrow(em))
     end
 
@@ -283,8 +304,11 @@ function build_selection_window(fig_size,
         if plot == hm
             xy = mouseposition(hm_ax)
             i, j = Int.(round.(xy))
-            colors[][i] = :red
-            colors[][j] = :red
+            # convert to old idx - could also just use reordered matrix as input to umap
+            oldi = t_to_idx[reordered_matrix[][2][i]]
+            oldj = t_to_idx[reordered_matrix[][2][j]]
+            colors[][oldi] = :red
+            colors[][oldj] = :red
             notify(colors)
         end
         #t = t_list[idx]
