@@ -195,7 +195,7 @@ function build_selection_window(fig_size,
 
     user_groups = Observable(Dict())
     selected_dm = Observable(first(keys(dms)))
-    dm_menu = Menu(window[1, 1], options=collect(keys(dms)))
+    dm_menu = Menu(window[1, :], options=collect(keys(dms)))
     on(dm_menu.selection) do val
         selected_dm[] = val
     end
@@ -220,12 +220,46 @@ function build_selection_window(fig_size,
         return rm, mtx_to_t
     end
 
-    sg = SliderGrid(window[1, 2],
-        (label="Distance threshold", range=0.01:0.01:1, startvalue=0.05))
-    threshold = sg.sliders[1].value
+    grid = GridLayout()
+    window[2, 1] = grid
+    hl = Observable(first(t_list))
+    hr = Observable(last(t_list))
+    svl = LScene(grid[1, 1], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
+    svr = LScene(grid[1, 2], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
 
-    graph_ax = Axis(window[2, 1], backgroundcolor=:transparent)
-    hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
+    vl = volume!(svl,
+        lift(x -> x[1], sampleRanges),
+        lift(x -> x[2], sampleRanges),
+        lift(x -> x[3], sampleRanges),
+        lift((x, y) -> y[x], hl, volData);
+        colormap=cmap,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
+        overdraw=true,
+        visible=true)
+    vl.inspectable[] = false
+
+    vr = volume!(svr,
+        lift(x -> x[1], sampleRanges),
+        lift(x -> x[2], sampleRanges),
+        lift(x -> x[3], sampleRanges),
+        lift((x, y) -> y[x], hr, volData);
+        colormap=cmap,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        colorrange=lift(x -> (-x, x), volumeAbsMax),
+        overdraw=true,
+        visible=true)
+    vr.inspectable[] = false
+
+
+    graph_ax = Axis(window[3, 1], backgroundcolor=:transparent)
+    hm_ax, hm = heatmap(window[2:3, 2], lift(x -> x[1], reordered_matrix))
     deregister_interaction!(hm_ax, :rectanglezoom)
     deregister_interaction!(hm_ax, :dragpan)
     deregister_interaction!(hm_ax, :scrollzoom)
@@ -309,6 +343,10 @@ function build_selection_window(fig_size,
             oldj = t_to_idx[reordered_matrix[][2][j]]
             colors[][oldi] = :red
             colors[][oldj] = :red
+            hl[] = t_list[oldi]
+            hr[] = t_list[oldj]
+            notify(hl)
+            notify(hr)
             notify(colors)
         end
         #t = t_list[idx]
