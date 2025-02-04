@@ -178,16 +178,14 @@ function go(trajectory_name::String)
         push!(all_scenes, l)
         push!(all_scenes, r)
 
-        Camera3D(l.scene, center=false, eyeposition=Vec3f(30, 30, 30))
-        Camera3D(r.scene, center=false, eyeposition=Vec3f(30, 30, 30))
+        Camera3D(l.scene, center=true, eyeposition=Vec3f(30, 30, 30))
+        Camera3D(r.scene, center=true, eyeposition=Vec3f(30, 30, 30))
 
         rowsize!(molGrid.layout, i, Relative(0.25))
     end
     colsize!(molGrid.layout, 1, Relative(0.05))
     colsize!(molGrid.layout, 2, Relative(0.475))
     colsize!(molGrid.layout, 3, Relative(0.475))
-
-    link_cameras_lscenes(all_scenes)
 
     Label(molGrid[4, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],
@@ -275,7 +273,7 @@ function go(trajectory_name::String)
             matrices[k] = (v[1][t], v[2], v[3])
         end
 
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], volumeData[][t], volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup

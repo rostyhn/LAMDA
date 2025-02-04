@@ -291,12 +291,8 @@ function readDistanceMatrixFolder(folder)
         dm_name = basename(dmf)
         if isdir(dmf)
             dm_path = joinpath(dmf, "dm.pickle")
-            t_to_idx_path = joinpath(dmf, "t_to_idx.pickle")
-
-            if isfile(dm_path) && isfile(t_to_idx_path)
-                dm = Pickle.npyload(dm_path)
-                t_to_idx = Pickle.npyload(t_to_idx_path)
-                dms[dm_name] = Dict("matrix" => dm, "t_to_idx" => t_to_idx)
+            if isfile(dm_path)
+                dms[dm_name] = Pickle.npyload(dm_path)
             else
                 println("$dm_name not loaded.")
             end

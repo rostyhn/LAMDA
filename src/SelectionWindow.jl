@@ -206,7 +206,7 @@ function build_selection_window(fig_size,
     end
 
     reordered_matrix = @lift begin
-        m = dms[$selected_dm]["matrix"]
+        m = dms[$selected_dm]
         res = hclust(m, linkage=:ward, branchorder=:barjoseph)
         rm = zeros(size(m))
 
@@ -226,6 +226,9 @@ function build_selection_window(fig_size,
     hr = Observable(last(t_list))
     svl = LScene(grid[1, 1], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
     svr = LScene(grid[1, 2], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
+
+    Label(grid[2, 1], lift(x -> string(x), hl), tellwidth=false)
+    Label(grid[2, 2], lift(x -> string(x), hr), tellwidth=false)
 
     vl = volume!(svl,
         lift(x -> x[1], sampleRanges),
@@ -257,17 +260,16 @@ function build_selection_window(fig_size,
         visible=true)
     vr.inspectable[] = false
 
-
     graph_ax = Axis(window[3, 1], backgroundcolor=:transparent)
     hm_ax, hm = heatmap(window[2:3, 2], lift(x -> x[1], reordered_matrix))
     deregister_interaction!(hm_ax, :rectanglezoom)
-    deregister_interaction!(hm_ax, :dragpan)
-    deregister_interaction!(hm_ax, :scrollzoom)
+    #deregister_interaction!(hm_ax, :dragpan)
+    #deregister_interaction!(hm_ax, :scrollzoom)
 
     deregister_interaction!(graph_ax, :rectanglezoom)
 
     embedding = @lift begin
-        em = transpose(umap(dms[$selected_dm]["matrix"], 2; metric=:precomputed))
+        em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed))
         embedding = map(x -> Point2f(x), eachrow(em))
     end
 
@@ -301,7 +303,6 @@ function build_selection_window(fig_size,
     translate!(ax3d.scene, 0, 0, 10)
 
     center!(ax3d.scene)
-    center!(graph_ax.scene)
 
     on(events(graph_ax).mouseposition) do mp
         plot, idx = pick(graph_ax)
