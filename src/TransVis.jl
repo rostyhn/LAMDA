@@ -130,9 +130,7 @@ function go(trajectory_name::String)
 
     # 6 is the slope - should only be even odds
     # 0.1 is the thickness of the white part
-    cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-    @show "cmap Range"
-    @show length(cmap)
+    cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
 
     bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
     transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
@@ -207,10 +205,14 @@ function go(trajectory_name::String)
         return nn
     end
 
+    selected_invariant = Observable("t1")
     volumeData = @lift begin
+        @show string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant)
         volData = Dict{Tuple{Int,Int},Any}()
-        absMax = Threads.Atomic{Float64}(floatmin(Float64))
-        absMin = Threads.Atomic{Float64}(floatmax(Float64))
+        volMax = Threads.Atomic{Float64}(floatmin(Float64))
+        volMin = Threads.Atomic{Float64}(floatmax(Float64))
+        invar = active_trajectory[$selected_invariant]
+
         Threads.@threads for t in transitionSequence
             vd = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
             pos1, pos2 = get_from_t_dict(alignedPositions, t)
@@ -220,17 +222,24 @@ function go(trajectory_name::String)
                     for k in eachindex($sampleRanges[3]) # z
                         point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
                         knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
-                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants1[t][knn])
+                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* invar[t][knn])
                         vd[i, j, k] = kValue
-                        Threads.atomic_max!(absMax, kValue)
-                        Threads.atomic_min!(absMin, kValue)
+                        Threads.atomic_max!(volMax, kValue)
+                        Threads.atomic_min!(volMin, kValue)
                     end
                 end
             end
             volData[t] = vd
         end
-        volRange[] = (absMin[], absMax[])
+        volRange[] = (volMin[], volMax[])
         notify(volRange)
+        if $selected_invariant == "t2"
+            cmap[] = resample_cmap(Reverse(:matter), 10; alpha=[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        else
+            #TODO: fix cmap for t1 and t3
+            cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+        end
+        notify(cmap)
         return volData
     end
 
@@ -288,7 +297,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant1, transitionInvariants1), alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant1, transitionInvariants1), alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
 
     display(screen, window)
 end

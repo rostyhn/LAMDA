@@ -189,15 +189,22 @@ function build_selection_window(fig_size,
     reference_configuration,
     iv1,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, cmap)
+    transitionKDTree, dms, volData, sampleRanges, volRange, cmap, selected_invariant)
 
     window = Figure(size=fig_size)
 
     user_groups = Observable(Dict())
     selected_dm = Observable(first(keys(dms)))
-    dm_menu = Menu(window[1, :], options=collect(keys(dms)))
+    dm_menu = Menu(window[1, 1], options=collect(keys(dms)))
     on(dm_menu.selection) do val
         selected_dm[] = val
+        notify(selected_dm)
+    end
+
+    invar_menu = Menu(window[1, 2], options=["t1", "t2", "t3"])
+    on(invar_menu.selection) do val
+        selected_invariant[] = val
+        notify(selected_invariant)
     end
 
     t_to_idx = Dict()
@@ -220,6 +227,7 @@ function build_selection_window(fig_size,
         return rm, mtx_to_t
     end
 
+    @show volRange
     grid = GridLayout()
     window[2, 1] = grid
     hl = Observable(first(t_list))
@@ -240,7 +248,7 @@ function build_selection_window(fig_size,
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=volRange,
+        colorrange=lift(x -> x, volRange),
         overdraw=true,
         visible=true)
     vl.inspectable[] = false

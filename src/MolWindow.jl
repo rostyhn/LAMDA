@@ -1,6 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeAbsMax, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, matrices)
+function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, matrices)
 
     ap1, ap2 = atomPositions
 
@@ -58,7 +58,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             lift(x -> superquadrics[x], selected),
             color=lift((x, y) -> y[x], selected, aa1),
             # prevents it from recoloring each time the slider moves
-            colorrange=volumeAbsMax,
+            colorrange=volumeRange,
             colormap=:bam,
             fxaa=false,
         )
@@ -101,7 +101,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             fxaa=false,
             transparency=true,
             shading=NoShading,
-            colorrange=volumeAbsMax,
+            colorrange=volumeRange,
             visible=true)
         v.inspectable[] = false
         return [v], [], []
