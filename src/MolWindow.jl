@@ -58,7 +58,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             lift(x -> superquadrics[x], selected),
             color=lift((x, y) -> y[x], selected, aa1),
             # prevents it from recoloring each time the slider moves
-            colorrange=lift(x -> (-x, x), volumeAbsMax),
+            colorrange=volumeAbsMax,
             colormap=:bam,
             fxaa=false,
         )
@@ -101,7 +101,7 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             fxaa=false,
             transparency=true,
             shading=NoShading,
-            colorrange=lift(x -> (-x, x), volumeAbsMax),
+            colorrange=volumeAbsMax,
             visible=true)
         v.inspectable[] = false
         return [v], [], []

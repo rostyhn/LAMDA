@@ -189,7 +189,7 @@ function build_selection_window(fig_size,
     reference_configuration,
     iv1,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volumeAbsMax, cmap)
+    transitionKDTree, dms, volData, sampleRanges, volRange, cmap)
 
     window = Figure(size=fig_size)
 
@@ -240,7 +240,7 @@ function build_selection_window(fig_size,
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
+        colorrange=volRange,
         overdraw=true,
         visible=true)
     vl.inspectable[] = false
@@ -255,7 +255,7 @@ function build_selection_window(fig_size,
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
+        colorrange=volRange,
         overdraw=true,
         visible=true)
     vr.inspectable[] = false
@@ -296,7 +296,7 @@ function build_selection_window(fig_size,
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=lift(x -> (-x, x), volumeAbsMax),
+        colorrange=volRange,
         overdraw=true,
         visible=true)
     v.inspectable[] = false

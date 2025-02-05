@@ -79,21 +79,21 @@ function go(trajectory_name::String)
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
     #get min max of all transition invariants 1
-    minInvariant1 = 1.0e10
-    maxInvariant2 = -1.0e10
+    minInvariant1 = floatmax(Float64)
+    maxInvariant1 = floatmin(Float64)
     @time for (key, value) in transitionInvariants1
         for invariant1 in value
             if minInvariant1 > invariant1
                 minInvariant1 = invariant1
             end
-            if maxInvariant2 < invariant1
-                maxInvariant2 = invariant1
+            if maxInvariant1 < invariant1
+                maxInvariant1 = invariant1
             end
         end
     end
-    println("invariant range:  $(minInvariant1) -  $(maxInvariant2)")
+    println("invariant range:  $(minInvariant1) - $(maxInvariant1)")
 
-    invariant1MaxRange = max(abs(minInvariant1), abs(maxInvariant2))
+    invariant1MaxRange = max(abs(minInvariant1), abs(maxInvariant1))
 
     # get min max coordinates of atoms for bounding box
     # we don't really need these positions anymore
@@ -153,7 +153,7 @@ function go(trajectory_name::String)
     available_matrices["transforms"] = normalize_matrices(transforms)
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
-    volAbsMax = Observable(floatmin(Float64))
+    volRange = Observable((floatmin(Float64), floatmax(Float64)))
     lsExtrema = Observable((-0.01, 0.01))
 
     # should move molScreen into a new file
@@ -209,7 +209,8 @@ function go(trajectory_name::String)
 
     volumeData = @lift begin
         volData = Dict{Tuple{Int,Int},Any}()
-        absMax = floatmin(Float64)
+        absMax = Threads.Atomic{Float64}(floatmin(Float64))
+        absMin = Threads.Atomic{Float64}(floatmax(Float64))
         Threads.@threads for t in transitionSequence
             vd = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
             pos1, pos2 = get_from_t_dict(alignedPositions, t)
@@ -221,24 +222,24 @@ function go(trajectory_name::String)
                         knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
                         kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* transitionInvariants1[t][knn])
                         vd[i, j, k] = kValue
-                        absMax = max(abs(kValue), absMax)
+                        Threads.atomic_max!(absMax, kValue)
+                        Threads.atomic_min!(absMin, kValue)
                     end
                 end
             end
             volData[t] = vd
         end
-        volAbsMax[] = max($volAbsMax, absMax)
-        notify(volAbsMax)
-
+        volRange[] = (absMin[], absMax[])
+        notify(volRange)
         return volData
     end
 
-    filterRange = lift(x -> LinRange(-x, x, 100), volAbsMax)
+    filterRange = lift(x -> LinRange(x[1], x[2], 100), volRange)
     volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
     Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     Label(molGrid[6, 1], "Volume")
-    Colorbar(molGrid[6, 2:3], colormap=cmap, limits=lift(x -> (-x, x), volAbsMax), vertical=false)
+    Colorbar(molGrid[6, 2:3], colormap=cmap, limits=volRange, vertical=false)
     Label(molGrid[7, 1], "Bond Delta")
     Colorbar(molGrid[7, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
     rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
@@ -273,7 +274,7 @@ function go(trajectory_name::String)
             matrices[k] = (v[1][t], v[2], v[3])
         end
 
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volAbsMax, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup
@@ -287,7 +288,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant2, transitionInvariants1), alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volAbsMax, cmap)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant1, transitionInvariants1), alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap)
 
     display(screen, window)
 end
