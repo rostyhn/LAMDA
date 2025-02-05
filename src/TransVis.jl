@@ -207,32 +207,42 @@ function go(trajectory_name::String)
 
     selected_invariant = Observable("t1")
     volumeData = @lift begin
-        @show string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant)
-        volData = Dict{Tuple{Int,Int},Any}()
-        volMax = Threads.Atomic{Float64}(floatmin(Float64))
-        volMin = Threads.Atomic{Float64}(floatmax(Float64))
-        invar = active_trajectory[$selected_invariant]
+        key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
+        cached_data = read_volume_cache(key)
 
-        Threads.@threads for t in transitionSequence
-            vd = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
-            pos1, pos2 = get_from_t_dict(alignedPositions, t)
-            kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
-            for i in eachindex($sampleRanges[1]) # x
-                for j in eachindex($sampleRanges[2]) # y
-                    for k in eachindex($sampleRanges[3]) # z
-                        point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
-                        knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
-                        kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* invar[t][knn])
-                        vd[i, j, k] = kValue
-                        Threads.atomic_max!(volMax, kValue)
-                        Threads.atomic_min!(volMin, kValue)
+        if cached_data == Nothing
+            volData = Dict{Tuple{Int,Int},Any}()
+            volMax = Threads.Atomic{Float64}(floatmin(Float64))
+            volMin = Threads.Atomic{Float64}(floatmax(Float64))
+            invar = active_trajectory[$selected_invariant]
+
+            Threads.@threads for t in transitionSequence
+                vd = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
+                pos1, pos2 = get_from_t_dict(alignedPositions, t)
+                kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
+                for i in eachindex($sampleRanges[1]) # x
+                    for j in eachindex($sampleRanges[2]) # y
+                        for k in eachindex($sampleRanges[3]) # z
+                            point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
+                            knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
+                            kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* invar[t][knn])
+                            vd[i, j, k] = kValue
+                            Threads.atomic_max!(volMax, kValue)
+                            Threads.atomic_min!(volMin, kValue)
+                        end
                     end
                 end
+                volData[t] = vd
             end
-            volData[t] = vd
+            volRange[] = (volMin[], volMax[])
+            notify(volRange)
+
+            save_volume_cache(key, volData, (volMin[], volMax[]))
+        else
+            volData = cached_data[1]
+            volRange[] = cached_data[2]
+            notify(volRange)
         end
-        volRange[] = (volMin[], volMax[])
-        notify(volRange)
         if $selected_invariant == "t2"
             cmap[] = resample_cmap(Reverse(:matter), 10; alpha=[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
         else

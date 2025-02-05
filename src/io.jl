@@ -301,12 +301,37 @@ function readDistanceMatrixFolder(folder)
     return dms
 end
 
+function read_volume_cache(key)
+    h = hash(key)
+    rootPath = dirname(dirname(@__FILE__))
+    cachePath = joinpath(rootPath, "cache")
+    cache_file = joinpath(cachePath, "$(h).jdl2")
+
+    result = Nothing
+    if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
+        println("Loading $(key)")
+        result = JLD2.jldopen(cache_file; compress=true) do file
+            (file["volume_data"], file["volume_range"])
+        end
+    end
+    return result
+end
+
+function save_volume_cache(key, volume_data, volume_range)
+    h = hash(key)
+    rootPath = dirname(dirname(@__FILE__))
+    cachePath = joinpath(rootPath, "cache")
+    cache_file = joinpath(cachePath, "$(h).jdl2")
+
+    println("Saving $(key)")
+    JLD2.jldsave("$(cache_file)", true; volume_data, volume_range)
+end
+
 function get_data_alt(trajectory_name)
     rootPath = dirname(dirname(@__FILE__))
     dataPath = joinpath(rootPath, "data")
     cachePath = joinpath(rootPath, "cache")
 
-    all_data = Dict()
     if isdir(dataPath)
         trajectories = Dict(map(x -> (basename(x), x), get_data_folders(dataPath)))
 
