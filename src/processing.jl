@@ -10,6 +10,26 @@ function kernelFunction(point::Point3f, atomPosition::Point3f, width::Float64)::
     return scale * exp(-1 * (squaredNorm(point - atomPosition)) / (2 * width^2))
 end
 
+function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTree, points, num_neighbors, kernelWidth, invariant)
+    volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}()
+    volMax = floatmin(Float32)
+    volMin = floatmax(Float32)
+
+    for t in transitions
+        vd = Array{Float32,3}(zeros(length(sampleRange[1]), length(sampleRange[2]), length(sampleRange[3])))
+        pos1, pos2 = alignedPositions[t]
+        kdTree1, kdTree2 = stateKDTree[t]
+        for ((i, j, k), point) in points
+            knn, dists = NearestNeighbors.knn(kdTree1, point, num_neighbors)
+            kValue = sum(kernelFunction.(Ref(point), pos1[knn], kernelWidth) .* invariant[t][knn])
+            vd[i, j, k] = kValue
+            volMax = max(volMax, kValue)
+            volMin = min(volMin, kValue)
+        end
+        volData[t] = vd
+    end
+    return volData, volMin, volMax
+end
 # Moment feature map
 function moment_map(diagram, max_level, H::Int64)
 
@@ -127,15 +147,6 @@ function computeDistances(invariants::Vector{Float64})::Matrix{Float64}
     return Symmetric(out)
 end
 
-function get_from_t_dict(d, t::Tuple{Int16,Int16})
-    val = get(d, t, Nothing)
-    if val === Nothing
-        s1, s2 = t
-        return get(d, (s2, s1), Nothing)
-    end
-    return val
-end
-
 function computeTransitionInvariants(
     transitions::Vector{Tuple{Int16,Int16}},
     alignedPositions::Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}},
@@ -149,10 +160,11 @@ function computeTransitionInvariants(
 
     stretchedPrincipalAxes = Dict{Tuple{Int16,Int16},Vector{Vector{Vec3f}}}()
 
+    # can map reduce to parallelize
     println("Calculating transition invariants.")
     @showprogress for t in transitions
         s1, s2 = t
-        aPos1, aPos2 = get_from_t_dict(alignedPositions, t)
+        aPos1, aPos2 = alignedPositions[t]
         # creates matrices with INF values if distance sum has 0s
         weights = 1 ./ ((distances[s1] + distances[s2]) ./ 2)
 

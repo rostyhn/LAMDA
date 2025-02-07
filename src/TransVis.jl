@@ -111,8 +111,7 @@ function go(trajectory_name::String)
     # 0.1 is the thickness of the white part
     cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
 
-    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float64}}()
-    transforms = Dict{Tuple{Int,Int},Matrix{Float64}}()
+    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float32}}()
     for t in transitionSequence
         s1, s2 = t
         dm1 = distanceMatrices[s1] .* connectivity[s1]'
@@ -120,14 +119,10 @@ function go(trajectory_name::String)
 
         # for now it's total delta
         bondDeltas[t] = dm2 - dm1
-
-        p1, p2 = get_from_t_dict(alignedPositionsMatrices, t)
-        transforms[t] = (abs.(p2 - p1))
     end
 
 
     available_matrices = Dict()
-    available_matrices["transforms"] = normalize_matrices(transforms)
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
@@ -190,12 +185,7 @@ function go(trajectory_name::String)
         cached_data = read_volume_cache(key)
 
         if cached_data == Nothing
-            volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}()
-            volMax = Threads.Atomic{Float32}(floatmin(Float32))
-            volMin = Threads.Atomic{Float32}(floatmax(Float32))
-            invar = active_trajectory[$selected_invariant]
-
-            # https://docs.julialang.org/en/v1/manual/multi-threading/\
+            # https://docs.julialang.org/en/v1/manual/multi-threading/
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
                 for j in eachindex($sampleRanges[2]) # y
@@ -206,23 +196,20 @@ function go(trajectory_name::String)
                 end
             end
 
-            for t in transitionSequence
-                vd = Array{Float32,3}(zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3])))
-                pos1, pos2 = get_from_t_dict(alignedPositions, t)
-                kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
-                for ((i, j, k), point) in points
-                    knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
-                    kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* invar[t][knn])
-                    vd[i, j, k] = kValue
-                    Threads.atomic_max!(volMax, kValue)
-                    Threads.atomic_min!(volMin, kValue)
-                end
-                volData[t] = vd
+            chunks = Iterators.partition(transitionSequence, div(length(transitionSequence), Threads.nthreads()))
+            tasks = map(chunks) do chunk
+                Threads.@spawn calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
             end
-            volRange[] = (volMin[], volMax[])
+            data = fetch.(tasks)
+
+            volData = merge(first.(data)...)
+            ranges = Base.tail.(data)
+            volMin = min(first.(ranges)...)
+            volMax = max(last.(ranges)...)
+            volRange[] = (volMin, volMax)
             notify(volRange)
 
-            save_volume_cache(key, volData, (volMin[], volMax[]))
+            save_volume_cache(key, volData, (volMin, volMax))
         else
             volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}(cached_data[1])
             volRange[] = Tuple{Float32,Float32}(cached_data[2])
@@ -256,8 +243,8 @@ function go(trajectory_name::String)
     viewIdx = 1
 
     function on_click(t, on_window_hover)
-        pos1, pos2 = get_from_t_dict(alignedPositions, t)
-        kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
+        pos1, pos2 = alignedPositions[t]
+        kdTree1, kdTree2 = stateKDTree[t]
         glyphResolution = 0.1
 
         # 1.0 should be transitionGlyphSize
@@ -273,12 +260,7 @@ function go(trajectory_name::String)
         cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
         cleanup_func()
 
-        matrices = Dict()
-        for (k, v) in available_matrices
-            matrices[k] = (v[1][t], v[2], v[3])
-        end
-
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval, matrices)
+        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup

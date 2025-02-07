@@ -1,6 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, matrices)
+function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
 
     ap1, ap2 = atomPositions
 
@@ -112,32 +112,6 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     #render_funcs["State 2"] = afp
     render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
-
-    for (k, v) in matrices
-        mat_func = function (scene, inspector)
-            # scene.scene because technically the scene being passed in is an lScene
-
-            # bit of a hack, place a 2D scene on top of the 3D scene
-            # get its actual pixel coords, then drop an axis ontop of that position
-            # this way, the 3D camera doesn't get messed up
-            scene_bbox = lift(pixelarea(scene.scene)) do r
-                x, y = origin(r)
-                w, h = widths(r)
-                return BBox(x, x + w, y, y + h)
-            end
-
-            overlay = Scene(scene.scene)
-            campixel!(overlay)
-
-            DataInspector(overlay)
-
-            ax = Axis(overlay, bbox=scene_bbox)
-            h = heatmap!(ax, v[1], colorrange=(v[2], v[3]), colormap=:viridis)
-
-            return [], [], [overlay]
-        end
-        render_funcs[k] = mat_func
-    end
 
     cl = setup_state_view!(beforeView, "Volume", render_funcs)
     cr = setup_state_view!(afterView, "Volume", render_funcs)
