@@ -127,7 +127,7 @@ function computeDistances(invariants::Vector{Float64})::Matrix{Float64}
     return Symmetric(out)
 end
 
-function get_from_t_dict(d, t::Tuple{Int,Int})
+function get_from_t_dict(d, t::Tuple{Int16,Int16})
     val = get(d, t, Nothing)
     if val === Nothing
         s1, s2 = t
@@ -137,17 +137,17 @@ function get_from_t_dict(d, t::Tuple{Int,Int})
 end
 
 function computeTransitionInvariants(
-    transitions::Vector{Tuple{Int,Int}},
-    alignedPositions::Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}},
-    distances::Dict{Int,Matrix}
-)::Tuple{Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Float64}},
-    Dict{Tuple{Int,Int},Vector{Float64}},Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}}
+    transitions::Vector{Tuple{Int16,Int16}},
+    alignedPositions::Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}},
+    distances::Dict{Int16,Matrix{Float32}}
+)::Tuple{Dict{Tuple{Int16,Int16},Vector{Float32}},Dict{Tuple{Int16,Int16},Vector{Float32}},
+    Dict{Tuple{Int16,Int16},Vector{Float32}},Dict{Tuple{Int16,Int16},Vector{Vector{Vec3f}}}}
 
-    transitionInvariants1 = Dict{Tuple{Int,Int},Vector}()
-    transitionInvariants2 = Dict{Tuple{Int,Int},Vector}()
-    transitionInvariants3 = Dict{Tuple{Int,Int},Vector}()
+    transitionInvariants1 = Dict{Tuple{Int16,Int16},Vector}()
+    transitionInvariants2 = Dict{Tuple{Int16,Int16},Vector}()
+    transitionInvariants3 = Dict{Tuple{Int16,Int16},Vector}()
 
-    stretchedPrincipalAxes = Dict{Tuple{Int,Int},Vector{Vector{Vec3f}}}()
+    stretchedPrincipalAxes = Dict{Tuple{Int16,Int16},Vector{Vector{Vec3f}}}()
 
     println("Calculating transition invariants.")
     @showprogress for t in transitions
@@ -157,7 +157,7 @@ function computeTransitionInvariants(
         weights = 1 ./ ((distances[s1] + distances[s2]) ./ 2)
 
         replace!(weights, Inf => 0)
-        F = Vector{Matrix{Float64}}(undef, length(aPos1[:, 1]))
+        F = Vector{Matrix{Float32}}(undef, length(aPos1[:, 1]))
 
         for m = 1:length(aPos1[:, 1])
 

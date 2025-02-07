@@ -66,10 +66,6 @@ function go(trajectory_name::String)
 
     transitionSequence = active_trajectory["transitions"]
 
-    # sometimes need to grab first transition for setting sizes
-    firstTransition = Iterators.first(transitionSequence)
-    firstState = firstTransition[1]
-
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
     alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
@@ -77,23 +73,6 @@ function go(trajectory_name::String)
 
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
-
-    #get min max of all transition invariants 1
-    minInvariant1 = floatmax(Float64)
-    maxInvariant1 = floatmin(Float64)
-    @time for (key, value) in transitionInvariants1
-        for invariant1 in value
-            if minInvariant1 > invariant1
-                minInvariant1 = invariant1
-            end
-            if maxInvariant1 < invariant1
-                maxInvariant1 = invariant1
-            end
-        end
-    end
-    println("invariant range:  $(minInvariant1) - $(maxInvariant1)")
-
-    invariant1MaxRange = max(abs(minInvariant1), abs(maxInvariant1))
 
     # get min max coordinates of atoms for bounding box
     # we don't really need these positions anymore
@@ -151,7 +130,7 @@ function go(trajectory_name::String)
     available_matrices["transforms"] = normalize_matrices(transforms)
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
-    volRange = Observable((floatmin(Float64), floatmax(Float64)))
+    volRange = Observable((floatmin(Float32), floatmax(Float32)))
     lsExtrema = Observable((-0.01, 0.01))
 
     # should move molScreen into a new file
@@ -206,18 +185,19 @@ function go(trajectory_name::String)
     end
 
     selected_invariant = Observable("t1")
-    volumeData = @lift begin
+    @time volumeData = @lift begin
         key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
         cached_data = read_volume_cache(key)
 
         if cached_data == Nothing
-            volData = Dict{Tuple{Int,Int},Any}()
-            volMax = Threads.Atomic{Float64}(floatmin(Float64))
-            volMin = Threads.Atomic{Float64}(floatmax(Float64))
+            volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}()
+            volMax = Threads.Atomic{Float32}(floatmin(Float32))
+            volMin = Threads.Atomic{Float32}(floatmax(Float32))
             invar = active_trajectory[$selected_invariant]
 
-            Threads.@threads for t in transitionSequence
-                vd = zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
+            # https://docs.julialang.org/en/v1/manual/multi-threading/
+            for t in transitionSequence
+                vd = Array{Float32,3}(zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3])))
                 pos1, pos2 = get_from_t_dict(alignedPositions, t)
                 kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
                 for i in eachindex($sampleRanges[1]) # x
@@ -239,8 +219,8 @@ function go(trajectory_name::String)
 
             save_volume_cache(key, volData, (volMin[], volMax[]))
         else
-            volData = cached_data[1]
-            volRange[] = cached_data[2]
+            volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}(cached_data[1])
+            volRange[] = Tuple{Float32,Float32}(cached_data[2])
             notify(volRange)
         end
         if $selected_invariant == "t2"
@@ -307,7 +287,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, Observable(firstTransition), (minInvariant1, maxInvariant1, transitionInvariants1), alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
 
     display(screen, window)
 end

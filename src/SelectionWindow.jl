@@ -186,8 +186,6 @@ function build_selection_window(fig_size,
     t_list,
     on_click,
     num_atoms,
-    reference_configuration,
-    iv1,
     alignedPositions,
     transitionKDTree, dms, volData, sampleRanges, volRange, cmap, selected_invariant)
 
@@ -215,7 +213,7 @@ function build_selection_window(fig_size,
         res = hclust(m, linkage=:ward, branchorder=:barjoseph)
         rm = zeros(size(m))
 
-        # gets the correct 
+        # gets the correct idx 
         mtx_to_t = Dict()
         for (i, r) in enumerate(res.order)
             rm[i, :] = map(x -> m[r, :][x], res.order)

@@ -292,7 +292,7 @@ function readDistanceMatrixFolder(folder)
         if isdir(dmf)
             dm_path = joinpath(dmf, "dm.pickle")
             if isfile(dm_path)
-                dms[dm_name] = Pickle.npyload(dm_path)
+                dms[dm_name] = Matrix{Float32}(Pickle.npyload(dm_path))
             else
                 println("$dm_name not loaded.")
             end
@@ -365,23 +365,23 @@ function get_data_alt(trajectory_name)
                 transitions_pickle = joinpath(t, "transitions.pickle")
                 alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
 
-                distanceMatrices = Dict{Int,Matrix}(Pickle.npyload(distances_pickle))
-                connectivity = Dict{Int,Matrix}(Pickle.npyload(connectivity_pickle))
-                transitions = Vector{Tuple{Int,Int}}(Pickle.npyload(transitions_pickle))
-                alignedPositionsMatrices = Dict{Tuple{Int,Int},Tuple{Matrix,Matrix}}(Pickle.npyload(alignedPositions_pickle))
+                distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
+                connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle))
+                transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
+                alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
 
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
                 # converts into array of Point3fs
-                alignedAtomPositions = Dict{Tuple{Int,Int},Tuple{Vector{Point3f},Vector{Point3f}}}()
+                alignedAtomPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
                 for (t, aligned) in alignedPositionsMatrices
                     p1, p2 = aligned
                     alignedAtomPositions[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
                 end
 
                 println("Computing KDTrees.")
-                stateKDTree = Dict{Tuple{Int,Int},Tuple{KDTree,KDTree}}()
+                stateKDTree = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
                 @time for (t, aligned) in alignedAtomPositions
                     p1, p2 = aligned
                     stateKDTree[t] = (KDTree(p1), KDTree(p2))
