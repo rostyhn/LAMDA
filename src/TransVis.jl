@@ -195,22 +195,27 @@ function go(trajectory_name::String)
             volMin = Threads.Atomic{Float32}(floatmax(Float32))
             invar = active_trajectory[$selected_invariant]
 
-            # https://docs.julialang.org/en/v1/manual/multi-threading/
+            # https://docs.julialang.org/en/v1/manual/multi-threading/\
+            points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
+            for i in eachindex($sampleRanges[1]) # x
+                for j in eachindex($sampleRanges[2]) # y
+                    for k in eachindex($sampleRanges[3]) # z
+                        point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
+                        push!(points, ((i, j, k), point))
+                    end
+                end
+            end
+
             for t in transitionSequence
                 vd = Array{Float32,3}(zeros(length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3])))
                 pos1, pos2 = get_from_t_dict(alignedPositions, t)
                 kdTree1, kdTree2 = get_from_t_dict(stateKDTree, t)
-                for i in eachindex($sampleRanges[1]) # x
-                    for j in eachindex($sampleRanges[2]) # y
-                        for k in eachindex($sampleRanges[3]) # z
-                            point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
-                            knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
-                            kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* invar[t][knn])
-                            vd[i, j, k] = kValue
-                            Threads.atomic_max!(volMax, kValue)
-                            Threads.atomic_min!(volMin, kValue)
-                        end
-                    end
+                for ((i, j, k), point) in points
+                    knn, dists = NearestNeighbors.knn(kdTree1, point, $num_neighbors)
+                    kValue = sum(kernelFunction.(Ref(point), pos1[knn], $kernelWidth) .* invar[t][knn])
+                    vd[i, j, k] = kValue
+                    Threads.atomic_max!(volMax, kValue)
+                    Threads.atomic_min!(volMin, kValue)
                 end
                 volData[t] = vd
             end
