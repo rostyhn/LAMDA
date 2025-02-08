@@ -10,15 +10,14 @@ function kernelFunction(point::Point3f, atomPosition::Point3f, width::Float64)::
     return scale * exp(-1 * (squaredNorm(point - atomPosition)) / (2 * width^2))
 end
 
-function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTree, points, num_neighbors, kernelWidth, invariant)
-    volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}()
+function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTree, points, num_neighbors, kernelWidth, invariant, volData)
     volMax = floatmin(Float32)
     volMin = floatmax(Float32)
 
-    for t in transitions
+    for (idx, t) in transitions
         vd = Array{Float32,3}(zeros(length(sampleRange[1]), length(sampleRange[2]), length(sampleRange[3])))
-        pos1, pos2 = alignedPositions[t]
-        kdTree1, kdTree2 = stateKDTree[t]
+        pos1 = alignedPositions[t][1]
+        kdTree1 = stateKDTree[t][1]
         for ((i, j, k), point) in points
             knn, dists = NearestNeighbors.knn(kdTree1, point, num_neighbors)
             kValue = sum(kernelFunction.(Ref(point), pos1[knn], kernelWidth) .* invariant[t][knn])
@@ -26,9 +25,9 @@ function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTre
             volMax = max(volMax, kValue)
             volMin = min(volMin, kValue)
         end
-        volData[t] = vd
+        volData[idx, :] = vec(vd)
     end
-    return volData, volMin, volMax
+    return volMin, volMax
 end
 # Moment feature map
 function moment_map(diagram, max_level, H::Int64)

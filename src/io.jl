@@ -311,20 +311,20 @@ function read_volume_cache(key)
     if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
         println("Loading $(key) from $(basename(cache_file))")
         result = JLD2.jldopen(cache_file; compress=true) do file
-            (file["volume_data"], file["volume_range"])
+            file["volume_range"]
         end
     end
     return result
 end
 
-function save_volume_cache(key, volume_data, volume_range)
+function save_volume_cache(key, volume_range)
     h = hash(key)
     rootPath = dirname(dirname(@__FILE__))
     cachePath = joinpath(rootPath, "cache")
     cache_file = joinpath(cachePath, "$(h).jdl2")
 
     println("Saving $(key) as $(basename(cache_file))")
-    JLD2.jldsave("$(cache_file)", true; volume_data, volume_range)
+    JLD2.jldsave("$(cache_file)", true; volume_range)
 end
 
 function get_data_alt(trajectory_name)
@@ -380,6 +380,8 @@ function get_data_alt(trajectory_name)
                     alignedAtomPositions[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
                 end
 
+                # https://github.com/KristofferC/NearestNeighbors.jl
+                # can store kdTrees as indices only, relinking positions when needed
                 println("Computing KDTrees.")
                 stateKDTree = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
                 @time for (t, aligned) in alignedAtomPositions
@@ -410,4 +412,12 @@ function get_data_alt(trajectory_name)
     end
 
     return trajectory_data
+end
+
+function get_mmap_file(key)
+    h = hash(key)
+    rootPath = dirname(dirname(@__FILE__))
+    cachePath = joinpath(rootPath, "cache")
+    cache_file = joinpath(cachePath, "$(h).bin")
+    return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end

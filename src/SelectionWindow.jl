@@ -184,6 +184,7 @@ end
 function build_selection_window(fig_size,
     data,
     t_list,
+    t_to_idx,
     on_click,
     num_atoms,
     alignedPositions,
@@ -201,11 +202,6 @@ function build_selection_window(fig_size,
     invar_menu = Menu(window[1, 2], options=["t1", "t2", "t3"])
     on(invar_menu.selection) do val
         selected_invariant[] = val
-    end
-
-    t_to_idx = Dict()
-    for (i, t) in enumerate(t_list)
-        t_to_idx[t] = i
     end
 
     reordered_matrix = @lift begin
@@ -237,7 +233,7 @@ function build_selection_window(fig_size,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
-        lift((x, y) -> y[x], hl, volData);
+        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hl, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,
@@ -252,7 +248,7 @@ function build_selection_window(fig_size,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
-        lift((x, y) -> y[x], hr, volData);
+        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hr, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,
@@ -293,7 +289,7 @@ function build_selection_window(fig_size,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
-        lift((x, y) -> y[x], hovered, volData);
+        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,

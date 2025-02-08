@@ -21,6 +21,7 @@ using Statistics
 using ProgressMeter
 using Ripserer
 using PersistenceDiagrams
+using Mmap
 
 include("io.jl")
 include("processing.jl")
@@ -65,6 +66,11 @@ function go(trajectory_name::String)
     dms = active_trajectory["dms"]
 
     transitionSequence = active_trajectory["transitions"]
+
+    t_to_idx = Dict()
+    for (i, t) in enumerate(transitionSequence)
+        t_to_idx[t] = i
+    end
 
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
@@ -182,9 +188,9 @@ function go(trajectory_name::String)
     selected_invariant = Observable("t1")
     @time volumeData = @lift begin
         key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
-        cached_data = read_volume_cache(key)
 
-        if cached_data == Nothing
+        fp, is_cached = get_mmap_file(key)
+        if !is_cached
             # https://docs.julialang.org/en/v1/manual/multi-threading/
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
@@ -196,23 +202,22 @@ function go(trajectory_name::String)
                 end
             end
 
-            chunks = Iterators.partition(transitionSequence, div(length(transitionSequence), Threads.nthreads()))
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), length($sampleRanges[1]) * length($sampleRanges[2]) * length($sampleRanges[3])))
+            chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), Threads.nthreads()))
             tasks = map(chunks) do chunk
-                Threads.@spawn calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
+                Threads.@spawn calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant], volData)
             end
             data = fetch.(tasks)
 
-            volData = merge(first.(data)...)
-            ranges = Base.tail.(data)
-            volMin = min(first.(ranges)...)
-            volMax = max(last.(ranges)...)
+            volMin = min(first.(data)...)
+            volMax = max(last.(data)...)
             volRange[] = (volMin, volMax)
+            save_volume_cache(key, volMin, volMax)
             notify(volRange)
-
-            save_volume_cache(key, volData, (volMin, volMax))
         else
-            volData = Dict{Tuple{Int16,Int16},Array{Float32,3}}(cached_data[1])
-            volRange[] = Tuple{Float32,Float32}(cached_data[2])
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), length($sampleRanges[1]) * length($sampleRanges[2]) * length($sampleRanges[3])))
+            volRange[] = read_volume_cache(key)
+
             notify(volRange)
         end
         if $selected_invariant == "t2"
@@ -274,7 +279,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
 
     display(screen, window)
 end
