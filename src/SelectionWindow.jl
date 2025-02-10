@@ -134,6 +134,8 @@ function build_selection_window(fig_size,
     vr.inspectable[] = false
 
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
+    campixel!(graph_ax.scene)
+
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
 
     hidedecorations!(hm_ax)
@@ -151,8 +153,9 @@ function build_selection_window(fig_size,
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
 
     embedding = @lift begin
-        em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed))
-        embedding = map(x -> Point2f(x), eachrow(em))
+        # https://github.com/dillondaudert/UMAP.jl/blob/master/src/umap_.jl
+        em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed, spread=250))
+        return map(x -> Point2f(x), eachrow(em))
     end
 
     hovered = Observable(first(t_list))
@@ -165,7 +168,10 @@ function build_selection_window(fig_size,
     text!(graph_ax, embedding; text=map(x -> string(x), t_list))
     hidedecorations!(graph_ax)
 
-    campixel!(graph_ax.scene)
+    on(embedding) do _
+        autolimits!(graph_ax)
+    end
+
     ax3d = LScene(graph_ax.scene, show_axis=false, bbox=tt_bbox, scenekw=(backgroundcolor=:black, clear=true, size=(250, 250), zorder=100), height=250, width=250)
     ax3d.scene.visible[] = false
 
@@ -190,7 +196,6 @@ function build_selection_window(fig_size,
     on(events(graph_ax).mouseposition) do mp
         plot, idx = pick(graph_ax)
         if plot == sc
-            t = t_list[idx]
             x, y = events(graph_ax.parent).mouseposition[]
             tt_bbox[] = BBox(x + 15, x + 265, y - 265, y - 15)
             hovered[] = t_list[idx]
