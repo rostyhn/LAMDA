@@ -136,6 +136,11 @@ function build_selection_window(fig_size,
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
 
+    hidedecorations!(hm_ax)
+    DataInspector(hm)
+    deregister_interaction!(hm_ax, :rectanglezoom)
+    deregister_interaction!(graph_ax, :rectanglezoom)
+
     dm_menu = Menu(window, options=collect(keys(dms)))
     on(dm_menu.selection) do val
         selected_dm[] = val
@@ -144,10 +149,6 @@ function build_selection_window(fig_size,
     window[3, 2] = hgrid!(Label(window, "Distance matrix"),
         dm_menu,
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
-
-    DataInspector(hm)
-    deregister_interaction!(hm_ax, :rectanglezoom)
-    deregister_interaction!(graph_ax, :rectanglezoom)
 
     embedding = @lift begin
         em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed))
