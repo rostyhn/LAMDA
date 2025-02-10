@@ -317,14 +317,14 @@ function read_volume_cache(key)
     return result
 end
 
-function save_volume_cache(key, volume_range)
+function save_volume_cache(key, volume_range, dimensions)
     h = hash(key)
     rootPath = dirname(dirname(@__FILE__))
     cachePath = joinpath(rootPath, "cache")
     cache_file = joinpath(cachePath, "$(h).jdl2")
 
     println("Saving $(key) as $(basename(cache_file))")
-    JLD2.jldsave("$(cache_file)", true; volume_range)
+    JLD2.jldsave("$(cache_file)", true; volume_range, dimensions)
 end
 
 function get_data_alt(trajectory_name)

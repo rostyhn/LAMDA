@@ -188,6 +188,9 @@ function go(trajectory_name::String)
     selected_invariant = Observable("t1")
     @time volumeData = @lift begin
         key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
+        w = length($sampleRanges[1])
+        h = length($sampleRanges[2])
+        d = length($sampleRanges[3])
 
         fp, is_cached = get_mmap_file(key)
         if !is_cached
@@ -202,10 +205,13 @@ function go(trajectory_name::String)
                 end
             end
 
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), length($sampleRanges[1]) * length($sampleRanges[2]) * length($sampleRanges[3])))
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
             chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), Threads.nthreads()))
+
+            # TODO: optimize mmap writing, currently wastes a lot of time locking and writing to mmap file between threads
             tasks = map(chunks) do chunk
                 Threads.@spawn calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant], volData)
+                # could write on job finish to save time
             end
             data = fetch.(tasks)
 
@@ -213,11 +219,11 @@ function go(trajectory_name::String)
             volMax = max(last.(data)...)
             volRange[] = (volMin, volMax)
             notify(volRange)
-            save_volume_cache(key, (volMin, volMax))
+            save_volume_cache(key, (volMin, volMax), (w, h, d))
         else
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), length($sampleRanges[1]) * length($sampleRanges[2]) * length($sampleRanges[3])))
-            volRange[] = read_volume_cache(key)
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
 
+            volRange[] = read_volume_cache(key)
             notify(volRange)
         end
         if $selected_invariant == "t2"
