@@ -64,16 +64,8 @@ function build_selection_window(fig_size,
     window = Figure(size=fig_size)
 
     user_groups = Observable(Dict())
-    selected_dm = Observable(first(keys(dms)))
-    dm_menu = Menu(window[1, 1], options=collect(keys(dms)))
-    on(dm_menu.selection) do val
-        selected_dm[] = val
-    end
 
-    invar_menu = Menu(window[1, 2], options=["t1", "t2", "t3"])
-    on(invar_menu.selection) do val
-        selected_invariant[] = val
-    end
+    selected_dm = Observable(first(keys(dms)))
 
     reordered_matrix = @lift begin
         m = dms[$selected_dm]
@@ -87,18 +79,29 @@ function build_selection_window(fig_size,
             mtx_to_t[i] = t_list[r]
         end
 
-        return rm, mtx_to_t
+        # get minimum and maximum of entire matrix for cmap
+        fl = vec(m)
+        return rm, mtx_to_t, (minimum(fl), maximum(fl))
     end
 
     grid = GridLayout()
-    window[2, 1] = grid
+    window[1, 1] = grid
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
+
     svl = LScene(grid[1, 1], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
     svr = LScene(grid[1, 2], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
 
     Label(grid[2, 1], lift(x -> string(x), hl), tellwidth=false)
     Label(grid[2, 2], lift(x -> string(x), hr), tellwidth=false)
+
+    invar_menu = Menu(window, options=["t1", "t2", "t3"], tellwidth=false)
+    on(invar_menu.selection) do val
+        selected_invariant[] = val
+    end
+    grid[3, :] = hgrid!(Label(window, "Selected invariant"),
+        invar_menu,
+        Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))
 
     vl = volume!(svl,
         lift(x -> x[1], sampleRanges),
@@ -130,8 +133,18 @@ function build_selection_window(fig_size,
         visible=true)
     vr.inspectable[] = false
 
-    graph_ax = Axis(window[3, 1], backgroundcolor=:transparent)
-    hm_ax, hm = heatmap(window[2:3, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
+    graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
+    hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
+
+    dm_menu = Menu(window, options=collect(keys(dms)))
+    on(dm_menu.selection) do val
+        selected_dm[] = val
+    end
+
+    window[3, 2] = hgrid!(Label(window, "Distance matrix"),
+        dm_menu,
+        Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
+
     DataInspector(hm)
     deregister_interaction!(hm_ax, :rectanglezoom)
     deregister_interaction!(graph_ax, :rectanglezoom)
@@ -147,6 +160,7 @@ function build_selection_window(fig_size,
     colors = Observable(fill(:blue, length(embedding[])))
 
     sc = scatter!(graph_ax, embedding; color=colors)
+    sc.inspectable[] = false
     text!(graph_ax, embedding; text=map(x -> string(x), t_list))
     hidedecorations!(graph_ax)
 
