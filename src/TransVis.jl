@@ -226,10 +226,12 @@ function go(trajectory_name::String)
             volRange[] = read_volume_cache(key)
             notify(volRange)
         end
+
         if $selected_invariant == "t2"
-            cmap[] = resample_cmap(Reverse(:matter), 10; alpha=[0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+            cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
         else
-            #TODO: fix cmap for t1 and t3
+            # should be fine, seems off-center because abs(volMin) != abs(volMax)
+            # could additionally calculate volAbsMin to remove noisy values
             cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
         end
         notify(cmap)

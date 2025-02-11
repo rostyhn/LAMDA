@@ -64,7 +64,8 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         )
         m.inspectable[] = false
 
-        sqHoverListener = on(events(scene).mouseposition) do mp
+        # weak = true removes the connection when the return value of on is gc'd
+        sqHoverListener = on(events(scene).mouseposition, weak=true) do mp
             if is_mouseinside(scene)
                 plot, idx = pick(scene)
                 if plot == ls
