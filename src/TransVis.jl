@@ -205,13 +205,21 @@ function go(trajectory_name::String)
                 end
             end
 
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
-            chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), Threads.nthreads()))
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false)
+            chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), Threads.nthreads() - 1))
+
 
             # TODO: optimize mmap writing, currently wastes a lot of time locking and writing to mmap file between threads
+            # likely needs to be producer / consumer architecture where one thread writes and the others calculate
             tasks = map(chunks) do chunk
-                Threads.@spawn calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant], volData)
-                # could write on job finish to save time
+                Threads.@spawn begin
+                    vd, volmin, volmax = calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
+                    for (idx, d) in vd
+                        volData[idx, :] = d
+                    end
+                    empty!(vd) # clear memory
+                    return (volmin, volmax)
+                end
             end
             data = fetch.(tasks)
 
