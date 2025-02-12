@@ -209,12 +209,15 @@ function go(trajectory_name::String)
             volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
             chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), max(Threads.nthreads() - 1, 1)))
 
-            d_ch = Channel()
+            #write() should be faster, question is how to do it sequentially
+            # might want to set BLAS.set_num_threads(1)
+            d_ch = Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}()
             map(chunks) do chunk
                 Threads.@spawn begin
                     # split into subchunks to save memory
-                    subchunks = Iterators.partition(chunk, min(100, length(chunk)))
+                    subchunks = Iterators.partition(chunk, min(25, length(chunk)))
                     for sc in subchunks
+                        # might want to copy over alignedPositions, stateKDTree etc for the selected values
                         vd, sc_volmin, sc_volmax, sc_absvolmin = calculateVolumes(sc, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
                         put!(d_ch, (vd, sc_volmin, sc_volmax, sc_absvolmin))
                     end
@@ -227,6 +230,7 @@ function go(trajectory_name::String)
 
             processed = 0
             while processed < length(transitionSequence)
+                # possibly sort by idx before writing with write instead of mmap?
                 vd, c_volmin, c_volmax, c_absvolmin = take!(d_ch)
                 for (idx, d) in vd
                     volData[idx, :] = d
@@ -236,6 +240,7 @@ function go(trajectory_name::String)
                 volMax = max(c_volmax, volMax)
                 absVolMin = min(absVolMin, c_absvolmin)
             end
+            close(d_ch)
 
             volRange[] = (volMin, volMax)
             notify(volRange)

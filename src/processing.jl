@@ -26,7 +26,7 @@ function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTre
             vd[i, j, k] = kValue
             volMax = max(volMax, kValue)
             volMin = min(volMin, kValue)
-            absVolMin = min(absVolMin, kValue)
+            absVolMin = min(absVolMin, abs(kValue))
         end
         volData[idx] = (t_idx, vec(vd))
     end
