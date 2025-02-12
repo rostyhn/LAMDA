@@ -311,20 +311,22 @@ function read_volume_cache(key)
     if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
         println("Loading $(key) from $(basename(cache_file))")
         result = JLD2.jldopen(cache_file; compress=true) do file
+            @show keys(file)
+            @show file["absVolMin"]
             file["volume_range"]
         end
     end
     return result
 end
 
-function save_volume_cache(key, volume_range, dimensions)
+function save_volume_cache(key, volume_range, dimensions, absVolMin)
     h = hash(key)
     rootPath = dirname(dirname(@__FILE__))
     cachePath = joinpath(rootPath, "cache")
     cache_file = joinpath(cachePath, "$(h).jdl2")
 
     println("Saving $(key) as $(basename(cache_file))")
-    JLD2.jldsave("$(cache_file)", true; volume_range, dimensions)
+    JLD2.jldsave("$(cache_file)", true; volume_range, dimensions, absVolMin)
 end
 
 function get_data_alt(trajectory_name)

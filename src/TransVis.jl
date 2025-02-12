@@ -205,29 +205,41 @@ function go(trajectory_name::String)
                 end
             end
 
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false)
-            chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), Threads.nthreads() - 1))
+            # setting shared = false does not save the results
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
+            chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), max(Threads.nthreads() - 1, 1)))
 
-
-            # TODO: optimize mmap writing, currently wastes a lot of time locking and writing to mmap file between threads
-            # likely needs to be producer / consumer architecture where one thread writes and the others calculate
-            tasks = map(chunks) do chunk
+            d_ch = Channel()
+            map(chunks) do chunk
                 Threads.@spawn begin
-                    vd, volmin, volmax = calculateVolumes(chunk, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
-                    for (idx, d) in vd
-                        volData[idx, :] = d
+                    # split into subchunks to save memory
+                    subchunks = Iterators.partition(chunk, min(100, length(chunk)))
+                    for sc in subchunks
+                        vd, sc_volmin, sc_volmax, sc_absvolmin = calculateVolumes(sc, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
+                        put!(d_ch, (vd, sc_volmin, sc_volmax, sc_absvolmin))
                     end
-                    empty!(vd) # clear memory
-                    return (volmin, volmax)
                 end
             end
-            data = fetch.(tasks)
 
-            volMin = min(first.(data)...)
-            volMax = max(last.(data)...)
+            absVolMin = floatmax(Float32)
+            volMin = floatmax(Float32)
+            volMax = floatmin(Float32)
+
+            processed = 0
+            while processed < length(transitionSequence)
+                vd, c_volmin, c_volmax, c_absvolmin = take!(d_ch)
+                for (idx, d) in vd
+                    volData[idx, :] = d
+                end
+                processed += length(vd)
+                volMin = min(c_volmin, volMin)
+                volMax = max(c_volmax, volMax)
+                absVolMin = min(absVolMin, c_absvolmin)
+            end
+
             volRange[] = (volMin, volMax)
             notify(volRange)
-            save_volume_cache(key, (volMin, volMax), (w, h, d))
+            save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
         else
             volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
 

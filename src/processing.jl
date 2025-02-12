@@ -13,6 +13,7 @@ end
 function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTree, points, num_neighbors, kernelWidth, invariant)
     volMax = floatmin(Float32)
     volMin = floatmax(Float32)
+    absVolMin = floatmax(Float32)
 
     volData = Array{Tuple{Int,Array{Float32}}}(undef, length(transitions))
     for (idx, (t_idx, t)) in enumerate(transitions)
@@ -25,10 +26,11 @@ function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTre
             vd[i, j, k] = kValue
             volMax = max(volMax, kValue)
             volMin = min(volMin, kValue)
+            absVolMin = min(absVolMin, kValue)
         end
         volData[idx] = (t_idx, vec(vd))
     end
-    return volData, volMin, volMax
+    return volData, volMin, volMax, absVolMin
 end
 # Moment feature map
 function moment_map(diagram, max_level, H::Int64)
