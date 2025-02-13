@@ -67,7 +67,7 @@ function build_selection_window(fig_size,
 
     selected_dm = Observable(first(keys(dms)))
 
-    reordered_matrix = @lift begin
+    @time reordered_matrix = @lift begin
         m = dms[$selected_dm]
         res = hclust(m, linkage=:ward, branchorder=:barjoseph)
         rm = zeros(size(m))

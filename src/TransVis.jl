@@ -206,7 +206,7 @@ function go(trajectory_name::String)
             end
 
             # setting shared = false does not save the results
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), grow=false)
             chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), max(Threads.nthreads() - 1, 1)))
 
             #write() should be faster, question is how to do it sequentially
@@ -215,7 +215,7 @@ function go(trajectory_name::String)
             map(chunks) do chunk
                 Threads.@spawn begin
                     # split into subchunks to save memory
-                    subchunks = Iterators.partition(chunk, min(25, length(chunk)))
+                    subchunks = Iterators.partition(chunk, 25)
                     for sc in subchunks
                         # might want to copy over alignedPositions, stateKDTree etc for the selected values
                         vd, sc_volmin, sc_volmax, sc_absvolmin = calculateVolumes(sc, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
@@ -246,8 +246,7 @@ function go(trajectory_name::String)
             notify(volRange)
             save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
         else
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
-
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
             volRange[] = read_volume_cache(key)
             notify(volRange)
         end
