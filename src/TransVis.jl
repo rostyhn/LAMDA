@@ -194,6 +194,7 @@ function go(trajectory_name::String)
 
         fp, is_cached = get_mmap_file(key)
         if !is_cached
+            println("Calculating volume data for $(key); will be saved as $(hash(key))")
             # https://docs.julialang.org/en/v1/manual/multi-threading/
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
@@ -206,7 +207,7 @@ function go(trajectory_name::String)
             end
 
             # setting shared = false does not save the results
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false)
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
             chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), max(Threads.nthreads() - 1, 1)))
 
             #write() should be faster, question is how to do it sequentially
@@ -214,11 +215,12 @@ function go(trajectory_name::String)
             d_ch = Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}()
             map(chunks) do chunk
                 Threads.@spawn begin
+                    sample_range = (length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
                     # split into subchunks to save memory
                     subchunks = Iterators.partition(chunk, 25)
                     for sc in subchunks
                         # might want to copy over alignedPositions, stateKDTree etc for the selected values
-                        vd, sc_volmin, sc_volmax, sc_absvolmin = calculateVolumes(sc, $sampleRanges, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
+                        vd, sc_volmin, sc_volmax, sc_absvolmin = calculateVolumes(sc, sample_range, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
                         put!(d_ch, (vd, sc_volmin, sc_volmax, sc_absvolmin))
                     end
                 end

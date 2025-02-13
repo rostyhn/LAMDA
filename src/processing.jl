@@ -17,7 +17,7 @@ function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTre
 
     volData = Array{Tuple{Int,Array{Float32}}}(undef, length(transitions))
     for (idx, (t_idx, t)) in enumerate(transitions)
-        vd = Array{Float32,3}(zeros(length(sampleRange[1]), length(sampleRange[2]), length(sampleRange[3])))
+        vd = Array{Float32,3}(zeros(sampleRange))
         pos1 = alignedPositions[t][1]
         kdTree1 = stateKDTree[t][1]
         for ((i, j, k), point) in points
