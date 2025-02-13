@@ -67,7 +67,9 @@ function build_selection_window(fig_size,
 
     selected_dm = Observable(first(keys(dms)))
 
-    @time reordered_matrix = @lift begin
+    reordered_matrix = @lift begin
+        println("Clustering $($selected_dm)")
+
         m = dms[$selected_dm]
         res = hclust(m, linkage=:ward, branchorder=:barjoseph)
         rm = zeros(size(m))
@@ -75,7 +77,7 @@ function build_selection_window(fig_size,
         # gets the correct idx 
         mtx_to_t = Dict()
         for (i, r) in enumerate(res.order)
-            rm[i, :] = map(x -> m[r, :][x], res.order)
+            rm[i, :] .= m[r, :][res.order]
             mtx_to_t[i] = t_list[r]
         end
 
@@ -103,7 +105,7 @@ function build_selection_window(fig_size,
         invar_menu,
         Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))
 
-    vl = volume!(svl,
+    @time vl = volume!(svl,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
@@ -118,7 +120,7 @@ function build_selection_window(fig_size,
         visible=true)
     vl.inspectable[] = false
 
-    vr = volume!(svr,
+    @time vr = volume!(svr,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
@@ -153,8 +155,10 @@ function build_selection_window(fig_size,
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
 
     embedding = @lift begin
+        println("Calculating umap embedding for $($selected_dm)")
         # https://github.com/dillondaudert/UMAP.jl/blob/master/src/umap_.jl
-        em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed, spread=250))
+        # not a major bottleneck but should be cached eventually
+        @time em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed, spread=250))
         return map(x -> Point2f(x), eachrow(em))
     end
 
@@ -163,9 +167,9 @@ function build_selection_window(fig_size,
 
     colors = Observable(fill(:blue, length(embedding[])))
 
-    sc = scatter!(graph_ax, embedding; color=colors)
+    @time sc = scatter!(graph_ax, embedding; color=colors)
     sc.inspectable[] = false
-    text!(graph_ax, embedding; text=map(x -> string(x), t_list))
+    @time text!(graph_ax, embedding; text=map(x -> string(x), t_list))
     hidedecorations!(graph_ax)
 
     on(embedding) do _

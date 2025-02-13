@@ -206,7 +206,7 @@ function go(trajectory_name::String)
             end
 
             # setting shared = false does not save the results
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), grow=false)
+            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false)
             chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), max(Threads.nthreads() - 1, 1)))
 
             #write() should be faster, question is how to do it sequentially
