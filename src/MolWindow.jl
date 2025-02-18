@@ -1,7 +1,21 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
+function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, fig_size=(400, 400))
+    molWindow = Figure(size=fig_size)
 
+    beforeView = LScene(
+        molWindow[1, 1],
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    afterView = LScene(
+        molWindow[1, 2],
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
@@ -29,7 +43,6 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         end
         return selectedLineSets
     end
-
 
     # these functions must return:
     # a list of plots, listeners, and scenes they created
@@ -109,8 +122,8 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
     end
 
     render_funcs = Dict()
-    #render_funcs["State 1"] = bp
-    #render_funcs["State 2"] = afp
+    render_funcs["State 1"] = bp
+    render_funcs["State 2"] = afp
     render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
 
@@ -121,6 +134,13 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         cl()
         cr()
     end
+
+    screen = GLMakie.Screen(title="TransVis - $transition")
+    display(screen, molWindow)
+
+    #on(events(molWindow).entered_window) do is_hovered
+    # on_window_hover(transition, is_hovered)
+    #end
 
     return cleanup
 end
@@ -210,9 +230,7 @@ function setup_state_view!(rootScene, startState, render_funcs)
         update_cam!(rootScene.scene, eyepos, lookat)
     end
 
-    #on(events(molWindow).entered_window) do is_hovered
-    # on_window_hover(transition, is_hovered)
-    #end
+
     cleanup = function ()
         off(contextMenuListener)
         contextMenuListener = Nothing

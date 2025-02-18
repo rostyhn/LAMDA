@@ -117,7 +117,8 @@ function go(trajectory_name::String)
     # 0.1 is the thickness of the white part
     cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
 
-    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float32}}()
+    # should be cached
+    bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
     for t in transitionSequence
         s1, s2 = t
         dm1 = distanceMatrices[s1] .* connectivity[s1]'
@@ -134,7 +135,8 @@ function go(trajectory_name::String)
     lsExtrema = Observable((-0.01, 0.01))
 
     # should move molScreen into a new file
-    molScreen = GLMakie.Screen()
+    #molScreen = GLMakie.Screen()
+
     molGrid = Figure()
 
     views = Vector()
@@ -274,18 +276,19 @@ function go(trajectory_name::String)
     rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
     cleanup_callbacks = Dict()
 
-    display(molScreen, molGrid)
+    #display(molScreen, molGrid)
+
     viewIdx = 1
 
     function on_click(t, on_window_hover)
         pos1, pos2 = alignedPositions[t]
         kdTree1, kdTree2 = stateKDTree[t]
-        glyphResolution = 0.1
 
         # 1.0 should be transitionGlyphSize
-        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
-        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t])
+        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
 
+        # should also be precomputed
+        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t])
         thislsExtrema = extrema(ls[2])
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
         notify(lsExtrema)
@@ -295,16 +298,10 @@ function go(trajectory_name::String)
         cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
         cleanup_func()
 
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
+        cleanup = build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
         lab.text = string(t)
 
         cleanup_callbacks[viewIdx] = cleanup
-
-        if viewIdx < length(views)
-            viewIdx += 1
-        else
-            viewIdx = 1
-        end
     end
 
     screen = GLMakie.Screen()

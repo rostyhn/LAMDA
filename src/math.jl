@@ -15,7 +15,7 @@ function signPow(base, exponent)::Float64
     return sign(base) * abs(base)^exponent
 end
 
-function qz(phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Float64)
+function qz(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
     x = signPow(cos(theta), alpha) * signPow(sin(phi), beta)
     y = signPow(sin(theta), alpha) * signPow(sin(phi), beta)
     z = signPow(cos(phi), beta)
@@ -23,7 +23,7 @@ function qz(phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Flo
     return Point3f(x, y, z)
 end
 
-function qx(phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Float64)
+function qx(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
     x = signPow(cos(phi), beta)
     y = -signPow(sin(theta), alpha) * signPow(sin(phi), beta)
     z = signPow(cos(theta), alpha) * signPow(sin(phi), beta)
@@ -31,7 +31,7 @@ function qx(phi::Float64, theta::Float64, alpha::Float64, beta::Float64, K2::Flo
 
 end
 
-function superquadric(scale::Float64, position::Point3f, principalStretches::Vector{GeometryBasics.Vec{3,Float32}}, K1::Float64, K3::Float64, sharpness::Float64, resolution=0.2)
+function superquadric(scale::Float64, position::Point3f, principalStretches::Vector{GeometryBasics.Vec{3,Float32}}, K1::Float32, sharpness::Float64, resolution=0.2)
     points = Vector{Point3f}()
 
     #K2 is the volume perserving fractionalAnisotropy
@@ -48,8 +48,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
 
     cl = (stretchRatio1 - stretchRatio2) / (stretchRatio1 + stretchRatio2 + stretchRatio3)   #linear anisotopy
     cp = 2 * (stretchRatio2 - stretchRatio3) / (stretchRatio1 + stretchRatio2 + stretchRatio3) # planar anisotropy
-    cs = 3 * stretchRatio3 / (stretchRatio1 + stretchRatio2 + stretchRatio3)
-
 
     phiRange = [0:resolution:pi;]  #vertical: south -> north
     push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
@@ -62,7 +60,7 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
 
         for phi in phiRange
             for theta in thetaRange
-                push!(points, qx(phi, theta, alpha, beta, K1))
+                push!(points, qx(phi, theta, alpha, beta))
             end
         end
     else
@@ -71,7 +69,7 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
 
         for phi in phiRange
             for theta in thetaRange
-                push!(points, qz(phi, theta, alpha, beta, K1))
+                push!(points, qz(phi, theta, alpha, beta))
             end
         end
     end
