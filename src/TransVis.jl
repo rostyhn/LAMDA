@@ -40,6 +40,7 @@ function go(trajectory_name::String)
     transitionInvariants1 = active_trajectory["t1"]
     transitionInvariants2 = active_trajectory["t2"]
     transitionInvariants3 = active_trajectory["t3"]
+
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     stateKDTree = active_trajectory["kdTree"]
     dms = active_trajectory["dms"]
@@ -98,54 +99,33 @@ function go(trajectory_name::String)
 
     # should be cached
     bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
+    bdMin = floatmax(Float32)
+    bdMax = floatmin(Float32)
     for t in transitionSequence
         s1, s2 = t
-        dm1 = distanceMatrices[s1] .* connectivity[s1]'
-        dm2 = distanceMatrices[s2] .* connectivity[s2]'
+        dm1 = distanceMatrices[s1] * connectivity[s1]
+        dm2 = distanceMatrices[s2] * connectivity[s2]
 
         # for now it's total delta
-        bondDeltas[t] = dm2 - dm1
+        bd = dm2 - dm1
+        vals = vec(bd)
+
+        bdMin = min(bdMin, minimum(vals))
+        bdMax = max(bdMax, maximum(vals))
+
+        bondDeltas[t] = bd
     end
+    lsExtrema = (bdMin, bdMax)
+    @show lsExtrema
 
     available_matrices = Dict()
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
-    lsExtrema = Observable((-0.01, 0.01))
-
-    # should move molScreen into a new file
-    #molScreen = GLMakie.Screen()
 
     molGrid = Figure()
 
-    views = Vector()
-    all_scenes = Vector()
-    for i in 1:3
-        lab = Label(molGrid[i, 1], "", rotation=pi / 2)
-        l = LScene(
-            molGrid[i, 2],
-            show_axis=false,
-            scenekw=(backgroundcolor=:black, clear=true),
-        )
-        r = LScene(
-            molGrid[i, 3],
-            show_axis=false,
-            scenekw=(backgroundcolor=:black, clear=true),
-        )
-        push!(views, (lab, l, r))
-        push!(all_scenes, l)
-        push!(all_scenes, r)
-
-        Camera3D(l.scene, center=true, eyeposition=Vec3f(30, 30, 30))
-        Camera3D(r.scene, center=true, eyeposition=Vec3f(30, 30, 30))
-
-        rowsize!(molGrid.layout, i, Relative(0.25))
-    end
-    colsize!(molGrid.layout, 1, Relative(0.05))
-    colsize!(molGrid.layout, 2, Relative(0.475))
-    colsize!(molGrid.layout, 3, Relative(0.475))
-
-    Label(molGrid[4, 1], "Volume Controls", rotation=pi / 2)
+    Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],
         (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
         (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
@@ -245,14 +225,8 @@ function go(trajectory_name::String)
     end
 
     filterRange = lift(x -> LinRange(x[1], x[2], 100), volRange)
-    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
-    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
-
-    Label(molGrid[6, 1], "Bond Delta")
-    Colorbar(molGrid[6, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
-    rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
+    volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
+    Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     function on_click(t, on_window_hover)
         pos1, pos2 = alignedPositions[t]
@@ -263,9 +237,6 @@ function go(trajectory_name::String)
 
         # should also be precomputed
         ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t])
-        thislsExtrema = extrema(ls[2])
-        lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
-        notify(lsExtrema)
 
         build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
 

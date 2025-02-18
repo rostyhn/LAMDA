@@ -48,7 +48,7 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
         ls = linesegments!(scene,
             lift(x -> lineSets[1][x], selectedLineSets),
             color=lift(x -> lineSets[2][x], selectedLineSets),
-            colorrange=lift(x -> x, lsExtrema),
+            colorrange=lsExtrema,
             lowclip=:black,
             colormap=:bwr)
         ls.inspectable[] = false
@@ -65,7 +65,7 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
         m.inspectable[] = false
 
         # weak = true removes the connection when the return value of on is gc'd
-        sqHoverListener = on(events(scene).mouseposition, weak=true) do mp
+        sqHoverListener = on(events(scene).mouseposition) do mp
             if is_mouseinside(scene)
                 plot, idx = pick(scene)
                 if plot == ls
@@ -163,7 +163,7 @@ function setup_state_view!(fig, loc, startState, render_funcs)
         push!(overlays, s)
     end
 
-    on(m.selection, weak=true) do cw
+    on(m.selection) do cw
         cam = camera(rootScene)
         eyepos = cam.eyeposition[]
         lookat = cam.lookat[]

@@ -117,7 +117,7 @@ function get_data_alt(trajectory_name)
                 alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
 
                 distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
-                connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle))
+                connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
                 transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
                 alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
 
