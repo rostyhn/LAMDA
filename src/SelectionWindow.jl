@@ -6,52 +6,6 @@ using NetworkLayout
 using UMAP
 using Clustering
 
-function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv1, alignedPositions, transitionKDTree)
-    if label == "LNCD"
-        numberOfBins = 100
-        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
-
-        @show stepSize = (maxInvariant1 - minInvariant1) / numberOfBins
-        binEdges = [minInvariant1:stepSize:maxInvariant1;]
-
-        transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
-        @time for (t, values) in transitionInvariants1
-
-            p1, p2 = get_from_t_dict(alignedPositions, t)
-            k1, k2 = get_from_t_dict(transitionKDTree, t)
-
-            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, p1, binEdges, 10, k1)
-        end
-        @show "done with distributions"
-
-        distancesToReference = computeLNCD.(Ref(transitionDistribution),
-            Ref(reference_configuration),
-            keys(transitionInvariants1),
-            Ref(selected_atoms))
-        zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
-
-        ref_distances = Dict()
-        for (t, d) in zipped
-            ref_distances[t] = d
-        end
-
-        return ref_distances
-    end
-
-    m = dms[label]["matrix"]
-    t_to_idx = dms[label]["t_to_idx"]
-    row_idx = t_to_idx[reference_configuration]
-    row = m[row_idx, :]
-
-    graph_dist = Dict()
-    for (t, idx) in t_to_idx
-        graph_dist[t] = row[idx]
-    end
-
-    return graph_dist
-end
-
-
 function build_selection_window(fig_size,
     data,
     t_list,
@@ -105,7 +59,7 @@ function build_selection_window(fig_size,
         invar_menu,
         Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))
 
-    @time vl = volume!(svl,
+    vl = volume!(svl,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
@@ -120,7 +74,7 @@ function build_selection_window(fig_size,
         visible=true)
     vl.inspectable[] = false
 
-    @time vr = volume!(svr,
+    vr = volume!(svr,
         lift(x -> x[1], sampleRanges),
         lift(x -> x[2], sampleRanges),
         lift(x -> x[3], sampleRanges),
@@ -167,9 +121,9 @@ function build_selection_window(fig_size,
 
     colors = Observable(fill(:blue, length(embedding[])))
 
-    @time sc = scatter!(graph_ax, embedding; color=colors)
+    sc = scatter!(graph_ax, embedding; color=colors)
     sc.inspectable[] = false
-    @time text!(graph_ax, embedding; text=map(x -> string(x), t_list))
+    text!(graph_ax, embedding; text=map(x -> string(x), t_list))
     hidedecorations!(graph_ax)
 
     on(embedding) do _
@@ -241,22 +195,8 @@ function build_selection_window(fig_size,
             notify(hr)
             notify(colors)
         end
-        #t = t_list[idx]
-        #hovered[] = t_list[idx]
-        #ax3d.scene.visible[] = true
-        #notify(hovered)
-        #notify(tt_bbox)
-        #center!(ax3d.scene)
         return Consume(false)
     end
 
     return window
-end
-
-function color_selected(selected_atoms, num_atoms)
-    colors = [:blue for _ in range(1, num_atoms)]
-    for idx in selected_atoms
-        colors[idx] = :red
-    end
-    return colors
 end

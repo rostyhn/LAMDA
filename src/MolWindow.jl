@@ -1,19 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
 function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, fig_size=(400, 400))
-    molWindow = Figure(size=fig_size)
-
-    beforeView = LScene(
-        molWindow[1, 1],
-        show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
-    )
-
-    afterView = LScene(
-        molWindow[1, 2],
-        show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
-    )
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
     ap1, ap2 = atomPositions
@@ -122,18 +109,15 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     end
 
     render_funcs = Dict()
-    render_funcs["State 1"] = bp
-    render_funcs["State 2"] = afp
+    render_funcs["State $(transition[1])"] = bp
+    render_funcs["State $(transition[2])"] = afp
     render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
 
-    cl = setup_state_view!(beforeView, "Volume", render_funcs)
-    cr = setup_state_view!(afterView, "Volume", render_funcs)
-
-    cleanup = function ()
-        cl()
-        cr()
-    end
+    molWindow = Figure(size=fig_size)
+    molWindow[1, 1:2] = hgrid!(Label(molWindow, string(transition), tellwidth=false))
+    setup_state_view!(molWindow, (2, 1), "Volume", render_funcs)
+    setup_state_view!(molWindow, (2, 2), "Volume", render_funcs)
 
     screen = GLMakie.Screen(title="TransVis - $transition")
     display(screen, molWindow)
@@ -141,11 +125,21 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     #on(events(molWindow).entered_window) do is_hovered
     # on_window_hover(transition, is_hovered)
     #end
-
-    return cleanup
 end
 
-function setup_state_view!(rootScene, startState, render_funcs)
+function setup_state_view!(fig, loc, startState, render_funcs)
+    rootScene = LScene(
+        fig,
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    m = Menu(fig, options=keys(render_funcs),
+        default=startState)
+
+    i, j = loc
+    fig[i, j] = vgrid!(m, rootScene)
+
     inspector = DataInspector(rootScene)
 
     initial_render_func = render_funcs[startState]
@@ -169,27 +163,7 @@ function setup_state_view!(rootScene, startState, render_funcs)
         push!(overlays, s)
     end
 
-    tt = Scene(rootScene.scene)
-    campixel!(tt)
-
-    menu_bbox = Observable(BBox(0, 0, 0, 0))
-    m = Menu(tt, options=keys(render_funcs),
-        default=startState, is_open=true, bbox=menu_bbox)
-
-    contextMenuListener = on(events(rootScene).mousebutton, priority=1) do event
-        if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(rootScene)
-            x, y = events(rootScene.parent).mouseposition[]
-            menu_bbox[] = BBox(x, x + 150, y - 100, y)
-            notify(menu_bbox)
-            m.is_open = true
-
-            # block other events
-            return Consume(true)
-        end
-        return Consume(false)
-    end
-
-    cwListener = on(m.selection) do cw
+    on(m.selection, weak=true) do cw
         cam = camera(rootScene)
         eyepos = cam.eyeposition[]
         lookat = cam.lookat[]
@@ -229,23 +203,4 @@ function setup_state_view!(rootScene, startState, render_funcs)
         end
         update_cam!(rootScene.scene, eyepos, lookat)
     end
-
-
-    cleanup = function ()
-        off(contextMenuListener)
-        contextMenuListener = Nothing
-
-        off(cwListener)
-        cwListener = Nothing
-
-        for listener in scene_listeners
-            off(listener)
-            listener = Nothing
-        end
-        # inspectors should get cleared off here
-        empty!(rootScene)
-    end
-
-
-    return cleanup
 end

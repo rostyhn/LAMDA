@@ -32,27 +32,6 @@ include("math.jl")
 
 export go
 
-function buildBonds(positions, bondDelta)
-    points = Vector{Tuple{Point3f,Point3f}}()
-    weights = Vector{Float64}()
-    indices = Vector{Tuple{Int64,Int64}}()
-
-    for i in 1:length(bondDelta[1, :])
-        for j in 1:i
-            bw = bondDelta[i, j]
-            # avg = (abs((v1 + v2)) / 2) / volumeAbsMax
-            # 0.05 is the threshold val for filtering
-            # check against bond weight to make sure we're only looking at "real" bonds
-            if abs(bw) > 0.0
-                push!(points, (Point3f(positions[i, :]), Point3f(positions[j, :])))
-                push!(weights, bw)
-                push!(indices, (i, j))
-            end
-        end
-    end
-    return (points, weights, indices)
-end
-
 function go(trajectory_name::String)
 
     GLMakie.closeall() #close all windows for rerun!
@@ -274,11 +253,6 @@ function go(trajectory_name::String)
     rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
-    cleanup_callbacks = Dict()
-
-    #display(molScreen, molGrid)
-
-    viewIdx = 1
 
     function on_click(t, on_window_hover)
         pos1, pos2 = alignedPositions[t]
@@ -293,15 +267,8 @@ function go(trajectory_name::String)
         lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
         notify(lsExtrema)
 
-        lab, l, r = views[viewIdx]
+        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
 
-        cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
-        cleanup_func()
-
-        cleanup = build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
-        lab.text = string(t)
-
-        cleanup_callbacks[viewIdx] = cleanup
     end
 
     screen = GLMakie.Screen()
