@@ -1,264 +1,176 @@
-function getDataSets(
-    stateDataPath::String,
-    sqeuencePath::String,
-    transitionLabelPath::String,
-)::Dict{String,Dict}
+export get_data_alt
 
-    combinedData = Dict{String,Dict}() # combined set
-    transitionInvariants1 = Dict{String,Vector{Float64}}()
-    transitionInvariants2 = Dict{String,Vector{Float64}}()
-    transitionInvariants3 = Dict{String,Vector{Float64}}()
-    atomPositions = Dict{String,Matrix{Float64}}()
-    distanceMatrices = Dict{String,Matrix{Float64}}()
-    transitionRefPositions = Dict{String, Vector{Point3f}}()
-    transitionLabels = Dict{String,Int64}()
-    #eigenvalues = Dict{String, Vector{Vec3f}}
-    stretchedPrincipalAxes = Dict{String, Vector{Vector{Vec3f}}}()
+function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
+    #s2 changes s1 stays
+    s = mean(x, dims=1)
+    sp = mean(xp, dims=1)
 
+    xs = x .- s
+    xps = xp .- sp
+    xx = transpose(xs) * xs
+    xpx = transpose(xps) * xs
 
+    xxi = inv(xx)
+    R = xpx * xxi
 
-    transitionLabelData = Pickle.npyload(transitionLabelPath)
+    return transpose(R * transpose(xs)) .+ sp
+end
 
-    for (key, value) in transitionLabelData
-        source = key |> first |> string
-        target = key |> last |> string
+function check_directory_format(dir)
+    contents = readdir(dir)
+    return "distances.pickle" in contents &&
+           "transitions.pickle" in contents &&
+           "connectivity.pickle" in contents &&
+           "aligned_positions.pickle" in contents
+end
 
-        name = source * ">" * target
-        transitionLabels[name] = value
+function get_data_folders(path)
+    dirs = filter!(x -> check_directory_format(x),
+        filter!(x -> isdir(x), readdir(path, join=true)))
+
+    if length(dirs) == 0
+        return error("No valid folders in data folder.")
     end
 
-    sequence = readlines(sqeuencePath)
-    sequenceHash = Base.hash(sequence)
+    return dirs
+end
 
+function readDistanceMatrixFolder(folder)
+    dms = Dict()
+    for dmf in readdir(folder, join=true)
+        # each distance matrix should be in a folder with the matrix
+        dm_name = basename(dmf)
+        if isdir(dmf)
+            dm_path = joinpath(dmf, "dm.pickle")
+            if isfile(dm_path)
+                dms[dm_name] = Matrix{Float32}(Pickle.npyload(dm_path))
+            else
+                println("$dm_name not loaded.")
+            end
+        end
+    end
+    return dms
+end
 
+function read_volume_cache(key)
+    h = hash(key)
     rootPath = dirname(dirname(@__FILE__))
-    println("Root directory is: $(rootPath)")
+    cachePath = joinpath(rootPath, "cache")
+    cache_file = joinpath(cachePath, "$(h).jdl2")
 
-    if isfile("$(rootPath)/cache/transitionInvariants1_$(sequenceHash).jld2")
-        println("Found precomputed data, loading data...")
-
-        @time atomPositions = JLD2.jldopen(
-            "$(rootPath)/cache/atomPositions_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["atomPositions"]
+    result = Nothing
+    if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
+        println("Loading $(key) from $(basename(cache_file))")
+        result = JLD2.jldopen(cache_file; compress=true) do file
+            @show keys(file)
+            @show file["absVolMin"]
+            file["volume_range"]
         end
+    end
+    return result
+end
 
-        @time transitionRefPositions = JLD2.jldopen(
-            "$(rootPath)/cache/transitionRefPositions_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["transitionRefPositions"]
+function save_volume_cache(key, volume_range, dimensions, absVolMin)
+    h = hash(key)
+    rootPath = dirname(dirname(@__FILE__))
+    cachePath = joinpath(rootPath, "cache")
+    cache_file = joinpath(cachePath, "$(h).jdl2")
+
+    println("Saving $(key) as $(basename(cache_file))")
+    JLD2.jldsave("$(cache_file)", true; volume_range, dimensions, absVolMin)
+end
+
+function get_data_alt(trajectory_name)
+    rootPath = dirname(dirname(@__FILE__))
+    dataPath = joinpath(rootPath, "data")
+    cachePath = joinpath(rootPath, "cache")
+
+    if isdir(dataPath)
+        trajectories = Dict(map(x -> (basename(x), x), get_data_folders(dataPath)))
+
+        if trajectory_name in keys(trajectories)
+            t = trajectories[trajectory_name]
+            dmf = joinpath(t, "dms")
+            if !isdir(dmf)
+                return error("Distance matrix folder not found")
+            end
+
+            dms = readDistanceMatrixFolder(dmf)
+
+            if isempty(dms)
+                return error("No distance matrices found.")
+            end
+
+            cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
+            if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
+                println("Loading $(trajectory_name) from cache.")
+                @time trajectory_data = JLD2.jldopen(cache_file; compress=true) do file
+                    file["trajectory_data"]
+                end
+            else
+                println("Calculating data for $(trajectory_name).")
+                if !isdir(cachePath)
+                    mkdir(cachePath)
+                end
+
+                distances_pickle = joinpath(t, "distances.pickle")
+                connectivity_pickle = joinpath(t, "connectivity.pickle")
+                transitions_pickle = joinpath(t, "transitions.pickle")
+                alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
+
+                distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
+                connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle))
+                transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
+                alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
+
+                (t1, t2, t3, stretchedPrincipalAxes) =
+                    computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
+
+                # converts into array of Point3fs
+                alignedAtomPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
+                for (t, aligned) in alignedPositionsMatrices
+                    p1, p2 = aligned
+                    alignedAtomPositions[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
+                end
+
+                # https://github.com/KristofferC/NearestNeighbors.jl
+                # can store kdTrees as indices only, relinking positions when needed
+                println("Computing KDTrees.")
+                stateKDTree = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
+                @time for (t, aligned) in alignedAtomPositions
+                    p1, p2 = aligned
+                    stateKDTree[t] = (KDTree(p1), KDTree(p2))
+                end
+
+                trajectory_data = Dict("distanceMatrices" => distanceMatrices,
+                    "alignedPositions" => alignedAtomPositions,
+                    "alignedPositionsMatrices" => alignedPositionsMatrices,
+                    "connectivity" => connectivity,
+                    "transitions" => transitions,
+                    "t1" => t1,
+                    "t2" => t2,
+                    "t3" => t3,
+                    "kdTree" => stateKDTree,
+                    "stretchedPrincipalAxes" => stretchedPrincipalAxes)
+
+                @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
+            end
+
+            trajectory_data["dms"] = dms
+        else
+            return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
         end
-
-
-        @time distanceMatrices = JLD2.jldopen(
-            "$(rootPath)/cache/distanceMatrices_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["distanceMatrices"]
-        end
-
-        @time transitionInvariants1 = JLD2.jldopen(
-            "$(rootPath)/cache/transitionInvariants1_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["transitionInvariants1"]
-        end
-
-        @time transitionInvariants2 = JLD2.jldopen(
-            "$(rootPath)/cache/transitionInvariants2_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["transitionInvariants2"]
-        end
-
-        @time transitionInvariants3 = JLD2.jldopen(
-            "$(rootPath)/cache/transitionInvariants3_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["transitionInvariants3"]
-        end
-
-        @time stretchedPrincipalAxes = JLD2.jldopen(
-            "$(rootPath)/cache/stretchedPrincipalAxes_$(sequenceHash).jld2";
-            compress = true,
-        ) do file
-            file["stretchedPrincipalAxes"]
-        end
-
-        println("loading successfull")
     else
-        println("No precomputed data found! Computing now...")
-        println("Reading dataset....")
-        distanceMatrices = loadDistanceMatricesFromData(stateDataPath)
-        atomPositions = loadAtomPositionsFromData(stateDataPath)
-
-        atomPositions = alignAtomPositions(atomPositions |> keys |> first, atomPositions)
-
-        #@show transitionRefPositions
-
-        (transitionRefPositions, transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes) =
-            computeTransitionInvariants(sequence, atomPositions, distanceMatrices)
-
- 
-        #@show typeof(stretchedPrincipalAxes)
-       # @show keys(stretchedPrincipalAxes)
-
-        println("Storing  data.... $(rootPath)/cache/$(sequenceHash).jld2")
-
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/atomPositions_$(sequenceHash).jld2",
-            true;
-            atomPositions,
-        )
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/transitionRefPositions_$(sequenceHash).jld2",
-            true;
-            transitionRefPositions,
-        )
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/distanceMatrices_$(sequenceHash).jld2",
-            true;
-            distanceMatrices,
-        )
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/transitionInvariants1_$(sequenceHash).jld2",
-            true;
-            transitionInvariants1,
-        )
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/transitionInvariants2_$(sequenceHash).jld2",
-            true;
-            transitionInvariants2,
-        )
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/transitionInvariants3_$(sequenceHash).jld2",
-            true;
-            transitionInvariants3,
-        )
-        @time JLD2.jldsave(
-            "$(rootPath)/cache/stretchedPrincipalAxes_$(sequenceHash).jld2",
-            true;
-            stretchedPrincipalAxes,
-        )
-
-        println("Storing successfull")
+        return error("Data folder does not exist.")
     end
 
-    combinedData = Dict{String,Dict}() # combined set    
-
-    combinedData["transitionInvariants1"] = transitionInvariants1
-    combinedData["transitionInvariants2"] = transitionInvariants2
-    combinedData["transitionInvariants3"] = transitionInvariants3
-    combinedData["atomPositions"] = atomPositions
-    combinedData["distanceMatrices"] = distanceMatrices
-    @show "start"
-    combinedData["transitionRefPositions"] = transitionRefPositions
-    @show "end"
-
-    combinedData["transitionLabels"] = transitionLabels
-    combinedData["stretchedPrincipalAxes"] = stretchedPrincipalAxes
-
-    return combinedData
+    return trajectory_data
 end
 
-
-function loadAtomPositionsFromData(stateDataPath::String)::Dict{String,Matrix{Float64}}
-    stateFiles = readdir(stateDataPath)
-    filter!(e -> e ≠ ".DS_Store", stateFiles) # MacOS weirdness...
-    filter!(e -> e ≠ "seq.txt", stateFiles) # filter sequence
-    filter!(e -> !occursin("distance_matrix", e), stateFiles) # filter distances
-
-    @show length(stateFiles)
-
-    positionData = Dict{String,Matrix}()
-
-    addStateToDict.(Ref(positionData), Ref(stateDataPath), stateFiles)
-
-    # this might not be neccessary, as i could trat the states as strings
-    #extractIdFromString( input::String ) = parse(Int64, SubString( input, 1:((findfirst("_", input ) |> first) - 1) ))
-
-    return positionData
-end
-
-
-function loadDistanceMatricesFromData(stateDataPath::String)::Dict{String,Matrix{Float64}}
-    stateFiles = readdir(stateDataPath)
-    filter!(e -> e ≠ ".DS_Store", stateFiles) # MacOS weirdness...
-    filter!(e -> e ≠ "seq.txt", stateFiles) # filter sequence
-    filter!(e -> !occursin("positions", e), stateFiles) # filter positions
-
-    @show length(stateFiles)
-
-    distanceMatrices = Dict{String,Matrix}()
-
-    addStateToDict.(Ref(distanceMatrices), Ref(stateDataPath), stateFiles)
-
-    # this might not be neccessary, as i could trat the states as strings
-    #extractIdFromString( input::String ) = parse(Int64, SubString( input, 1:((findfirst("_", input ) |> first) - 1) ))
-
-    return distanceMatrices
-end
-
-
-function addPositionsToDict(dict::Dict{String,Matrix}, pathToFile::String, fileName::String)
-    stateId = SubString(fileName, 1:((findfirst("_", fileName)|>first)-1))
-    dict[stateId] = Pickle.npyload(open(pathToFile * fileName))
-    return nothing
-end
-
-
-function addStateToDict(dict::Dict{String,Matrix}, pathToFile::String, fileName::String)
-    stateId = SubString(fileName, 1:((findfirst("_", fileName)|>first)-1))
-    dict[stateId] = Pickle.npyload(open(pathToFile * fileName))
-    return nothing
-end
-
-function getSequence(sqeuencePath::String)
-    return readlines(sqeuencePath)
-end
-
-function alignAtomPositions( referenceState::String, atomPositions::Dict{String,Matrix{Float64}})::Dict{String,Matrix{Float64}}
-
-    alignedAtomPositions = Dict{String, Matrix{Float64}}()
-
-    referencePositions = atomPositions[referenceState]
-    alignedAtomPositions[referenceState] = referencePositions
-
-    for (stateName, positions) in atomPositions
-
-        if stateName == referenceState
-            continue
-        end
-
-        #s2 changes  s1 stays
-        x = positions
-        xp = referencePositions
-
-        s = mean(x, dims=1)
-        sp = mean(xp, dims=1)
-
-        xs = x .- s
-        xps = xp .- sp
-        
-        # @show size(xs)
-        # @show size(xps)
-
-        xx = transpose(xs) * xs   
-        xpx = transpose(xps) * xs 
-
-        # @show size(xx)
-        # @show size(xpx)
-
-        xxi = inv(xx)
-        R = xpx * xxi
-
-        # @show size(transpose(R * transpose(xs)) )
-        # @show size(transpose(sp))
-
-        alignedAtomPositions[stateName] = transpose(R * transpose(xs))  .+ sp
-    end
-
-    return alignedAtomPositions
+function get_mmap_file(key)
+    h = hash(key)
+    rootPath = dirname(dirname(@__FILE__))
+    cachePath = joinpath(rootPath, "cache")
+    cache_file = joinpath(cachePath, "$(h).bin")
+    return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end

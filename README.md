@@ -1,4 +1,4 @@
-Tested in julia 1.10.1
+Tested in julia 1.10.4
 For current version see: 
 https://julialang.org/downloads/
 
@@ -12,7 +12,7 @@ Building:
 
 In julia REPL (active TransVis Project)
 - 'using TransVis' to precompile and export functions
-- 'go()' is our current main function
+- 'go()' is our current main function; needs trajectory name as a string e.g. `go("trajectory_name")`.
 
 - first computation could take longer, as gradients need to be computed. Those will be stored for quick access in the "cache/" (Note that they are currently uniquely identified only by by their sequence. )
   
@@ -22,9 +22,12 @@ In code
   ToDo: use JSON file to manage this
 
 
-
-
-
-
-
-
+## Expected data format 
+Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** At a minimum, it needs the following files:
+```
+distances.pickle # atom-atom distance matrices per state; Dict{Int,Matrix}
+transitions.pickle # list of transitions; Vector{Tuple{Int,Int}}
+connectivity.pickle # atom-atom connectivity per state; Dict{Int, Matrix}
+aligned_positions.pickle # positions per transition; Dict{Tuple{Int,Int}, Matrix}
+```
+You also need a folder called `dms`, with subfolders corresponding to distance matrices you're interested in. You need at least one for the program to start. Each distance matrix directory requires a file called `dm.pickle` containing a matrix / 2d array. **It is assumed that the rows of the distance matrix correspond to the transitions in the order presented by `transition.pickle`.**
