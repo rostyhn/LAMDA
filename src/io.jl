@@ -62,8 +62,6 @@ function read_volume_cache(key)
     if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
         println("Loading $(key) from $(basename(cache_file))")
         result = JLD2.jldopen(cache_file; compress=true) do file
-            @show keys(file)
-            @show file["absVolMin"]
             file["volume_range"]
         end
     end
