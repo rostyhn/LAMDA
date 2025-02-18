@@ -127,7 +127,6 @@ function go(trajectory_name::String)
         bondDeltas[t] = dm2 - dm1
     end
 
-
     available_matrices = Dict()
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
@@ -268,14 +267,11 @@ function go(trajectory_name::String)
     volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
     Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
-    Label(molGrid[6, 1], "Volume")
-    Colorbar(molGrid[6, 2:3], colormap=cmap, limits=volRange, vertical=false)
-    Label(molGrid[7, 1], "Bond Delta")
-    Colorbar(molGrid[7, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
+    Label(molGrid[6, 1], "Bond Delta")
+    Colorbar(molGrid[6, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
     rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
     rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 6, Relative(0.25 / 6))
-    rowsize!(molGrid.layout, 7, Relative(0.25 / 6))
+    rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
     cleanup_callbacks = Dict()
 
     display(molScreen, molGrid)
