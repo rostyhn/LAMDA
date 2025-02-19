@@ -22,7 +22,7 @@ function build_selection_window(fig_size,
     selected_dm = Observable(first(keys(dms)))
 
     reordered_matrix = @lift begin
-        println("Clustering $($selected_dm)")
+        println("Clustering $($selected_dm)...")
 
         m = dms[$selected_dm]
         res = hclust(m, linkage=:ward, branchorder=:barjoseph)
@@ -109,7 +109,7 @@ function build_selection_window(fig_size,
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
 
     embedding = @lift begin
-        println("Calculating umap embedding for $($selected_dm)")
+        println("Calculating umap embedding for $($selected_dm)...")
         # https://github.com/dillondaudert/UMAP.jl/blob/master/src/umap_.jl
         # not a major bottleneck but should be cached eventually
         @time em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed, spread=250))

@@ -44,6 +44,7 @@ function go(trajectory_name::String)
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     stateKDTree = active_trajectory["kdTree"]
     dms = active_trajectory["dms"]
+    scalars = active_trajectory["scalars"]
 
     transitionSequence = active_trajectory["transitions"]
 
@@ -117,7 +118,7 @@ function go(trajectory_name::String)
     ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
 
     available_matrices = Dict()
-    available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
+    available_matrices["bondDeltas"] = bondDeltas
 
     molGrid = Figure()
     Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
@@ -140,7 +141,6 @@ function go(trajectory_name::String)
         return nn
     end
 
-    # 6 is the slope - should only be even odds
     # 0.1 is the thickness of the white part
     volume_cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
@@ -154,7 +154,7 @@ function go(trajectory_name::String)
 
         fp, is_cached = get_mmap_file(key)
         if !is_cached
-            println("Calculating volume data for $(key); will be saved as $(hash(key))")
+            println("Calculating volume data for $(key); will be saved as $(hash(key))...")
             # https://docs.julialang.org/en/v1/manual/multi-threading/
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
@@ -234,11 +234,9 @@ function go(trajectory_name::String)
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
-
-        # should also be precomputed
         ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t], connectivity[t[1]])
 
-        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap)
+        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
     screen = GLMakie.Screen()

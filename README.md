@@ -31,3 +31,5 @@ connectivity.pickle # atom-atom connectivity per state; Dict{Int, Matrix}
 aligned_positions.pickle # positions per transition; Dict{Tuple{Int,Int}, Matrix}
 ```
 You also need a folder called `dms`, with subfolders corresponding to distance matrices you're interested in. You need at least one for the program to start. Each distance matrix directory requires a file called `dm.pickle` containing a matrix / 2d array. **It is assumed that the rows of the distance matrix correspond to the transitions in the order presented by `transition.pickle`.**
+
+You can optionally visualize per-atom scalars by placing dictionaries in the `scalars` folder. They must be dictionaries keyed by transition ids (i.e. (state1, state2)); the values of the dictionary must be a tuple of 1D arrays (Tuple{Vector{Float}, Vector{Float}}). 

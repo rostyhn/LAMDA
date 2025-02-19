@@ -1,8 +1,8 @@
-using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
+using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!, GridLayoutBase
 
-function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, vol_cmap, on_window_hover, lsExtrema, filterVal, ls_cmap, fig_size=(400, 400))
+function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, vol_cmap, on_window_hover, lsExtrema, filterVal, ls_cmap, scalars, fig_size=(400, 400))
 
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl, delete_from_parent!, delete_from_parent!, GridLayoutBase
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
@@ -32,19 +32,16 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     end
 
     # these functions must return:
-    # a list of plots, listeners, and scenes they created
-    bp = function (scene, inspector)
-        return [scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))], [], []
+    # a list of plots, listeners, and ui elements (gridLayout, [elements]) they created
+    bp = function (scene, inspector, g)
+        return setup_atom_view!(scene, g, ap1, transition, 1, selected, scalars)
     end
 
-    afp = function (scene, inspector)
-        return [scatter!(scene, ap2,
-            color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))], [], []
+    afp = function (scene, inspector, g)
+        return setup_atom_view!(scene, g, ap2, transition, 2, selected, scalars)
     end
 
-    sq = function (scene, inspector)
+    sq = function (scene, inspector, g)
         ls = linesegments!(scene,
             lift(x -> lineSets[1][x], selectedLineSets),
             color=lift(x -> lineSets[2][x], selectedLineSets),
@@ -85,10 +82,10 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
             end
             return Consume(false)
         end
-        return [ls, m], [sqHoverListener], []
+        return [sqHoverListener], []
     end
 
-    vol = function (scene, inspector)
+    vol = function (scene, inspector, g)
         v = volume!(scene,
             lift(x -> x[1], sampleRanges),
             lift(x -> x[2], sampleRanges),
@@ -102,7 +99,8 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
             colorrange=volumeRange,
             visible=true)
         v.inspectable[] = false
-        return [v], [], []
+
+        return [], []
     end
 
     render_funcs = Dict()
@@ -124,6 +122,53 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     #end
 end
 
+function setup_atom_view!(scene, g, ap, t, order, selected, scalars)
+    opts = ["selected"; sort(collect(keys(scalars)))]
+
+    gg = GridLayout(g[3, :])
+    m = Menu(gg[1, 1], options=opts, default="selected")
+
+    colorInfo = @lift begin # might be leaking memory
+        opt = $(m.selection)
+        vals = [i in $selected ? 0.0 : 1.0 for i in 1:147]
+        extremaVals = (0.0, 1.0)
+        labelfn = (self, i, p) -> "Atom $(i)"
+        cmap = to_colormap(:redsblues)
+
+        if opt != "selected"
+            vals = scalars[opt][t][order]
+            extremaVals = extrema(vals)
+            labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
+
+            # three cases:
+            # sequential ascending, descending and diverging
+            # divergent if we are approximately around 0 when subtracting the absolute values of the min and max
+            minVal, maxVal = extremaVals
+            if isapprox(abs(maxVal) - abs(minVal), 0; atol=1)
+                println("using divergent colorscheme")
+                cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+            else
+                # ascending sequential if min is closer to 0
+                cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
+                if abs(minVal) > abs(maxVal)
+                    println("using descending sequential colorscheme")
+                    # otherwise reverse it
+                    reverse!(cmap)
+                end
+            end
+        end
+        empty!(scene)
+
+        # complicated because scatter! sets the shader for the scene the first time, changes it when type of color changes
+        scatter!(scene, ap, color=vals, colorrange=extremaVals, colormap=cmap,
+            inspector_label=labelfn, markersize=30)
+        return extremaVals, cmap
+    end
+    cbar = Colorbar(gg[1, 2], colorrange=lift(x -> x[1], colorInfo), vertical=false, colormap=lift(x -> x[2], colorInfo), tellwidth=false)
+
+    return [], [(gg, [m, cbar])]
+end
+
 function setup_state_view!(fig, loc, startState, render_funcs)
     rootScene = LScene(
         fig,
@@ -135,29 +180,26 @@ function setup_state_view!(fig, loc, startState, render_funcs)
         default=startState)
 
     i, j = loc
-    fig[i, j] = vgrid!(m, rootScene)
+    g = vgrid!(m, rootScene)
+    fig[i, j] = g
+    # g is a reference to the underlying gridlayout for the state, can mutate it to create UI elements
 
     inspector = DataInspector(rootScene)
 
     initial_render_func = render_funcs[startState]
-    ip, il, is = initial_render_func(rootScene, inspector)
+    il, is = initial_render_func(rootScene, inspector, g)
 
     # need to do this because otherwise julia assumes the type of the output vector
     # then tries to convert plots to different types
-    rendered_plots = Vector{Any}()
     scene_listeners = Vector{Any}()
-    overlays = Vector{Any}()
-
-    for p in ip
-        push!(rendered_plots, p)
-    end
+    ui_elements = Vector{Any}()
 
     for l in il
         push!(scene_listeners, l)
     end
 
     for s in is
-        push!(overlays, s)
+        push!(ui_elements, s)
     end
 
     on(m.selection) do cw
@@ -165,10 +207,7 @@ function setup_state_view!(fig, loc, startState, render_funcs)
         eyepos = cam.eyeposition[]
         lookat = cam.lookat[]
 
-        for p in rendered_plots
-            delete!(rootScene, p)
-        end
-        empty!(rendered_plots)
+        empty!(rootScene)
 
         for listener in scene_listeners
             off(listener)
@@ -176,27 +215,30 @@ function setup_state_view!(fig, loc, startState, render_funcs)
         end
         empty!(scene_listeners)
 
-        # works, but is probably causing a memory leak -
-        # the scene is still in memory
-        for s in overlays
-            filter!(x -> x != s, rootScene.scene.children)
-            empty!(s)
+        # clear UI elements
+        for c in ui_elements
+            gg, elements = c
+            for e in elements
+                empty!(e.blockscene)
+                delete!(e)
+            end
+            if !isnothing(gg)
+                Makie.trim!(gg)
+                # only way to delete a gridlayout
+                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
+            end
         end
-        empty!(overlays)
+        Makie.trim!(g)
 
         rf = render_funcs[cw]
-        plots, listeners, scenes = rf(rootScene, inspector)
-
-        for p in plots
-            push!(rendered_plots, p)
-        end
+        listeners, scenes = rf(rootScene, inspector, g)
 
         for l in listeners
             push!(scene_listeners, l)
         end
 
         for s in scenes
-            push!(overlays, s)
+            push!(ui_elements, s)
         end
         update_cam!(rootScene.scene, eyepos, lookat)
     end

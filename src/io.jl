@@ -88,16 +88,6 @@ function get_data_alt(trajectory_name)
 
         if trajectory_name in keys(trajectories)
             t = trajectories[trajectory_name]
-            dmf = joinpath(t, "dms")
-            if !isdir(dmf)
-                return error("Distance matrix folder not found")
-            end
-
-            dms = readDistanceMatrixFolder(dmf)
-
-            if isempty(dms)
-                return error("No distance matrices found.")
-            end
 
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
@@ -154,6 +144,33 @@ function get_data_alt(trajectory_name)
                 @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
             end
 
+            dmf = joinpath(t, "dms")
+            if !isdir(dmf)
+                return error("Distance matrix folder not found.")
+            end
+
+            dms = readDistanceMatrixFolder(dmf)
+            if isempty(dms)
+                return error("No distance matrices found.")
+            end
+
+            scalars = Dict()
+            # load in scalars if present
+            scalarf = joinpath(t, "scalars")
+            if isdir(scalarf)
+                println("Loading scalars...")
+                for sf in readdir(scalarf, join=true)
+                    scalar_name = basename(sf)
+                    if isfile(sf)
+                        scalars[scalar_name] = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Array{Float32}}}(Pickle.npyload(sf))
+                    end
+                end
+            else
+                println("No scalars folder found, ignoring.")
+            end
+
+            # TODO: check for correctness
+            trajectory_data["scalars"] = scalars
             trajectory_data["dms"] = dms
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
