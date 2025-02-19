@@ -1,6 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
 
-function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal, fig_size=(400, 400))
+function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, vol_cmap, on_window_hover, lsExtrema, filterVal, ls_cmap, fig_size=(400, 400))
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl
     ap1, ap2 = atomPositions
@@ -49,22 +49,19 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
             lift(x -> lineSets[1][x], selectedLineSets),
             color=lift(x -> lineSets[2][x], selectedLineSets),
             colorrange=lsExtrema,
-            lowclip=:black,
-            colormap=:bwr)
+            colormap=ls_cmap)
         ls.inspectable[] = false
 
         m = mesh!(
             scene,
             lift(x -> superquadrics[x], selected),
             color=lift((x, y) -> y[x], selected, aa1),
-            # prevents it from recoloring each time the slider moves
             colorrange=volumeRange,
-            colormap=:bam,
+            colormap=vol_cmap,
             fxaa=false,
         )
         m.inspectable[] = false
 
-        # weak = true removes the connection when the return value of on is gc'd
         sqHoverListener = on(events(scene).mouseposition) do mp
             if is_mouseinside(scene)
                 plot, idx = pick(scene)
@@ -97,7 +94,7 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
             lift(x -> x[2], sampleRanges),
             lift(x -> x[3], sampleRanges),
             volumeData;
-            colormap=cmap,
+            colormap=vol_cmap,
             algorithm=:absorption,
             fxaa=false,
             transparency=true,

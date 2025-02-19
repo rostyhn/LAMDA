@@ -93,9 +93,6 @@ function go(trajectory_name::String)
         end
     end
 
-    # 6 is the slope - should only be even odds
-    # 0.1 is the thickness of the white part
-    cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
 
     # should be cached
     bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
@@ -103,8 +100,8 @@ function go(trajectory_name::String)
     bdMax = floatmin(Float32)
     for t in transitionSequence
         s1, s2 = t
-        dm1 = distanceMatrices[s1] * connectivity[s1]
-        dm2 = distanceMatrices[s2] * connectivity[s2]
+        dm1 = distanceMatrices[s1]
+        dm2 = distanceMatrices[s2]
 
         # for now it's total delta
         bd = dm2 - dm1
@@ -115,16 +112,14 @@ function go(trajectory_name::String)
 
         bondDeltas[t] = bd
     end
+
     lsExtrema = (bdMin, bdMax)
-    @show lsExtrema
+    ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
 
     available_matrices = Dict()
     available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
 
-    volRange = Observable((floatmin(Float32), floatmax(Float32)))
-
     molGrid = Figure()
-
     Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],
         (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
@@ -144,6 +139,11 @@ function go(trajectory_name::String)
     num_neighbors = lift(sg.sliders[3].value) do nn
         return nn
     end
+
+    # 6 is the slope - should only be even odds
+    # 0.1 is the thickness of the white part
+    volume_cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
+    volRange = Observable((floatmin(Float32), floatmax(Float32)))
 
     selected_invariant = Observable("t1")
     @time volumeData = @lift begin
@@ -214,13 +214,13 @@ function go(trajectory_name::String)
         end
 
         if $selected_invariant == "t2"
-            cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
+            volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
         else
             # should be fine, seems off-center because abs(volMin) != abs(volMax)
             # could additionally calculate volAbsMin to remove noisy values
-            cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+            volume_cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
         end
-        notify(cmap)
+        notify(volume_cmap)
         return volData
     end
 
@@ -236,15 +236,14 @@ function go(trajectory_name::String)
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
 
         # should also be precomputed
-        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t])
+        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t], connectivity[t[1]])
 
-        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
-
+        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap)
     end
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant)
 
     display(screen, window)
 end

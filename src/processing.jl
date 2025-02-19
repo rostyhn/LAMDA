@@ -10,24 +10,12 @@ function kernelFunction(point::Point3f, atomPosition::Point3f, width::Float64)::
     return scale * exp(-1 * (squaredNorm(point - atomPosition)) / (2 * width^2))
 end
 
-function buildBonds(positions, bondDelta)
-    points = Vector{Tuple{Point3f,Point3f}}()
-    weights = Vector{Float64}()
-    indices = Vector{Tuple{Int64,Int64}}()
+function buildBonds(positions, bondDelta, connectivity)
+    cartesians = findall(isone, connectivity)
+    indices = Tuple.(cartesians)
+    weights = bondDelta[cartesians]
+    points = map(((i, j),) -> (Point3f(positions[i, :]), Point3f(positions[j, :])), indices)
 
-    for i in 1:length(bondDelta[1, :])
-        for j in 1:i
-            bw = bondDelta[i, j]
-            # avg = (abs((v1 + v2)) / 2) / volumeAbsMax
-            # 0.05 is the threshold val for filtering
-            # check against bond weight to make sure we're only looking at "real" bonds
-            if abs(bw) > 0.0
-                push!(points, (Point3f(positions[i, :]), Point3f(positions[j, :])))
-                push!(weights, bw)
-                push!(indices, (i, j))
-            end
-        end
-    end
     return (points, weights, indices)
 end
 
