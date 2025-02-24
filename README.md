@@ -32,4 +32,7 @@ aligned_positions.pickle # positions per transition; Dict{Tuple{Int,Int}, Matrix
 ```
 You also need a folder called `dms`, with subfolders corresponding to distance matrices you're interested in. You need at least one for the program to start. Each distance matrix directory requires a file called `dm.pickle` containing a matrix / 2d array. **It is assumed that the rows of the distance matrix correspond to the transitions in the order presented by `transition.pickle`.**
 
+You will also need an `alignment` folder containing pickles with dictionaries of tuples to matrices that will be used to perform inter-cluster alignments. Each matrix should be \[num_atoms * num_features\]. TransVis will calculate the center of mass for each feature and then align each transition using these centers of mass. We found the [bispectrum descriptor](https://www.nature.com/articles/s41524-022-00847-y) to be effective in aligning transitions, but in principle any descriptor can be used provided it returns the per-atom features in order.
+
 You can optionally visualize per-atom scalars by placing dictionaries in the `scalars` folder. They must be dictionaries keyed by transition ids (i.e. (state1, state2)); the values of the dictionary must be a tuple of 1D arrays (Tuple{Vector{Float}, Vector{Float}}). 
+

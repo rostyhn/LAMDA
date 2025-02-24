@@ -57,6 +57,18 @@ function go(trajectory_name::String)
     distanceMatrices = active_trajectory["distanceMatrices"]
     alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
     alignedPositions = active_trajectory["alignedPositions"] # positions as vec point3fs
+    alignments = active_trajectory["alignments"]
+
+
+    selected_dm = Observable(first(keys(dms)))
+    clustering = @lift begin
+        println("Clustering $($selected_dm)...")
+        m = dms[$selected_dm]
+        return hclust(m, linkage=:ward, branchorder=:barjoseph)
+    end
+
+    selected_alignment = Observable(first(keys(alignments)))
+    @show clustering
 
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
@@ -241,7 +253,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm)
 
     display(screen, window)
 end

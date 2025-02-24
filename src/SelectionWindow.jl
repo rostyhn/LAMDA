@@ -13,25 +13,20 @@ function build_selection_window(fig_size,
     on_click,
     num_atoms,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, cmap, selected_invariant)
+    transitionKDTree, dms, volData, sampleRanges, volRange, cmap, selected_invariant, clustering, selected_dm)
 
     window = Figure(size=fig_size)
-
     user_groups = Observable(Dict())
 
-    selected_dm = Observable(first(keys(dms)))
-
     reordered_matrix = @lift begin
-        println("Clustering $($selected_dm)...")
-
         m = dms[$selected_dm]
-        res = hclust(m, linkage=:ward, branchorder=:barjoseph)
         rm = zeros(size(m))
 
         # gets the correct idx 
         mtx_to_t = Dict()
-        for (i, r) in enumerate(res.order)
-            rm[i, :] .= m[r, :][res.order]
+
+        for (i, r) in enumerate($clustering.order)
+            rm[i, :] .= m[r, :][$clustering.order]
             mtx_to_t[i] = t_list[r]
         end
 
@@ -55,6 +50,7 @@ function build_selection_window(fig_size,
     on(invar_menu.selection) do val
         selected_invariant[] = val
     end
+
     grid[3, :] = hgrid!(Label(window, "Selected invariant"),
         invar_menu,
         Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))

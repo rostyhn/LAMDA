@@ -144,6 +144,7 @@ function get_data_alt(trajectory_name)
                 @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
             end
 
+            # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")
             if !isdir(dmf)
                 return error("Distance matrix folder not found.")
@@ -169,7 +170,23 @@ function get_data_alt(trajectory_name)
                 println("No scalars folder found, ignoring.")
             end
 
+            # load in alignment features
+            alignmentf = joinpath(t, "alignment")
+            alignments = Dict()
+
+            if isdir(alignmentf)
+                for af in readdir(alignmentf, join=true)
+                    alignment_name = basename(af)
+                    if isfile(af)
+                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Matrix{Float32}}(Pickle.npyload(af))
+                    end
+                end
+            else
+                return error("Alignment folder not found.")
+            end
+
             # TODO: check for correctness
+            trajectory_data["alignments"] = alignments
             trajectory_data["scalars"] = scalars
             trajectory_data["dms"] = dms
         else
