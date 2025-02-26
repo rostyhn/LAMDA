@@ -115,30 +115,17 @@ function get_data_alt(trajectory_name)
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
                 # converts into array of Point3fs
-                alignedAtomPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
-                for (t, aligned) in alignedPositionsMatrices
-                    p1, p2 = aligned
-                    alignedAtomPositions[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
-                end
 
                 # https://github.com/KristofferC/NearestNeighbors.jl
                 # can store kdTrees as indices only, relinking positions when needed
-                println("Computing KDTrees.")
-                stateKDTree = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
-                @time for (t, aligned) in alignedAtomPositions
-                    p1, p2 = aligned
-                    stateKDTree[t] = (KDTree(p1), KDTree(p2))
-                end
 
                 trajectory_data = Dict("distanceMatrices" => distanceMatrices,
-                    "alignedPositions" => alignedAtomPositions,
                     "alignedPositionsMatrices" => alignedPositionsMatrices,
                     "connectivity" => connectivity,
                     "transitions" => transitions,
                     "t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
-                    "kdTree" => stateKDTree,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
                 @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
@@ -176,8 +163,8 @@ function get_data_alt(trajectory_name)
 
             if isdir(alignmentf)
                 for af in readdir(alignmentf, join=true)
-                    alignment_name = basename(af)
                     if isfile(af)
+                        alignment_name = basename(af)
                         alignments[alignment_name] = Dict{Tuple{Int16,Int16},Matrix{Float32}}(Pickle.npyload(af))
                     end
                 end

@@ -1,14 +1,5 @@
-using StatsBase, SparseArrays, Distances
-using LinearAlgebra
-
-function squaredNorm(a::Point3f)::Float32
-    return a[1] * a[1] + a[2] * a[2] + a[3] * a[3]
-end
-
-function kernelFunction(point::Point3f, atomPosition::Point3f, width::Float64)::Float32
-    scale = 1 / ((2pi)^(3 / 2) * width^3)
-    return scale * exp(-1 * (squaredNorm(point - atomPosition)) / (2 * width^2))
-end
+using StatsBase, SparseArrays, Distances, LinearAlgebra
+using ProgressMeter
 
 function buildBonds(positions, bondDelta, connectivity)
     cartesians = findall(isone, connectivity)
@@ -19,28 +10,6 @@ function buildBonds(positions, bondDelta, connectivity)
     return (points, weights, indices)
 end
 
-function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTree, points, num_neighbors, kernelWidth, invariant)
-    volMax = floatmin(Float32)
-    volMin = floatmax(Float32)
-    absVolMin = floatmax(Float32)
-
-    volData = Array{Tuple{Int,Array{Float32}}}(undef, length(transitions))
-    for (idx, (t_idx, t)) in enumerate(transitions)
-        vd = Array{Float32,3}(zeros(sampleRange))
-        pos1 = alignedPositions[t][1]
-        kdTree1 = stateKDTree[t][1]
-        for ((i, j, k), point) in points
-            knn, dists = NearestNeighbors.knn(kdTree1, point, num_neighbors)
-            kValue = sum(kernelFunction.(Ref(point), pos1[knn], kernelWidth) .* invariant[t][knn])
-            vd[i, j, k] = kValue
-            volMax = max(volMax, kValue)
-            volMin = min(volMin, kValue)
-            absVolMin = min(absVolMin, abs(kValue))
-        end
-        volData[idx] = (t_idx, vec(vd))
-    end
-    return volData, volMin, volMax, absVolMin
-end
 
 # Moment feature map
 function moment_map(diagram, max_level, H::Int64)
@@ -95,17 +64,6 @@ function computeMoment(values::Vector{Float64}, moment::Int64)
 
     valAboutMean = values .- meanValue
     return sum(valAboutMean .^ moment) / length(values)
-end
-
-function computePersistenceDistances(persistenceDiagrams::Vector)::Matrix{Float64}
-    out = zeros(length(persistenceDiagrams), length(persistenceDiagrams))
-    @showprogress Threads.@threads for k in 1:length(persistenceDiagrams)
-        @inbounds out[k, k] = 0.0
-        for j in 1:(k-1)
-            @inbounds out[j, k] = Wasserstein()(persistenceDiagrams[j], persistenceDiagrams[k])
-        end
-    end
-    return Symmetric(out)
 end
 
 function computeInvariantDistributionInNeighborhood(data::Vector{Float64}, positions::Vector{Point3f}, binEdges::Vector{Float64}, neighborCount::Int64, atomKDTree::NearestNeighbors.KDTree)::Vector{SparseVector{Float64}}
@@ -243,3 +201,4 @@ function sort_transitions(rel::Tuple{Int,Int}, seq::Vector{Tuple{Int,Int}}, dm::
 
     return map((x) -> x[2], sort(collect(zip(row, seq)), by=first))
 end
+

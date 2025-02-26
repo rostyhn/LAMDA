@@ -1,8 +1,5 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
-using Graphs
-using GraphMakie
-using NetworkLayout
 using UMAP
 using Clustering
 
@@ -18,6 +15,7 @@ function build_selection_window(fig_size,
     window = Figure(size=fig_size)
     user_groups = Observable(Dict())
 
+    # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
         m = dms[$selected_dm]
         rm = zeros(size(m))

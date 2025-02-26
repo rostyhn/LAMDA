@@ -136,3 +136,28 @@ function fractionalAnisotropy(ev::Vector{Float64})
         sqrt(ev[1]^2 + ev[2]^2 + ev[3]^2)
     return sqrt(3.0 / 2.0) * a
 end
+
+function center_atom_positions(p)
+    cm = mean(p, dims=1)
+    return (p .- cm), cm
+end
+
+function com(p, weights)
+    # assume weights to be positive
+    return sum(p .* weights, dims=1) ./ sum(weights)
+end
+
+function pure_align(r1, r2)
+    Ra = pinv(r1' * r2) * (r1' * r1)
+    U, S, Vh = svd(Ra, full=true)
+    Ri = U * Diagonal([1, 1, -1]) * Vh
+    Rb = U * Vh
+
+    if sum((r1 - r2 * Ri) .^ 2) < sum((r1 - r2 * Rb) .^ 2)
+        R = Ri
+    else
+        R = Rb
+    end
+
+    return R, norm(r1 - r2 * R)
+end
