@@ -9,8 +9,6 @@ Pkg.precompile()
 @everywhere begin
     using Pkg
     Pkg.activate(@__DIR__)
-    #Pkg.instantiate()
-    #Pkg.precompile()
 end
 
 @everywhere using Revise, TransVis

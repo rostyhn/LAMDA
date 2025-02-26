@@ -7,11 +7,12 @@ using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_p
 using Pickle
 using JLD2
 using CodecZlib
-
+using Clustering: hclust, cutree 
 #Vis
 using GLMakie
 using Makie
 using GeometryBasics
+
 #Processing and Helpers
 using NearestNeighbors
 using LinearAlgebra
@@ -20,6 +21,7 @@ using Statistics
 using ProgressMeter
 using Ripserer
 using Mmap
+
 
 include("io.jl")
 # unfortunately is used as part of the main module

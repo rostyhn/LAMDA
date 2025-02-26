@@ -1,7 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
 using UMAP
-using Clustering
 
 function build_selection_window(fig_size,
     data,
