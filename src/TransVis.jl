@@ -7,7 +7,7 @@ using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_p
 using Pickle
 using JLD2
 using CodecZlib
-using Clustering: hclust, cutree 
+using Clustering: hclust, cutree
 #Vis
 using GLMakie
 using Makie
@@ -134,6 +134,8 @@ function go(trajectory_name::String)
         return points
     end
 
+    # https://github.com/KristofferC/NearestNeighbors.jl
+    # can store kdTrees as indices only, relinking positions when needed
     stateKDTree = @lift begin
         println("Computing KDTrees.")
         kd = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
@@ -241,33 +243,57 @@ function go(trajectory_name::String)
         if !is_cached
             println("Calculating volume data for $(key); will be saved as $(hash(key))...")
 
-            # setting shared = false does not save the results
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
-            # https://docs.julialang.org/en/v1/manual/distributed-computing/
             alignedPos = map(x -> $alignedPositions[x][1], transitionSequence)
             kd = map(x -> $stateKDTree[x][1], transitionSequence)
             invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
 
-            chunks = Iterators.partition(zip(eachindex(transitionSequence), alignedPos, kd, invariants), div(length(transitionSequence), nworkers()))
-
+            chunks = collect(Iterators.partition(eachindex(transitionSequence), div(length(transitionSequence), nworkers())))
+    
+            d_ch = RemoteChannel(() -> Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}(nworkers()))
             try
-                # pass shared arrays?
-                tasks = map(x -> remotecall(calc_vols, x[1], $sampleRanges, $num_neighbors, $kernelWidth, x[2]), collect(zip(workers(), collect(chunks))))
 
-                data = fetch.(tasks)
-                println("writing")
-                @time for (idx, d) in vd
-                    @inbounds volData[idx, :] = d
+                w = workers()
+                for i, ts in enumerate(chunks)
+                    ap_chunk = alignedPos[ts]
+                    kd_chunk = kd[ts]
+                    iv_chunk = invariants[ts]
+                    remote_do(calc_vols, w[i % len(w)], d_ch, $sampleRanges, $num_neighbors, $kernelWidth, ts, kd_chunk,ap_chunk, iv_chunk)
                 end
 
-                volMin = minimum(getindex.(data, 1))
-                volMax = maximum(getindex.(data, 2))
-                absVolMin = minimum(last.(data))
+                absVolMin = floatmax(Float32)
+                volMin = floatmax(Float32)
+                volMax = floatmin(Float32)
+
+                # setting shared = false does not save the results
+                volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false)
+
+                processed = 0
+                prog = Progress(length(transitionSequence))
+                update!(prog, processed)
+                
+                while processed < length(transitionSequence)
+                    data = take!(d_ch)
+                    vd = first(data)
+
+                    @time for (idx, d) in vd
+                        @inbounds volData[idx, :] = d
+                    end
+                    processed += length(vd)
+                    
+                    volMin = min(volMin, getindex(data, 2))
+                    volMax = max(volMax, getindex(data, 3))
+                    absVolMin = min(absVolMin, last(data))
+                   
+                    data = nothing
+                    vd = nothing
+                    GC.gc() 
+                    
+                    update!(prog, processed)
+                end
 
                 volRange[] = (volMin, volMax)
                 notify(volRange)
                 save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
-
             catch
                 rm(fp)
                 return error("Volume calculation failed.")

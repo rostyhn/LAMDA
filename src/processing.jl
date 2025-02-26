@@ -124,11 +124,8 @@ function computeTransitionInvariants(
     transitionInvariants1 = Dict{Tuple{Int16,Int16},Vector}()
     transitionInvariants2 = Dict{Tuple{Int16,Int16},Vector}()
     transitionInvariants3 = Dict{Tuple{Int16,Int16},Vector}()
-
     stretchedPrincipalAxes = Dict{Tuple{Int16,Int16},Vector{Vector{Vec3f}}}()
 
-    # can map reduce to parallelize
-    println("Calculating transition invariants.")
     @showprogress for t in transitions
         s1, s2 = t
         aPos1, aPos2 = alignedPositions[t]

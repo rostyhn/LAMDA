@@ -1,5 +1,3 @@
-export get_data_alt
-
 function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
     #s2 changes s1 stays
     s = mean(x, dims=1)
@@ -90,40 +88,35 @@ function get_data_alt(trajectory_name)
             t = trajectories[trajectory_name]
 
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
+
+            # TODO: make sure these exist!
+            distances_pickle = joinpath(t, "distances.pickle")
+            connectivity_pickle = joinpath(t, "connectivity.pickle")
+            transitions_pickle = joinpath(t, "transitions.pickle")
+            alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
+
+            distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
+            connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
+            transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
+            alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
+
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
-                @time trajectory_data = JLD2.jldopen(cache_file; compress=true) do file
-                    file["trajectory_data"]
+                # why is this so slow?
+                @time trajectory_data = JLD2.jldopen(cache_file) do file
+                    Dict{Any, Any}(file["trajectory_data"])
                 end
             else
                 println("Calculating data for $(trajectory_name).")
                 if !isdir(cachePath)
                     mkdir(cachePath)
                 end
-
-                distances_pickle = joinpath(t, "distances.pickle")
-                connectivity_pickle = joinpath(t, "connectivity.pickle")
-                transitions_pickle = joinpath(t, "transitions.pickle")
-                alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
-
-                distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
-                connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
-                transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
-                alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
-
+                
+                println("Calculating transition invariants.") 
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
-                # converts into array of Point3fs
-
-                # https://github.com/KristofferC/NearestNeighbors.jl
-                # can store kdTrees as indices only, relinking positions when needed
-
-                trajectory_data = Dict("distanceMatrices" => distanceMatrices,
-                    "alignedPositionsMatrices" => alignedPositionsMatrices,
-                    "connectivity" => connectivity,
-                    "transitions" => transitions,
-                    "t1" => t1,
+                trajectory_data = Dict{Any, Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
@@ -131,6 +124,12 @@ function get_data_alt(trajectory_name)
                 @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
             end
 
+            # no need to cache data that is already available
+            trajectory_data["distanceMatrices"] = distanceMatrices
+            trajectory_data["connectivity"] = connectivity
+            trajectory_data["transitions"] = transitions
+            trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices 
+            
             # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")
             if !isdir(dmf)
