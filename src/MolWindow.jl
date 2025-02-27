@@ -34,11 +34,11 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     # these functions must return:
     # a list of plots, listeners, and ui elements (gridLayout, [elements]) they created
     bp = function (scene, inspector, g)
-        return setup_atom_view!(scene, g, ap1, transition, 1, selected, scalars)
+        return setup_atom_view!(scene, g, ap1, transition, 1, scalars)
     end
 
     afp = function (scene, inspector, g)
-        return setup_atom_view!(scene, g, ap2, transition, 2, selected, scalars)
+        return setup_atom_view!(scene, g, ap2, transition, 2, scalars)
     end
 
     sq = function (scene, inspector, g)
@@ -87,9 +87,9 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
 
     vol = function (scene, inspector, g)
         v = volume!(scene,
-                    lift(x -> extrema(x[1]), sampleRanges),
-                    lift(x -> extrema(x[2]), sampleRanges),
-                    lift(x -> extrema(x[3]), sampleRanges),
+            lift(x -> extrema(x[1]), sampleRanges),
+            lift(x -> extrema(x[2]), sampleRanges),
+            lift(x -> extrema(x[3]), sampleRanges),
             volumeData;
             colormap=vol_cmap,
             algorithm=:absorption,
@@ -122,39 +122,33 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     #end
 end
 
-function setup_atom_view!(scene, g, ap, t, order, selected, scalars)
-    opts = ["selected"; sort(collect(keys(scalars)))]
+function setup_atom_view!(scene, g, ap, t, order, scalars)
+    opts = sort(collect(keys(scalars)))
 
-    gg = GridLayout(g[3, :])
-    m = Menu(gg[1, 1], options=opts, default="selected")
+    gg = GridLayout(g[end+1, :])
+    m = Menu(gg[1, 1], options=opts, default=first(opts))
 
     colorInfo = @lift begin # might be leaking memory
         opt = $(m.selection)
-        vals = [i in $selected ? 0.0 : 1.0 for i in 1:147]
-        extremaVals = (0.0, 1.0)
-        labelfn = (self, i, p) -> "Atom $(i)"
-        cmap = to_colormap(:redsblues)
 
-        if opt != "selected"
-            vals = scalars[opt][t][order]
-            extremaVals = extrema(vals)
-            labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
+        vals = scalars[opt][t][order]
+        extremaVals = extrema(vals)
+        labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
 
-            # three cases:
-            # sequential ascending, descending and diverging
-            # divergent if we are approximately around 0 when subtracting the absolute values of the min and max
-            minVal, maxVal = extremaVals
-            if isapprox(abs(maxVal) - abs(minVal), 0; atol=1)
-                println("using divergent colorscheme")
-                cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-            else
-                # ascending sequential if min is closer to 0
-                cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
-                if abs(minVal) > abs(maxVal)
-                    println("using descending sequential colorscheme")
-                    # otherwise reverse it
-                    reverse!(cmap)
-                end
+        # three cases:
+        # sequential ascending, descending and diverging
+        # divergent if we are approximately around 0 when subtracting the absolute values of the min and max
+        minVal, maxVal = extremaVals
+        if isapprox(abs(maxVal) - abs(minVal), 0; atol=1)
+            println("using divergent colorscheme")
+            cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+        else
+            # ascending sequential if min is closer to 0
+            cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
+            if abs(minVal) > abs(maxVal)
+                println("using descending sequential colorscheme")
+                # otherwise reverse it
+                reverse!(cmap)
             end
         end
         empty!(scene)

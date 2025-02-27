@@ -41,13 +41,11 @@ function go(trajectory_name::String)
     transitionInvariants3 = active_trajectory["t3"]
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
-    #stateKDTree = active_trajectory["kdTree"]
     dms = active_trajectory["dms"]
     scalars = active_trajectory["scalars"]
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
     rawAlignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
-    #alignedPositions = active_trajectory["alignedPositions"] # positions as vec point3fs
     alignments = active_trajectory["alignments"]
 
     transitionSequence = active_trajectory["transitions"]
@@ -303,7 +301,7 @@ function go(trajectory_name::String)
             end
         end
 
-        volData = Mmap.mmap(fp, Array{Float32, 2}, (w * h * d, length(transitionSequence)), shared=false, grow=false)
+        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(transitionSequence)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
         notify(volRange)
 
@@ -325,8 +323,8 @@ function go(trajectory_name::String)
 
     function on_click(t, on_window_hover)
         # TODO: make these observable
-        pos1= alignedPositions[][t][1]
-        kdTree1= stateKDTree[][t][1]
+        pos1 = alignedPositions[][t][1]
+        kdTree1 = stateKDTree[][t][1]
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
@@ -337,7 +335,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars)
 
     display(screen, window)
 end

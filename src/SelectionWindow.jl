@@ -9,7 +9,7 @@ function build_selection_window(fig_size,
     on_click,
     num_atoms,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, cmap, selected_invariant, clustering, selected_dm)
+    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars)
 
     window = Figure(size=fig_size)
     user_groups = Observable(Dict())
@@ -37,50 +37,17 @@ function build_selection_window(fig_size,
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
 
-    svl = LScene(grid[1, 1], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
-    svr = LScene(grid[1, 2], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
-
-    Label(grid[2, 1], lift(x -> string(x), hl), tellwidth=false)
-    Label(grid[2, 2], lift(x -> string(x), hr), tellwidth=false)
+    setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
+    setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
 
     invar_menu = Menu(window, options=["t1", "t2", "t3"], tellwidth=false)
     on(invar_menu.selection) do val
         selected_invariant[] = val
     end
 
-    grid[3, :] = hgrid!(Label(window, "Selected invariant"),
-        invar_menu,
-        Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))
-
-    vl = volume!(svl,
-        lift(x -> extrema(x[1]), sampleRanges),
-        lift(x -> extrema(x[2]), sampleRanges),
-        lift(x -> extrema(x[3]), sampleRanges),
-        lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hl, volData, sampleRanges);
-        colormap=cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=volRange,
-        overdraw=true,
-        visible=true)
-    vl.inspectable[] = false
-
-    vr = volume!(svr,
-        lift(x -> extrema(x[1]), sampleRanges),
-        lift(x -> extrema(x[2]), sampleRanges),
-        lift(x -> extrema(x[3]), sampleRanges),
-        lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hr, volData, sampleRanges);
-        colormap=cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=volRange,
-        overdraw=true,
-        visible=true)
-    vr.inspectable[] = false
+    #grid[3, :] = hgrid!(Label(window, "Selected invariant"),
+    #    invar_menu,
+    #    Colorbar(window, colormap=vol_cmap, limits=volRange, vertical=false, size=16))
 
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
     campixel!(graph_ax.scene)
@@ -131,7 +98,7 @@ function build_selection_window(fig_size,
         lift(x -> extrema(x[2]), sampleRanges),
         lift(x -> extrema(x[3]), sampleRanges),
         lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
-        colormap=cmap,
+        colormap=vol_cmap,
         algorithm=:absorption,
         fxaa=false,
         transparency=true,
@@ -192,4 +159,174 @@ function build_selection_window(fig_size,
     end
 
     return window
+end
+
+function simple_atom_view(scene, g, ap, t, order, scalars, sel)
+    opts = sort(collect(keys(scalars)))
+
+    gg = GridLayout(g[end+1, :])
+    m = Menu(gg[1, 1], options=opts, default=length(sel[]) == 0 ? first(opts) : sel[])
+
+    colorInfo = @lift begin
+        opt = $(m.selection)
+        vals = scalars[opt][t][order]
+
+        extremaVals = extrema(vals)
+        labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
+
+        # three cases:
+        # sequential ascending, descending and diverging
+        # divergent if we are approximately around 0 when subtracting the absolute values of the min and max
+        minVal, maxVal = extremaVals
+        if isapprox(abs(maxVal) - abs(minVal), 0; atol=1)
+            println("using divergent colorscheme")
+            cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+        else
+            # ascending sequential if min is closer to 0
+            cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
+            if abs(minVal) > abs(maxVal)
+                println("using descending sequential colorscheme")
+                # otherwise reverse it
+                reverse!(cmap)
+            end
+        end
+
+        sel[] = opt
+        notify(sel)
+
+        return vals, extremaVals, cmap, labelfn
+    end
+
+    scatter!(scene, ap, color=lift(x -> x[1], colorInfo),
+        colorrange=lift(x -> x[2], colorInfo),
+        colormap=lift(x -> x[3], colorInfo),
+        inspector_label=lift(x -> x[4], colorInfo),
+        markersize=30)
+
+    cbar = Colorbar(gg[1, 2], colorrange=lift(x -> x[2], colorInfo), vertical=false, colormap=lift(x -> x[3], colorInfo), tellwidth=false)
+
+    return [], [(gg, [m, cbar])]
+end
+
+function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx)
+    rootScene = LScene(
+        fig,
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    m = Menu(fig, options=["Volume", "Initial State", "Final State"],
+        default="Volume")
+
+    l = Label(fig, lift(x -> string(x), hovered), tellwidth=false)
+    i, j = loc
+    g = vgrid!(m, rootScene, l)
+    parentGrid[i, j] = g
+
+    inspector = DataInspector(rootScene)
+
+    sel = Observable("Volume")
+    bp_sel = Observable("")
+    ap_sel = Observable("")
+
+    scene_listeners = Vector{Any}()
+    ui_elements = Vector{Any}()
+
+    function cleanup_t_view()
+        cam = camera(rootScene)
+        empty!(rootScene)
+
+        for listener in scene_listeners
+            off(listener)
+            listener = Nothing
+        end
+        empty!(scene_listeners)
+
+        # clear UI elements
+        for c in ui_elements
+            gg, elements = c
+            for e in elements
+                empty!(e.blockscene)
+                delete!(e)
+            end
+            if !isnothing(gg)
+                Makie.trim!(gg)
+                # only way to delete a gridlayout
+                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
+            end
+        end
+        Makie.trim!(g)
+    end
+
+    menu_listener = nothing
+
+    @lift begin
+        bp = function (scene, inspector, g)
+            return simple_atom_view(scene, g, $ap[$hovered][1], $hovered, 1, scalars, bp_sel)
+        end
+
+        afp = function (scene, inspector, g)
+            return simple_atom_view(scene, g, $ap[$hovered][2], $hovered, 2, scalars, ap_sel)
+        end
+
+        vol = function (scene, inspector, g)
+            vd = reshape($volData[:, t_to_idx[$hovered]], (length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3])))
+
+            v = volume!(scene,
+                lift(x -> extrema(x[1]), sampleRanges),
+                lift(x -> extrema(x[2]), sampleRanges),
+                lift(x -> extrema(x[3]), sampleRanges),
+                vd;
+                colormap=vol_cmap,
+                algorithm=:absorption,
+                fxaa=false,
+                transparency=true,
+                shading=NoShading,
+                colorrange=volumeRange,
+                visible=true)
+            v.inspectable[] = false
+
+            return [], []
+        end
+
+        rf = Dict()
+        rf["Initial State"] = bp
+        rf["Final State"] = afp
+        rf["Volume"] = vol
+
+        cleanup_t_view()
+
+        if !isnothing(menu_listener)
+            off(menu_listener)
+            menu_listener = nothing
+        end
+
+        initial_render_func = rf[$sel]
+        il, is = initial_render_func(rootScene, inspector, g)
+
+        for l in il
+            push!(scene_listeners, l)
+        end
+
+        for s in is
+            push!(ui_elements, s)
+        end
+
+        menu_listener = on(m.selection) do cw
+            cleanup_t_view()
+
+            listeners, scenes = rf[cw](rootScene, inspector, g)
+
+            for l in listeners
+                push!(scene_listeners, l)
+            end
+
+            for s in scenes
+                push!(ui_elements, s)
+            end
+            update_cam!(rootScene.scene)
+            sel[] = cw
+            notify(sel)
+        end
+    end
 end
