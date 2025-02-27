@@ -9,7 +9,7 @@ function build_selection_window(fig_size,
     on_click,
     num_atoms,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars)
+    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff)
 
     window = Figure(size=fig_size)
     user_groups = Observable(Dict())
@@ -83,10 +83,13 @@ function build_selection_window(fig_size,
 
     colors = Observable(fill(:blue, length(embedding[])))
 
-    sc = scatter!(graph_ax, embedding; color=colors)
-    sc.inspectable[] = false
-    text!(graph_ax, embedding; text=map(x -> string(x), t_list))
-    hidedecorations!(graph_ax)
+    @lift begin
+        dendrogram!(graph_ax, $clustering, $h_cutoff)
+    end
+
+    #text!(graph_ax, embedding; text=map(x -> string(x), t_list))
+
+    # hidedecorations!(graph_ax)
 
     on(embedding) do _
         autolimits!(graph_ax)
@@ -113,6 +116,7 @@ function build_selection_window(fig_size,
 
     center!(ax3d.scene)
 
+    #=
     on(events(graph_ax).mouseposition) do mp
         plot, idx = pick(graph_ax)
         if plot == sc
@@ -140,6 +144,7 @@ function build_selection_window(fig_size,
         end
         return Consume(true)
     end
+    =#
 
     on(events(hm_ax).mouseposition) do mp
         colors[] = fill(:blue, length(colors[]))
@@ -214,7 +219,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
     rootScene = LScene(
         fig,
         show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
+        scenekw=(backgroundcolor=:white, clear=true),
     )
 
     m = Menu(fig, options=["Volume", "Initial State", "Final State"],

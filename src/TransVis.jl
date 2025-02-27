@@ -30,6 +30,7 @@ include("SelectionWindow.jl")
 include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
+include("dendrogram.jl")
 
 export go
 
@@ -336,7 +337,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff)
 
     display(screen, window)
 end
