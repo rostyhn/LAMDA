@@ -150,8 +150,9 @@ end
 function pure_align(r1, r2)
     Ra = pinv(r1' * r2) * (r1' * r1)
     U, S, Vh = svd(Ra, full=true)
-    Ri = U * Diagonal([1, 1, -1]) * Vh
-    Rb = U * Vh
+
+    Ri = U * Diagonal([1, 1, -1]) * Vh'
+    Rb = U * Vh'
 
     if sum((r1 - r2 * Ri) .^ 2) < sum((r1 - r2 * Rb) .^ 2)
         R = Ri

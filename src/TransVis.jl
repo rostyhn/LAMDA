@@ -86,6 +86,8 @@ function go(trajectory_name::String)
         end
 
         features = alignments[$selected_alignment]
+
+        # could be floating point error?
         pos = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
