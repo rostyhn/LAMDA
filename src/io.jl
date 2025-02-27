@@ -59,7 +59,7 @@ function read_volume_cache(key)
     result = Nothing
     if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
         println("Loading $(key) from $(basename(cache_file))")
-        result = JLD2.jldopen(cache_file; compress=true) do file
+        result = JLD2.jldopen(cache_file) do file
             file["volume_range"]
         end
     end
@@ -73,7 +73,7 @@ function save_volume_cache(key, volume_range, dimensions, absVolMin)
     cache_file = joinpath(cachePath, "$(h).jdl2")
 
     println("Saving $(key) as $(basename(cache_file))")
-    JLD2.jldsave("$(cache_file)", true; volume_range, dimensions, absVolMin)
+    JLD2.jldsave("$(cache_file)";  volume_range, dimensions, absVolMin)
 end
 
 function get_data_alt(trajectory_name)
@@ -104,32 +104,32 @@ function get_data_alt(trajectory_name)
                 println("Loading $(trajectory_name) from cache.")
                 # why is this so slow?
                 @time trajectory_data = JLD2.jldopen(cache_file) do file
-                    Dict{Any, Any}(file["trajectory_data"])
+                    Dict{Any,Any}(file["trajectory_data"])
                 end
             else
                 println("Calculating data for $(trajectory_name).")
                 if !isdir(cachePath)
                     mkdir(cachePath)
                 end
-                
-                println("Calculating transition invariants.") 
+
+                println("Calculating transition invariants.")
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
-                trajectory_data = Dict{Any, Any}("t1" => t1,
+                trajectory_data = Dict{Any,Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
-                @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
+                @time JLD2.jldsave("$(cache_file)"; trajectory_data,)
             end
 
             # no need to cache data that is already available
             trajectory_data["distanceMatrices"] = distanceMatrices
             trajectory_data["connectivity"] = connectivity
             trajectory_data["transitions"] = transitions
-            trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices 
-            
+            trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
+
             # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")
             if !isdir(dmf)

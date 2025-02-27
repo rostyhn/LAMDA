@@ -1,5 +1,4 @@
 module TransVis
-using Distributed
 
 #Data handling
 using GLMakie: apply_transform
@@ -246,18 +245,29 @@ function go(trajectory_name::String)
             alignedPos = map(x -> $alignedPositions[x][1], transitionSequence)
             kd = map(x -> $stateKDTree[x][1], transitionSequence)
             invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
+        
+            # 487 seconds record
+            chunks = collect(Iterators.partition(eachindex(transitionSequence), div(length(transitionSequence), Threads.nthreads(:default))))
 
-            chunks = collect(Iterators.partition(eachindex(transitionSequence), div(length(transitionSequence), nworkers())))
-    
-            d_ch = RemoteChannel(() -> Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}(nworkers()))
+            points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
+            for i in eachindex($sampleRanges[1]) # x
+                for j in eachindex($sampleRanges[2]) # y
+                    for k in eachindex($sampleRanges[3]) # z
+                        point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
+                        push!(points, ((i, j, k), point))
+                    end
+                end
+            end
+
+            d_ch = Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}() #Threads.nthreads(:default)
             try
-
-                w = workers()
-                for i, ts in enumerate(chunks)
-                    ap_chunk = alignedPos[ts]
-                    kd_chunk = kd[ts]
-                    iv_chunk = invariants[ts]
-                    remote_do(calc_vols, w[i % len(w)], d_ch, $sampleRanges, $num_neighbors, $kernelWidth, ts, kd_chunk,ap_chunk, iv_chunk)
+                tasks = map(chunks) do ts
+                    Threads.@spawn :default begin
+                        ap_chunk = @view alignedPos[ts]
+                        kd_chunk = @view kd[ts]
+                        iv_chunk = @view invariants[ts]
+                        calc_vols(d_ch, $sampleRanges, $num_neighbors, $kernelWidth, points, ts, kd_chunk, ap_chunk, iv_chunk)
+                    end
                 end
 
                 absVolMin = floatmax(Float32)
@@ -265,32 +275,37 @@ function go(trajectory_name::String)
                 volMax = floatmin(Float32)
 
                 # setting shared = false does not save the results
-                volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false)
+                volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
 
                 processed = 0
                 prog = Progress(length(transitionSequence))
                 update!(prog, processed)
-                
+
+                errormonitor.(tasks)
+
                 while processed < length(transitionSequence)
                     data = take!(d_ch)
                     vd = first(data)
 
+                    # kind of slow when writing...
+                    println("writing")
                     @time for (idx, d) in vd
                         @inbounds volData[idx, :] = d
                     end
                     processed += length(vd)
-                    
+
                     volMin = min(volMin, getindex(data, 2))
                     volMax = max(volMax, getindex(data, 3))
                     absVolMin = min(absVolMin, last(data))
-                   
+
                     data = nothing
                     vd = nothing
-                    GC.gc() 
-                    
+                    GC.gc()
+
                     update!(prog, processed)
                 end
-
+                fetch.(tasks)
+                Mmap.sync!(volData)
                 volRange[] = (volMin, volMax)
                 notify(volRange)
                 save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
@@ -312,6 +327,7 @@ function go(trajectory_name::String)
             volume_cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
         end
         notify(volume_cmap)
+
         return volData
     end
 

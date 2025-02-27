@@ -4,7 +4,7 @@ https://julialang.org/downloads/
 
 Building:
 - In terminal:  'cd path_to_project/TransVis'
-- run: `julia -p auto -i startup,jl`
+- run: `julia -t [num_workers],1 -i startup,jl`
 
 In julia REPL (active TransVis Project)
 - 'using TransVis' to precompile and export functions
