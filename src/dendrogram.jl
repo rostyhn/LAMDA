@@ -19,8 +19,7 @@ function get_st_cluster(merge, i, clusterIdx)
     return -1
 end
 
-function treepositions(hc, cutoff; orientation=:vertical) #cmap, rootcolor; orientation=:vertical)
-
+function treepositions(hc, cutoff; orientation=:vertical)
     clusterIdx = cutree(hc; h=cutoff)
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
@@ -39,18 +38,20 @@ function treepositions(hc, cutoff; orientation=:vertical) #cmap, rootcolor; orie
         ypos = hc.heights[i]
         nodepos[i] = (xpos, ypos)
 
-        push!(xs, [x1, x1])
-        push!(ys, [y1, ypos])
-        push!(clusterIDs, get_st_cluster(hc.merges, lt, clusterIdx))
+        if ypos > cutoff
+            push!(xs, [x1, x1])
+            push!(ys, [max(cutoff, y1), ypos])
+            push!(clusterIDs, get_st_cluster(hc.merges, lt, clusterIdx))
 
-        # stem
-        push!(xs, [x1, x2])
-        push!(ys, [ypos, ypos])
-        push!(clusterIDs, get_st_cluster(hc.merges, i, clusterIdx))
+            # stem
+            push!(xs, [x1, x2])
+            push!(ys, [ypos, ypos])
+            push!(clusterIDs, get_st_cluster(hc.merges, i, clusterIdx))
 
-        push!(xs, [x2, x2])
-        push!(ys, [y2, ypos])
-        push!(clusterIDs, get_st_cluster(hc.merges, rt, clusterIdx))
+            push!(xs, [x2, x2])
+            push!(ys, [max(cutoff, y2), ypos])
+            push!(clusterIDs, get_st_cluster(hc.merges, rt, clusterIdx))
+        end
     end
     if orientation == :horizontal
         return ys, xs, clusterIDs
@@ -73,5 +74,10 @@ function dendrogram!(ax, h, cutoff; colormap=:tab20, rootcolor=:black, kwargs...
             color = cmap[(clusterIdx%length(cmap))+1]
         end
         lines!(ax, x, y; color)
+    end
+
+    # add cutoff line
+    if cutoff > minimum(h.heights)
+        lines!(ax, [0, length(h.order)], [cutoff, cutoff]; linestyle=:dash, color=:grey)
     end
 end
