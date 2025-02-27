@@ -245,7 +245,7 @@ function go(trajectory_name::String)
             alignedPos = map(x -> $alignedPositions[x][1], transitionSequence)
             kd = map(x -> $stateKDTree[x][1], transitionSequence)
             invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
-        
+
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
                 for j in eachindex($sampleRanges[2]) # y
@@ -265,12 +265,12 @@ function go(trajectory_name::String)
                 prog = Progress(length(transitionSequence))
                 update!(prog, processed)
 
-                chunks = collect(Iterators.partition(eachindex(transitionSequence), 1000))
+                chunks = collect(Iterators.partition(eachindex(transitionSequence), 100))
 
                 # 500 seconds at the fastest
                 io = open(fp, "a")
                 for chunk in chunks
-                    sub_chunks = collect(Iterators.partition(chunk, div(length(chunk), nthreads(:default)))) 
+                    sub_chunks = collect(Iterators.partition(chunk, div(length(chunk), nthreads(:default))))
                     tasks = map(sub_chunks) do ts
                         Threads.@spawn :default begin
                             ap_chunk = @view alignedPos[ts]
@@ -279,7 +279,7 @@ function go(trajectory_name::String)
                             return calc_vols($sampleRanges, $num_neighbors, $kernelWidth, points, ts, kd_chunk, ap_chunk, iv_chunk)
                         end
                     end
-                
+
                     errormonitor.(tasks)
                     data = fetch.(tasks)
                     vd = reduce(vcat, first.(data))
@@ -292,23 +292,20 @@ function go(trajectory_name::String)
                     volMin = min(volMin, minimum(getindex.(data, 2)))
                     volMax = max(volMax, maximum(getindex.(data, 3)))
                     absVolMin = min(absVolMin, minimum(last.(data)))
-                    
+
                     update!(prog, processed)
                 end
                 close(io)
-                volRange[] = (volMin, volMax)
-                notify(volRange)
                 save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
-                volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
             catch
                 rm(fp)
                 return error("Volume calculation failed.")
             end
-        else
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
-            volRange[] = read_volume_cache(key)
-            notify(volRange)
         end
+
+        volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
+        volRange[] = read_volume_cache(key)
+        notify(volRange)
 
         if $selected_invariant == "t2"
             volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
@@ -327,14 +324,15 @@ function go(trajectory_name::String)
     Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     function on_click(t, on_window_hover)
-        pos1, pos2 = lift(x -> x[t], alignedPositions)
-        kdTree1, kdTree2 = lift(x -> x[t], stateKDTree)
+        # TODO: make these observable
+        pos1= alignedPositions[][t][1]
+        kdTree1= stateKDTree[][t][1]
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
-        ls = buildBonds(lift(x -> x[t][1], alignedPositionsMatrices), bondDeltas[t], connectivity[t[1]])
+        ls = buildBonds(alignedPositionsMatrices[][t][1], bondDeltas[t], connectivity[t[1]])
 
-        build_mol_window(t, lift(x -> x[t], alignedPositions), lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
+        build_mol_window(t, alignedPositions[][t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
     screen = GLMakie.Screen()

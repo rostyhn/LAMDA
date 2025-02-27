@@ -87,9 +87,9 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
 
     vol = function (scene, inspector, g)
         v = volume!(scene,
-            lift(x -> x[1], sampleRanges),
-            lift(x -> x[2], sampleRanges),
-            lift(x -> x[3], sampleRanges),
+                    lift(x -> extrema(x[1]), sampleRanges),
+                    lift(x -> extrema(x[2]), sampleRanges),
+                    lift(x -> extrema(x[3]), sampleRanges),
             volumeData;
             colormap=vol_cmap,
             algorithm=:absorption,
@@ -204,9 +204,6 @@ function setup_state_view!(fig, loc, startState, render_funcs)
 
     on(m.selection) do cw
         cam = camera(rootScene)
-        eyepos = cam.eyeposition[]
-        lookat = cam.lookat[]
-
         empty!(rootScene)
 
         for listener in scene_listeners
@@ -240,6 +237,6 @@ function setup_state_view!(fig, loc, startState, render_funcs)
         for s in scenes
             push!(ui_elements, s)
         end
-        update_cam!(rootScene.scene, eyepos, lookat)
+        update_cam!(rootScene.scene)
     end
 end

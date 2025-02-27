@@ -53,24 +53,24 @@ function build_selection_window(fig_size,
         Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))
 
     vl = volume!(svl,
-        lift(x -> x[1], sampleRanges),
-        lift(x -> x[2], sampleRanges),
-        lift(x -> x[3], sampleRanges),
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
         lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hl, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=lift(x -> x, volRange),
+        colorrange=volRange,
         overdraw=true,
         visible=true)
     vl.inspectable[] = false
 
     vr = volume!(svr,
-        lift(x -> x[1], sampleRanges),
-        lift(x -> x[2], sampleRanges),
-        lift(x -> x[3], sampleRanges),
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
         lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hr, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
@@ -127,9 +127,9 @@ function build_selection_window(fig_size,
     ax3d.scene.visible[] = false
 
     v = volume!(ax3d,
-        lift(x -> x[1], sampleRanges),
-        lift(x -> x[2], sampleRanges),
-        lift(x -> x[3], sampleRanges),
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
         lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
