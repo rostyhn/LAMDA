@@ -1,4 +1,3 @@
-using Distributed
 using Pkg
 
 Pkg.activate(".")
