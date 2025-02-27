@@ -9,25 +9,9 @@ function squaredNorm(a::Point3f)::Float32
     return a[1] * a[1] + a[2] * a[2] + a[3] * a[3]
 end
 
-function calc_vols(d_ch, sr, nn, kw, points, ts, kd, ap, iv)
+function calc_vols(sr, nn, kw, points, ts, kd, ap, iv)
     sample_range = (length(sr[1]), length(sr[2]), length(sr[3]))
-
-    
-    sc_size = 100
-    for sc in zip(Iterators.partition(ts, sc_size), Iterators.partition(kd, sc_size), Iterators.partition(ap, sc_size), Iterators.partition(iv, sc_size))
-        s_ts = sc[1]
-        s_kd = sc[2]
-        s_ap = sc[3]
-        s_iv = sc[4]
-
-        @time vd, volmin, volmax, absvolmin = calculateVolumes(s_ts, sample_range, s_ap, s_kd, points, nn, kw, s_iv)
-        @time begin
-            put!(d_ch, (vd, volmin, volmax, absvolmin))
-            println("$(threadid()) put.")
-        end
-    end
-    GC.safepoint()
-    return nothing
+    return calculateVolumes(ts, sample_range, ap, kd, points, nn, kw, iv)
 end
 
 function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTree, points, num_neighbors, kernelWidth, invariant)
@@ -35,7 +19,7 @@ function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTre
     volMin = floatmax(Float32)
     absVolMin = floatmax(Float32)
 
-    volData = Array{Tuple{Int,Array{Float32}}}(undef, length(transitions))
+    volData = Array{Array{Float32}}(undef, length(transitions))
     for (rel_idx, t_idx) in enumerate(transitions)
         vd = Array{Float32,3}(zeros(sampleRange))
 
@@ -50,7 +34,7 @@ function calculateVolumes(transitions, sampleRange, alignedPositions, stateKDTre
             absVolMin = min(absVolMin, abs(kValue))
         end
         # should be returning something else?
-        volData[rel_idx] = (t_idx, vec(vd))
+        volData[rel_idx] = vec(vd)
     end
     return volData, volMin, volMax, absVolMin
 end

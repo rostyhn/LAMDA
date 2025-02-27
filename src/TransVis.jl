@@ -246,9 +246,6 @@ function go(trajectory_name::String)
             kd = map(x -> $stateKDTree[x][1], transitionSequence)
             invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
         
-            # 487 seconds record
-            chunks = collect(Iterators.partition(eachindex(transitionSequence), div(length(transitionSequence), Threads.nthreads(:default))))
-
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
                 for j in eachindex($sampleRanges[2]) # y
@@ -259,56 +256,50 @@ function go(trajectory_name::String)
                 end
             end
 
-            d_ch = Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}() #Threads.nthreads(:default)
             try
-                tasks = map(chunks) do ts
-                    Threads.@spawn :default begin
-                        ap_chunk = @view alignedPos[ts]
-                        kd_chunk = @view kd[ts]
-                        iv_chunk = @view invariants[ts]
-                        calc_vols(d_ch, $sampleRanges, $num_neighbors, $kernelWidth, points, ts, kd_chunk, ap_chunk, iv_chunk)
-                    end
-                end
-
                 absVolMin = floatmax(Float32)
                 volMin = floatmax(Float32)
                 volMax = floatmin(Float32)
-
-                # setting shared = false does not save the results
-                volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
 
                 processed = 0
                 prog = Progress(length(transitionSequence))
                 update!(prog, processed)
 
-                errormonitor.(tasks)
+                chunks = collect(Iterators.partition(eachindex(transitionSequence), 1000))
 
-                while processed < length(transitionSequence)
-                    data = take!(d_ch)
-                    vd = first(data)
+                # 500 seconds at the fastest
+                io = open(fp, "a")
+                for chunk in chunks
+                    sub_chunks = collect(Iterators.partition(chunk, div(length(chunk), nthreads(:default)))) 
+                    tasks = map(sub_chunks) do ts
+                        Threads.@spawn :default begin
+                            ap_chunk = @view alignedPos[ts]
+                            kd_chunk = @view kd[ts]
+                            iv_chunk = @view invariants[ts]
+                            return calc_vols($sampleRanges, $num_neighbors, $kernelWidth, points, ts, kd_chunk, ap_chunk, iv_chunk)
+                        end
+                    end
+                
+                    errormonitor.(tasks)
+                    data = fetch.(tasks)
+                    vd = reduce(vcat, first.(data))
 
-                    # kind of slow when writing...
-                    println("writing")
-                    @time for (idx, d) in vd
-                        @inbounds volData[idx, :] = d
+                    for d in vd
+                        write(io, d)
                     end
                     processed += length(vd)
 
-                    volMin = min(volMin, getindex(data, 2))
-                    volMax = max(volMax, getindex(data, 3))
-                    absVolMin = min(absVolMin, last(data))
-
-                    data = nothing
-                    vd = nothing
-                    GC.gc()
-
+                    volMin = min(volMin, minimum(getindex.(data, 2)))
+                    volMax = max(volMax, maximum(getindex.(data, 3)))
+                    absVolMin = min(absVolMin, minimum(last.(data)))
+                    
                     update!(prog, processed)
                 end
-                fetch.(tasks)
-                Mmap.sync!(volData)
+                close(io)
                 volRange[] = (volMin, volMax)
                 notify(volRange)
                 save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
+                volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
             catch
                 rm(fp)
                 return error("Volume calculation failed.")
