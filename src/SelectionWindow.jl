@@ -56,7 +56,7 @@ function build_selection_window(fig_size,
         lift(x -> extrema(x[1]), sampleRanges),
         lift(x -> extrema(x[2]), sampleRanges),
         lift(x -> extrema(x[3]), sampleRanges),
-        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hl, volData, sampleRanges);
+        lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hl, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,
@@ -71,7 +71,7 @@ function build_selection_window(fig_size,
         lift(x -> extrema(x[1]), sampleRanges),
         lift(x -> extrema(x[2]), sampleRanges),
         lift(x -> extrema(x[3]), sampleRanges),
-        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hr, volData, sampleRanges);
+        lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hr, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,
@@ -130,7 +130,7 @@ function build_selection_window(fig_size,
         lift(x -> extrema(x[1]), sampleRanges),
         lift(x -> extrema(x[2]), sampleRanges),
         lift(x -> extrema(x[3]), sampleRanges),
-        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
+        lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
         colormap=cmap,
         algorithm=:absorption,
         fxaa=false,

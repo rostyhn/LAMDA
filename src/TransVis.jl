@@ -303,7 +303,7 @@ function go(trajectory_name::String)
             end
         end
 
-        volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
+        volData = Mmap.mmap(fp, Array{Float32, 2}, (w * h * d, length(transitionSequence)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
         notify(volRange)
 
@@ -332,7 +332,7 @@ function go(trajectory_name::String)
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
         ls = buildBonds(alignedPositionsMatrices[][t][1], bondDeltas[t], connectivity[t[1]])
 
-        build_mol_window(t, alignedPositions[][t], lift((y, z) -> reshape(y[t_to_idx[t], :], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
+        build_mol_window(t, alignedPositions[][t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
     screen = GLMakie.Screen()
