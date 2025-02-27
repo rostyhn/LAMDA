@@ -1,22 +1,18 @@
 using Makie
 using StatsBase
 
-function get_st_cluster(merge, i, clusterIdx)
+function get_st_clusters(merge, i, clusterIdx)
     if i < 0
-        return clusterIdx[-i]
+        return Set(clusterIdx[-i])
     end
 
     lt = merge[i, 1]
     rt = merge[i, 2]
 
-    c_lt = get_st_cluster(merge, lt, clusterIdx)
-    c_rt = get_st_cluster(merge, rt, clusterIdx)
+    c_lt = get_st_clusters(merge, lt, clusterIdx)
+    c_rt = get_st_clusters(merge, rt, clusterIdx)
 
-    if c_lt == c_rt
-        return c_lt
-    end
-
-    return -1
+    return union(c_lt, c_rt)
 end
 
 function treepositions(hc, cutoff; orientation=:vertical)
@@ -26,7 +22,7 @@ function treepositions(hc, cutoff; orientation=:vertical)
 
     xs = []
     ys = []
-    clusterIDs = []
+    clusters = []
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
         lt = hc.merges[i, 1] # left subtree
@@ -41,39 +37,41 @@ function treepositions(hc, cutoff; orientation=:vertical)
         if ypos > cutoff
             push!(xs, [x1, x1])
             push!(ys, [max(cutoff, y1), ypos])
-            push!(clusterIDs, get_st_cluster(hc.merges, lt, clusterIdx))
+            push!(clusters, get_st_clusters(hc.merges, lt, clusterIdx))
 
             # stem
             push!(xs, [x1, x2])
             push!(ys, [ypos, ypos])
-            push!(clusterIDs, get_st_cluster(hc.merges, i, clusterIdx))
+            push!(clusters, get_st_clusters(hc.merges, i, clusterIdx))
 
             push!(xs, [x2, x2])
             push!(ys, [max(cutoff, y2), ypos])
-            push!(clusterIDs, get_st_cluster(hc.merges, rt, clusterIdx))
+            push!(clusters, get_st_clusters(hc.merges, rt, clusterIdx))
         end
     end
     if orientation == :horizontal
-        return ys, xs, clusterIDs
+        return ys, xs, clusters
     else
-        return xs, ys, clusterIDs
+        return xs, ys, clusters
     end
 end
 
-
-function dendrogram!(ax, h, cutoff; colormap=:tab20, rootcolor=:black, kwargs...)
+function dendrogram!(ax, h, cutoff; on_hover=show_data, colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
     println("Calculating dendrogram...")
     @time tp = treepositions(h, cutoff; kwargs...)
 
-    for (x, y, clusterIdx) in zip(tp...)
-        if clusterIdx == -1
-            color = rootcolor
-        else
+    for (x, y, clusters) in zip(tp...)
+        if length(clusters) == 1
+            clusterIdx = first(collect(clusters))
             color = cmap[(clusterIdx%length(cmap))+1]
+        else
+            color = rootcolor
         end
-        lines!(ax, x, y; color)
+        lines!(ax, x, y; color, inspector_label=(plot, index, position) -> "$(string(clusters)[1:min(end, 40)])$(length(string(clusters)) > 40 ? "..." : "")", inspector_hover=on_hover)
+
+
     end
 
     # add cutoff line

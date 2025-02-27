@@ -52,8 +52,6 @@ function build_selection_window(fig_size,
     #    Colorbar(window, colormap=vol_cmap, limits=volRange, vertical=false, size=16))
 
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
-    campixel!(graph_ax.scene)
-
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
 
     hidedecorations!(hm_ax)
@@ -78,11 +76,8 @@ function build_selection_window(fig_size,
         return map(x -> Point2f(x), eachrow(em))
     end
 
-    hovered = Observable(first(t_list))
-    tt_bbox = Observable(BBox(0, 0, 0, 0))
-
+    hovered_cluster = Observable(nothing)
     colors = Observable(fill(:blue, length(embedding[])))
-
     @lift begin
         dendrogram!(graph_ax, $clustering, $h_cutoff)
     end
@@ -94,27 +89,6 @@ function build_selection_window(fig_size,
     on(embedding) do _
         autolimits!(graph_ax)
     end
-
-    ax3d = LScene(graph_ax.scene, show_axis=false, bbox=tt_bbox, scenekw=(backgroundcolor=:black, clear=true, size=(250, 250), zorder=100), height=250, width=250)
-    ax3d.scene.visible[] = false
-
-    v = volume!(ax3d,
-        lift(x -> extrema(x[1]), sampleRanges),
-        lift(x -> extrema(x[2]), sampleRanges),
-        lift(x -> extrema(x[3]), sampleRanges),
-        lift((x, y, z) -> reshape(y[:, t_to_idx[x]], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
-        colormap=vol_cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=volRange,
-        overdraw=true,
-        visible=true)
-    v.inspectable[] = false
-    translate!(ax3d.scene, 0, 0, 10)
-
-    center!(ax3d.scene)
 
     #=
     on(events(graph_ax).mouseposition) do mp
