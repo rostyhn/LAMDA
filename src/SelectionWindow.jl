@@ -37,8 +37,10 @@ function build_selection_window(fig_size,
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
 
-    setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
-    setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
+    ltv = setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
+    rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
+
+    link_cameras_lscenes([ltv, rtv])
 
     invar_menu = Menu(window, options=["t1", "t2", "t3"], tellwidth=false)
     on(invar_menu.selection) do val
@@ -256,6 +258,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
             end
         end
         Makie.trim!(g)
+        #GC.gc() # stops memleak
     end
 
     menu_listener = nothing
@@ -295,7 +298,6 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
         rf["Volume"] = vol
 
         cleanup_t_view()
-
         if !isnothing(menu_listener)
             off(menu_listener)
             menu_listener = nothing
@@ -329,4 +331,6 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
             notify(sel)
         end
     end
+
+    return rootScene
 end

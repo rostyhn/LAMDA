@@ -84,7 +84,6 @@ function go(trajectory_name::String)
             push!(g, i)
             groups[c] = g
         end
-
         features = alignments[$selected_alignment]
 
         # could be floating point error?
