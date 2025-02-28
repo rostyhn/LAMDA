@@ -76,10 +76,17 @@ function build_selection_window(fig_size,
         return map(x -> Point2f(x), eachrow(em))
     end
 
-    hovered_cluster = Observable(nothing)
+    hovered_cluster = Observable(Set())
     colors = Observable(fill(:blue, length(embedding[])))
+
+    function on_dendrogram_hover(c)
+        println(c)
+        hovered_cluster[] = c
+        notify(hovered_cluster)
+    end
+
     @lift begin
-        dendrogram!(graph_ax, $clustering, $h_cutoff)
+        dendrogram!(graph_ax, $clustering, $h_cutoff; hover_callbackfn=on_dendrogram_hover)
     end
 
     #text!(graph_ax, embedding; text=map(x -> string(x), t_list))
@@ -188,6 +195,8 @@ function simple_atom_view(scene, g, ap, t, order, scalars, sel)
 
     return [], [(gg, [m, cbar])]
 end
+
+
 
 function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx)
     rootScene = LScene(

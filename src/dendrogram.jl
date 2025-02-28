@@ -56,11 +56,19 @@ function treepositions(hc, cutoff; orientation=:vertical)
     end
 end
 
-function dendrogram!(ax, h, cutoff; on_hover=show_data, colormap=:tab20, rootcolor=:black, kwargs...)
+function dendrogram!(ax, h, cutoff; hover_callbackfn=() -> (), colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
     println("Calculating dendrogram...")
     @time tp = treepositions(h, cutoff; kwargs...)
+
+    function on_hover(inspector, plot, idx, clusters)
+        status = show_data(inspector, plot, idx)
+        if status
+            hover_callbackfn(clusters)
+        end
+        return status
+    end
 
     for (x, y, clusters) in zip(tp...)
         if length(clusters) == 1
@@ -69,13 +77,13 @@ function dendrogram!(ax, h, cutoff; on_hover=show_data, colormap=:tab20, rootcol
         else
             color = rootcolor
         end
-        lines!(ax, x, y; color, inspector_label=(plot, index, position) -> "$(string(clusters)[1:min(end, 40)])$(length(string(clusters)) > 40 ? "..." : "")", inspector_hover=on_hover)
 
-
+        lines!(ax, x, y; color, inspector_label=(plot, index, position) -> "$(string(clusters)[1:min(end, 40)])$(length(string(clusters)) > 40 ? "..." : "")", inspector_hover=(ins, plot, idx) -> on_hover(ins, plot, idx, clusters))
     end
 
     # add cutoff line
     if cutoff > minimum(h.heights)
-        lines!(ax, [0, length(h.order)], [cutoff, cutoff]; linestyle=:dash, color=:grey)
+        l = lines!(ax, [0, length(h.order)], [cutoff, cutoff]; linestyle=:dash, color=:grey)
+        l.inspectable[] = false
     end
 end
