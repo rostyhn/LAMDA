@@ -55,10 +55,12 @@ function build_selection_window(fig_size,
     hovered_cluster = Observable(Set{Int64}(1))
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
+    hm_inspector = DataInspector(hm)
 
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
+    #=
     on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
         if plot == hm
@@ -73,17 +75,17 @@ function build_selection_window(fig_size,
         end
         return Consume(false)
     end
+    =#
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
+    last_bBox = nothing
     @lift begin
-        hm_inspector = DataInspector(hm)
+        if !isnothing(last_bBox)
+            delete!(parent_scene(last_bBox), last_bBox)
+        end
         if length($hovered_cluster) > 0
-
             ts_idx = reduce(vcat, map(x -> $cluster_groups[x], collect($hovered_cluster)))
             ts = t_list[ts_idx]
-
-            xrange = hm[1][]
-            yrange = hm[2][]
 
             t_to_mtx = $reordered_matrix[4]
 
@@ -92,24 +94,15 @@ function build_selection_window(fig_size,
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            # needs to be more efficient
-            xs = collect(round(Int, minimum(xrange)):round(Int, maximum(xrange)))
-            ys = collect(round(Int, minimum(yrange)):round(Int, maximum(yrange)))
-
             # need to draw n bounding boxes over the heatmap
-            bbox = Rect2(xs[lo], ys[lo], xs[hi] - xs[lo], ys[hi] - ys[lo])
+            bbox = Rect2(lo, lo, hi - lo, hi - lo)
 
-            if hm_inspector.selection != hm || (length(hm_inspector.temp_plots) != 1) ||
-               !(hm_inspector.temp_plots[1] isa Wireframe)
-                p = wireframe!(
-                    hm_ax.scene, bbox, color=:red,
-                    visible=true, inspectable=false,
-                    depth_shift=-1.0f-3
-                )
-                push!(hm_inspector.temp_plots, p)
-            end
-        else
-            clear_temporary_plots!(hm_inspector, hm)
+            p = wireframe!(
+                hm_ax.scene, bbox, color=:red,
+                visible=true, inspectable=false,
+                depth_shift=-1.0f-3
+            )
+            last_bBox = p
         end
     end
 

@@ -64,7 +64,7 @@ function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20,
 
     function on_hover(inspector, plot, idx, clusters)
         status = show_data(inspector, plot, idx)
-        if status
+        if status && length(clusters) > 0
             hover_callbackfn(clusters)
         end
         return status
