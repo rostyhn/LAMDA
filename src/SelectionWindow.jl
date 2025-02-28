@@ -32,7 +32,8 @@ function build_selection_window(fig_size,
         fl = vec(m)
         return rm, mtx_to_t, (minimum(fl), maximum(fl)), t_to_mtx
     end
-
+    # can't get it to align left
+    # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
     grid = GridLayout()
     window[1, 1] = grid
     hl = Observable(first(t_list))
@@ -42,15 +43,6 @@ function build_selection_window(fig_size,
     rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
 
     link_cameras_lscenes([ltv, rtv])
-
-    invar_menu = Menu(window, options=["t1", "t2", "t3"], tellwidth=false)
-    on(invar_menu.selection) do val
-        selected_invariant[] = val
-    end
-
-    #grid[3, :] = hgrid!(Label(window, "Selected invariant"),
-    #    invar_menu,
-    #    Colorbar(window, colormap=vol_cmap, limits=volRange, vertical=false, size=16))
 
     hovered_cluster = Observable(Set{Int64}(1))
 
@@ -115,9 +107,25 @@ function build_selection_window(fig_size,
         selected_dm[] = val
     end
 
+    settings_btn = Button(window, label="Settings")
+    settings_window = build_settings_menu(selected_invariant)
+    screen = nothing
+    on(settings_btn.clicks) do n
+        # n has how many times the button's been clicked
+        if isnothing(screen)
+            screen = GLMakie.Screen(title="TransVis Settings")
+            display(screen, settings_window)
+        else
+            close(screen)
+            screen = nothing
+        end
+    end
+
     window[3, 2] = hgrid!(Label(window, "Distance matrix"),
         dm_menu,
-        Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
+        Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16),
+        settings_btn
+    )
 
     return window
 end
@@ -194,7 +202,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
 
     l = Label(fig, lift(x -> string(x), hovered), tellwidth=false)
     i, j = loc
-    g = vgrid!(m, rootScene, l)
+    g = vgrid!(rootScene, hgrid!(l, m))
     parentGrid[i, j] = g
 
     DataInspector(rootScene)

@@ -31,6 +31,7 @@ include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
+include("SettingsWindow.jl")
 
 export go
 
