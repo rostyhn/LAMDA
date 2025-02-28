@@ -55,27 +55,22 @@ function build_selection_window(fig_size,
     hovered_cluster = Observable(Set{Int64}(1))
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
-    hm_inspector = DataInspector(hm)
 
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    #=
     on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
         if plot == hm
             xy = mouseposition(hm_ax)
             i, j = Int.(round.(xy))
-            oldi = t_to_idx[reordered_matrix[][2][i]]
-            oldj = t_to_idx[reordered_matrix[][2][j]]
-            hl[] = t_list[oldi]
-            hr[] = t_list[oldj]
+            hl[] = reordered_matrix[][2][i]
+            hr[] = reordered_matrix[][2][j]
             notify(hl)
             notify(hr)
         end
         return Consume(false)
     end
-    =#
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     last_bBox = nothing
@@ -95,7 +90,7 @@ function build_selection_window(fig_size,
             hi = maximum(m_idx)
 
             # need to draw n bounding boxes over the heatmap
-            bbox = Rect2(lo, lo, hi - lo, hi - lo)
+            bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 0.5, (hi - lo) + 0.5)
 
             p = wireframe!(
                 hm_ax.scene, bbox, color=:red,
@@ -183,7 +178,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
     rootScene = LScene(
         fig,
         show_axis=false,
-        scenekw=(backgroundcolor=:white, clear=true),
+        scenekw=(backgroundcolor=:black, clear=true),
     )
 
     m = Menu(fig, options=["Volume", "Initial State", "Final State"],

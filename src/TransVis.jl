@@ -56,7 +56,7 @@ function go(trajectory_name::String)
         t_to_idx[t] = i
     end
 
-    h_cutoff = Observable(0.005)
+    h_cutoff = Observable(0.3)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
     selected_dm = Observable(first(keys(dms)))
     clustering = @lift begin
@@ -81,6 +81,15 @@ function go(trajectory_name::String)
             push!(g, i)
             groups[c] = g
         end
+
+        pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
+        for (clusterIdx, g) in groups
+            ts = map(x -> transitionSequence[x], g)
+            pickled_groups[clusterIdx] = ts
+        end
+
+        Pickle.store("clustering_0.3.pickle", pickled_groups)
+
         return groups
     end
 
