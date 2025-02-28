@@ -56,7 +56,7 @@ function treepositions(hc, cutoff; orientation=:vertical)
     end
 end
 
-function dendrogram!(ax, h, cutoff; hover_callbackfn=() -> (), colormap=:tab20, rootcolor=:black, kwargs...)
+function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
     println("Calculating dendrogram...")
@@ -78,7 +78,10 @@ function dendrogram!(ax, h, cutoff; hover_callbackfn=() -> (), colormap=:tab20, 
             color = rootcolor
         end
 
-        lines!(ax, x, y; color, inspector_label=(plot, index, position) -> "$(string(clusters)[1:min(end, 40)])$(length(string(clusters)) > 40 ? "..." : "")", inspector_hover=(ins, plot, idx) -> on_hover(ins, plot, idx, clusters))
+        lines!(ax, x, y;
+            color,
+            inspector_label=(plot, index, position) -> "$(string(clusters)[1:min(end, 40)])$(length(string(clusters)) > 40 ? "..." : "")",
+            inspector_hover=(ins, plot, idx) -> on_hover(ins, plot, idx, clusters))
     end
 
     # add cutoff line

@@ -69,11 +69,7 @@ function go(trajectory_name::String)
         return res
     end
 
-    # perfom intra-cluster alignment
-    selected_alignment = Observable(first(keys(alignments)))
-    # as matrices, as points
-    alignedPositionsMatrices = @lift begin
-        # figure out what transitions are grouped together
+    cluster_groups = @lift begin
         assignments = cutree($clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Int}}()
         for (i, c) in enumerate(assignments)
@@ -85,11 +81,18 @@ function go(trajectory_name::String)
             push!(g, i)
             groups[c] = g
         end
+        return groups
+    end
+
+    # perfom intra-cluster alignment
+    selected_alignment = Observable(first(keys(alignments)))
+    alignedPositionsMatrices = @lift begin
+        # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
 
         # could be floating point error?
         pos = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
-        for (clusterIdx, g) in groups
+        for (clusterIdx, g) in $cluster_groups
             ts = map(x -> transitionSequence[x], g)
 
             # for now, use first t as reference 
@@ -337,7 +340,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups)
 
     display(screen, window)
 end

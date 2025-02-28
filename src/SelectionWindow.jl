@@ -9,7 +9,7 @@ function build_selection_window(fig_size,
     on_click,
     num_atoms,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff)
+    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups)
 
     window = Figure(size=fig_size)
     user_groups = Observable(Dict())
@@ -21,15 +21,16 @@ function build_selection_window(fig_size,
 
         # gets the correct idx 
         mtx_to_t = Dict()
-
+        t_to_mtx = Dict()
         for (i, r) in enumerate($clustering.order)
             rm[i, :] .= m[r, :][$clustering.order]
             mtx_to_t[i] = t_list[r]
+            t_to_mtx[t_list[r]] = i
         end
 
         # get minimum and maximum of entire matrix for cmap
         fl = vec(m)
-        return rm, mtx_to_t, (minimum(fl), maximum(fl))
+        return rm, mtx_to_t, (minimum(fl), maximum(fl)), t_to_mtx
     end
 
     grid = GridLayout()
@@ -51,13 +52,78 @@ function build_selection_window(fig_size,
     #    invar_menu,
     #    Colorbar(window, colormap=vol_cmap, limits=volRange, vertical=false, size=16))
 
+    hovered_cluster = Observable(Set{Int64}(1))
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
-    hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
+    hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
 
     hidedecorations!(hm_ax)
-    DataInspector(hm)
     deregister_interaction!(hm_ax, :rectanglezoom)
-    deregister_interaction!(graph_ax, :rectanglezoom)
+
+    on(events(hm_ax).mouseposition) do mp
+        plot, _ = pick(hm_ax)
+        if plot == hm
+            xy = mouseposition(hm_ax)
+            i, j = Int.(round.(xy))
+            oldi = t_to_idx[reordered_matrix[][2][i]]
+            oldj = t_to_idx[reordered_matrix[][2][j]]
+            hl[] = t_list[oldi]
+            hr[] = t_list[oldj]
+            notify(hl)
+            notify(hr)
+        end
+        return Consume(false)
+    end
+
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
+    @lift begin
+        hm_inspector = DataInspector(hm)
+        if length($hovered_cluster) > 0
+
+            ts_idx = reduce(vcat, map(x -> $cluster_groups[x], collect($hovered_cluster)))
+            ts = t_list[ts_idx]
+
+            xrange = hm[1][]
+            yrange = hm[2][]
+
+            t_to_mtx = $reordered_matrix[4]
+
+            m_idx = map(x -> t_to_mtx[x], ts)
+
+            lo = minimum(m_idx)
+            hi = maximum(m_idx)
+
+            # needs to be more efficient
+            xs = collect(round(Int, minimum(xrange)):round(Int, maximum(xrange)))
+            ys = collect(round(Int, minimum(yrange)):round(Int, maximum(yrange)))
+
+            # need to draw n bounding boxes over the heatmap
+            bbox = Rect2(xs[lo], ys[lo], xs[hi] - xs[lo], ys[hi] - ys[lo])
+
+            if hm_inspector.selection != hm || (length(hm_inspector.temp_plots) != 1) ||
+               !(hm_inspector.temp_plots[1] isa Wireframe)
+                p = wireframe!(
+                    hm_ax.scene, bbox, color=:red,
+                    visible=true, inspectable=false,
+                    depth_shift=-1.0f-3
+                )
+                push!(hm_inspector.temp_plots, p)
+            end
+        else
+            clear_temporary_plots!(hm_inspector, hm)
+        end
+    end
+
+    function on_dendrogram_hover(c)
+        if !isempty(c)
+            hovered_cluster[] = c
+            notify(hovered_cluster)
+        end
+    end
+
+    @lift begin
+        dendrogram!(graph_ax, $clustering, $h_cutoff; hover_callbackfn=on_dendrogram_hover)
+    end
+
 
     dm_menu = Menu(window, options=collect(keys(dms)))
     on(dm_menu.selection) do val
@@ -67,84 +133,6 @@ function build_selection_window(fig_size,
     window[3, 2] = hgrid!(Label(window, "Distance matrix"),
         dm_menu,
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
-
-    embedding = @lift begin
-        println("Calculating umap embedding for $($selected_dm)...")
-        # https://github.com/dillondaudert/UMAP.jl/blob/master/src/umap_.jl
-        # not a major bottleneck but should be cached eventually
-        @time em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed, spread=250))
-        return map(x -> Point2f(x), eachrow(em))
-    end
-
-    hovered_cluster = Observable(Set())
-    colors = Observable(fill(:blue, length(embedding[])))
-
-    function on_dendrogram_hover(c)
-        println(c)
-        hovered_cluster[] = c
-        notify(hovered_cluster)
-    end
-
-    @lift begin
-        dendrogram!(graph_ax, $clustering, $h_cutoff; hover_callbackfn=on_dendrogram_hover)
-    end
-
-    #text!(graph_ax, embedding; text=map(x -> string(x), t_list))
-
-    # hidedecorations!(graph_ax)
-
-    on(embedding) do _
-        autolimits!(graph_ax)
-    end
-
-    #=
-    on(events(graph_ax).mouseposition) do mp
-        plot, idx = pick(graph_ax)
-        if plot == sc
-            x, y = events(graph_ax.parent).mouseposition[]
-            tt_bbox[] = BBox(x + 15, x + 265, y - 265, y - 15)
-            hovered[] = t_list[idx]
-            ax3d.scene.visible[] = true
-            notify(hovered)
-            notify(tt_bbox)
-            center!(ax3d.scene)
-        else
-            ax3d.scene.visible[] = false
-        end
-
-        return Consume(false)
-    end
-
-    on(events(graph_ax).mousebutton) do event
-        if event.button == Mouse.left && event.action == Mouse.press
-            plot, idx = pick(graph_ax)
-            pos = position_on_plot(plot, idx)
-            if !isnan(pos) && (plot == sc)
-                on_click(t_list[idx], x -> ())
-            end
-        end
-        return Consume(true)
-    end
-    =#
-
-    on(events(hm_ax).mouseposition) do mp
-        colors[] = fill(:blue, length(colors[]))
-        plot, _ = pick(hm_ax)
-        if plot == hm
-            xy = mouseposition(hm_ax)
-            i, j = Int.(round.(xy))
-            oldi = t_to_idx[reordered_matrix[][2][i]]
-            oldj = t_to_idx[reordered_matrix[][2][j]]
-            colors[][oldi] = :red
-            colors[][oldj] = :red
-            hl[] = t_list[oldi]
-            hr[] = t_list[oldj]
-            notify(hl)
-            notify(hr)
-            notify(colors)
-        end
-        return Consume(false)
-    end
 
     return window
 end
