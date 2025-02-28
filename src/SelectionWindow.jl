@@ -237,6 +237,8 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
         Makie.trim!(g)
 
         if $sel == "Volume"
+            gg = GridLayout(g[end+1, :])
+
             vd = lift((x, y, z) ->
                     reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volData, hovered, sampleRanges)
 
@@ -254,8 +256,11 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
                 visible=true)
             v.inspectable[] = false
 
+            cbar = Colorbar(gg[1, :],
+                colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
+
             il = []
-            is = []
+            is = [(gg, [cbar])]
         elseif $sel == "Initial State"
             il, is = simple_atom_view!(rootScene, g, ap, hovered, 1, scalars, bp_sel)
         else
