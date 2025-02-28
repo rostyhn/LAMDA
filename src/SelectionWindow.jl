@@ -53,6 +53,8 @@ function build_selection_window(fig_size,
     #    Colorbar(window, colormap=vol_cmap, limits=volRange, vertical=false, size=16))
 
     hovered_cluster = Observable(Set{Int64}(1))
+
+    cluster_cmap = :tab20
     graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
 
@@ -72,6 +74,15 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
+    @lift begin
+        cmap = to_colormap(cluster_cmap)
+        for (c, ts_idx) in $cluster_groups
+            ts = t_list[ts_idx]
+            t_to_mtx = $reordered_matrix[4]
+            show_cluster_on_hmap(ts, t_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
+        end
+    end
+
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     last_bBox = nothing
     @lift begin
@@ -84,20 +95,7 @@ function build_selection_window(fig_size,
 
             t_to_mtx = $reordered_matrix[4]
 
-            m_idx = map(x -> t_to_mtx[x], ts)
-
-            lo = minimum(m_idx)
-            hi = maximum(m_idx)
-
-            # need to draw n bounding boxes over the heatmap
-            bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 0.5, (hi - lo) + 0.5)
-
-            p = wireframe!(
-                hm_ax.scene, bbox, color=:red,
-                visible=true, inspectable=false,
-                depth_shift=-1.0f-3
-            )
-            last_bBox = p
+            last_bBox = show_cluster_on_hmap(ts, t_to_mtx, hm_ax)
         end
     end
 
@@ -109,7 +107,7 @@ function build_selection_window(fig_size,
     end
 
     @lift begin
-        dendrogram!(graph_ax, $clustering, $h_cutoff; hover_callbackfn=on_dendrogram_hover)
+        dendrogram!(graph_ax, $clustering, $h_cutoff; hover_callbackfn=on_dendrogram_hover, colormap=cluster_cmap)
     end
 
     dm_menu = Menu(window, options=collect(keys(dms)))
@@ -122,6 +120,23 @@ function build_selection_window(fig_size,
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
 
     return window
+end
+
+function show_cluster_on_hmap(ts, t_to_mtx, scene; color=:red)
+    m_idx = map(x -> t_to_mtx[x], ts)
+
+    lo = minimum(m_idx)
+    hi = maximum(m_idx)
+
+    # need to draw n bounding boxes over the heatmap
+    bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 0.5, (hi - lo) + 0.5)
+
+    p = wireframe!(
+        scene, bbox, color=color,
+        visible=true, inspectable=false,
+        depth_shift=-1.0f-3
+    )
+    return p
 end
 
 function simple_atom_view!(scene, g, ap, t, order, scalars, sel)

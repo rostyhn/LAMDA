@@ -88,7 +88,7 @@ function go(trajectory_name::String)
             pickled_groups[clusterIdx] = ts
         end
 
-        Pickle.store("clustering_0.3.pickle", pickled_groups)
+        Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
 
         return groups
     end
