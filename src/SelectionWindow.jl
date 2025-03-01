@@ -137,7 +137,7 @@ function show_cluster_on_hmap(ts, t_to_mtx, scene; color=:red)
     hi = maximum(m_idx)
 
     # need to draw n bounding boxes over the heatmap
-    bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 0.5, (hi - lo) + 0.5)
+    bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
 
     p = wireframe!(
         scene, bbox, color=color,
