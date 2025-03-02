@@ -47,7 +47,9 @@ function go(trajectory_name::String)
     scalars = active_trajectory["scalars"]
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
-    rawAlignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
+    alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
+    alignedPositions = active_trajectory["alignedPositions"] # positions as points
+    kdTrees = active_trajectory["kdTrees"]
     alignments = active_trajectory["alignments"]
 
     transitionSequence = active_trajectory["transitions"]
@@ -57,7 +59,7 @@ function go(trajectory_name::String)
         t_to_idx[t] = i
     end
 
-    h_cutoff = Observable(0.3)
+    h_cutoff = Observable(0.05)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
     selected_dm = Observable(first(keys(dms)))
     clustering = @lift begin
@@ -96,29 +98,27 @@ function go(trajectory_name::String)
 
     # perfom intra-cluster alignment
     selected_alignment = Observable(first(keys(alignments)))
-    alignedPositionsMatrices = @lift begin
+
+    alignment_rotations = @lift begin
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
 
-        # could be floating point error?
-        pos = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
+        rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
+
         for (clusterIdx, g) in $cluster_groups
             ts = map(x -> transitionSequence[x], g)
 
             # for now, use first t as reference 
             ref_t = popfirst!(ts)
-            pos[ref_t] = rawAlignedPositionsMatrices[ref_t]
+            rot[ref_t] = Matrix(I, 4, 4)
 
-            ref_s1_pos, ref_s1_cm = center_atom_positions(pos[ref_t][1])
-            ref_s2_pos, ref_s2_cm = center_atom_positions(pos[ref_t][2])
+            ref_s1_pos = alignedPositionsMatrices[ref_t][1]
+            ref_s2_pos = alignedPositionsMatrices[ref_t][2]
             ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t])))
             ref_s2_com = reduce(vcat, map(x -> com(ref_s2_pos, x), eachcol(features[ref_t])))
-
             # align each t to ref_t 
             for t in ts
-                t_s1_pos, t_s1_cm = center_atom_positions(rawAlignedPositionsMatrices[t][1])
-                t_s2_pos, t_s2_cm = center_atom_positions(rawAlignedPositionsMatrices[t][2])
-
+                t_s1_pos = alignedPositionsMatrices[t][1]
                 t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(features[t])))
 
                 R1, res1 = pure_align(ref_s1_com, t_s1_com)
@@ -126,50 +126,25 @@ function go(trajectory_name::String)
 
                 R = (res1 < res2) ? R1 : R2
 
-                t_p1_final = t_s1_pos * R .+ t_s1_cm
-                t_p2_final = t_s2_pos * R .+ t_s2_cm
-
-                pos[t] = (t_p1_final, t_p2_final)
+                rr = hcat(R, [0, 0, 0])
+                rot[t] = vcat(rr, transpose([0; 0; 0; 1]))
             end
         end
 
-        return pos
-    end
-
-    # convert to point3fs
-    alignedPositions = @lift begin
-        points = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
-        for (t, aligned) in $alignedPositionsMatrices
-            p1, p2 = aligned
-            points[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
-        end
-        return points
-    end
-
-    # https://github.com/KristofferC/NearestNeighbors.jl
-    # can store kdTrees as indices only, relinking positions when needed
-    stateKDTree = @lift begin
-        println("Computing KDTrees.")
-        kd = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
-        @time for (t, aligned) in $alignedPositions
-            p1, p2 = aligned
-            kd[t] = (KDTree(p1), KDTree(p2))
-        end
-        return kd
+        return rot
     end
 
     # get number of atoms
-    num_atoms = size(Iterators.first(values(rawAlignedPositionsMatrices))[1])[1]
+    num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
     # get min max coordinates of atoms for bounding box
-    # we don't really need these positions anymore
     minX = 1.0e10
     minY = 1.0e10
     minZ = 1.0e10
     maxX = -1.0e10
     maxY = -1.0e10
     maxZ = -1.0e10
-    @time for (key, positions) in rawAlignedPositionsMatrices
+    @time for (key, positions) in alignedPositionsMatrices
         p1, p2 = positions
 
         for row in 1:length(p1[:, 1])
@@ -246,7 +221,7 @@ function go(trajectory_name::String)
 
     selected_invariant = Observable("t1")
     @time volumeData = @lift begin
-        key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name, "_", $selected_alignment, "_", $h_cutoff)
+        key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
         w = length($sampleRanges[1])
         h = length($sampleRanges[2])
         d = length($sampleRanges[3])
@@ -255,8 +230,8 @@ function go(trajectory_name::String)
         if !is_cached
             println("Calculating volume data for $(key); will be saved as $(hash(key))...")
 
-            alignedPos = map(x -> $alignedPositions[x][1], transitionSequence)
-            kd = map(x -> $stateKDTree[x][1], transitionSequence)
+            alignedPos = map(x -> alignedPositions[x][1], transitionSequence)
+            kd = map(x -> kdTrees[x][1], transitionSequence)
             invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
 
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
@@ -337,20 +312,19 @@ function go(trajectory_name::String)
     Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     function on_click(t, on_window_hover)
-        # TODO: make these observable
-        pos1 = alignedPositions[][t][1]
-        kdTree1 = stateKDTree[][t][1]
+        pos1 = alignedPositions[t][1]
+        kdTree1 = kdTrees[t][1]
 
         # 1.0 should be transitionGlyphSize
         sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
         ls = buildBonds(alignedPositionsMatrices[][t][1], bondDeltas[t], connectivity[t[1]])
 
-        build_mol_window(t, alignedPositions[][t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
+        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations)
 
     display(screen, window)
 end

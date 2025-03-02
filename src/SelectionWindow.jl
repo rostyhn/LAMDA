@@ -9,7 +9,7 @@ function build_selection_window(fig_size,
     on_click,
     num_atoms,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups)
+    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations)
 
     window = Figure(size=fig_size)
     user_groups = Observable(Dict())
@@ -39,8 +39,8 @@ function build_selection_window(fig_size,
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
 
-    ltv = setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
-    rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx)
+    ltv = setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations)
+    rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations)
 
     link_cameras_lscenes([ltv, rtv])
 
@@ -147,7 +147,7 @@ function show_cluster_on_hmap(ts, t_to_mtx, scene; color=:red)
     return p
 end
 
-function simple_atom_view!(scene, g, ap, t, order, scalars, sel)
+function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotations)
     opts = sort(collect(keys(scalars)))
 
     gg = GridLayout(g[end+1, :])
@@ -178,11 +178,13 @@ function simple_atom_view!(scene, g, ap, t, order, scalars, sel)
         return vals, extremaVals, cmap
     end
 
-    scatter!(scene, lift((x, y) -> x[y][order], ap, t),
+    scatter!(scene,
+        lift((x) -> ap[x][order], t),
         color=lift(x -> x[1], colorInfo),
         colorrange=lift(x -> x[2], colorInfo),
         colormap=lift(x -> x[3], colorInfo),
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
+        model=lift((x, y) -> x[y], alignment_rotations, t),
         markersize=30)
 
     cbar = Colorbar(gg[1, 2], colorrange=lift(x -> x[2], colorInfo), vertical=false, colormap=lift(x -> x[3], colorInfo), tellwidth=false)
@@ -190,7 +192,7 @@ function simple_atom_view!(scene, g, ap, t, order, scalars, sel)
     return [], [(gg, [m, cbar])]
 end
 
-function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx)
+function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations)
     rootScene = LScene(
         fig,
         show_axis=false,
@@ -261,6 +263,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
                 transparency=true,
                 shading=NoShading,
                 colorrange=volumeRange,
+                model=lift((x, y) -> x[y], alignment_rotations, hovered),
                 visible=true)
             v.inspectable[] = false
 
@@ -270,9 +273,9 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
             il = []
             is = [(gg, [cbar])]
         elseif $sel == "Initial State"
-            il, is = simple_atom_view!(rootScene, g, ap, hovered, 1, scalars, bp_sel)
+            il, is = simple_atom_view!(rootScene, g, ap, hovered, 1, scalars, bp_sel, alignment_rotations)
         else
-            il, is = simple_atom_view!(rootScene, g, ap, hovered, 2, scalars, ap_sel)
+            il, is = simple_atom_view!(rootScene, g, ap, hovered, 2, scalars, ap_sel, alignment_rotations)
         end
 
         for l in il
