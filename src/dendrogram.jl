@@ -59,6 +59,9 @@ end
 function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
+    # clear all lines
+    empty!(ax)
+
     println("Calculating dendrogram...")
     @time tp = treepositions(h, cutoff; kwargs...)
 

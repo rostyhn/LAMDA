@@ -59,7 +59,7 @@ function go(trajectory_name::String)
         t_to_idx[t] = i
     end
 
-    h_cutoff = Observable(0.05)
+    h_cutoff = Observable(0.3)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
     selected_dm = Observable(first(keys(dms)))
     clustering = @lift begin
@@ -85,6 +85,7 @@ function go(trajectory_name::String)
             groups[c] = g
         end
 
+        #=
         pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
@@ -92,6 +93,7 @@ function go(trajectory_name::String)
         end
 
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
+        =#
 
         return groups
     end
@@ -124,8 +126,8 @@ function go(trajectory_name::String)
                 R1, res1 = pure_align(ref_s1_com, t_s1_com)
                 R2, res2 = pure_align(ref_s2_com, t_s1_com)
 
+                # convert to homogeneous matrix 
                 R = (res1 < res2) ? R1 : R2
-
                 rr = hcat(R, [0, 0, 0])
                 rot[t] = vcat(rr, transpose([0; 0; 0; 1]))
             end
@@ -324,7 +326,7 @@ function go(trajectory_name::String)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range)
 
     display(screen, window)
 end

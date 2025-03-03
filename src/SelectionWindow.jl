@@ -9,7 +9,20 @@ function build_selection_window(fig_size,
     on_click,
     num_atoms,
     alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, vol_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations)
+    transitionKDTree,
+    dms,
+    volData,
+    sampleRanges,
+    volRange,
+    vol_cmap,
+    selected_invariant,
+    clustering,
+    selected_dm,
+    scalars,
+    h_cutoff,
+    cluster_groups,
+    alignment_rotations,
+    h_range)
 
     window = Figure(size=fig_size)
     user_groups = Observable(Dict())
@@ -47,7 +60,7 @@ function build_selection_window(fig_size,
     hovered_cluster = Observable(Set{Int64}(1))
 
     cluster_cmap = :tab20
-    graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
+    graph_ax = Axis(window[2, 1], backgroundcolor=:transparent)
     hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
 
     hidedecorations!(hm_ax)
@@ -66,12 +79,15 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
+    rendered_clusters = []
     @lift begin
+        foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
         cmap = to_colormap(cluster_cmap)
         for (c, ts_idx) in $cluster_groups
             ts = t_list[ts_idx]
             t_to_mtx = $reordered_matrix[4]
-            show_cluster_on_hmap(ts, t_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
+            p = show_cluster_on_hmap(ts, t_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
+            push!(rendered_clusters, p)
         end
     end
 
@@ -99,8 +115,17 @@ function build_selection_window(fig_size,
     end
 
     @lift begin
+        # FIXME fires twice thanks to dependency on multiple observables
         dendrogram!(graph_ax, $clustering, $h_cutoff; hover_callbackfn=on_dendrogram_hover, colormap=cluster_cmap)
     end
+
+    cutoff_slider = Slider(window, range=lift(x -> x[1]:0.01:x[2], h_range), startvalue=h_cutoff[], update_while_dragging=false)
+    on(cutoff_slider.value) do x
+        h_cutoff[] = x
+        notify(h_cutoff)
+    end
+
+    window[3, 1] = hgrid!(Label(window, "Cluster cutoff value"), cutoff_slider, Label(window, lift(x -> string(x), h_cutoff)))
 
     dm_menu = Menu(window, options=collect(keys(dms)))
     on(dm_menu.selection) do val
