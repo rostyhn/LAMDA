@@ -8,7 +8,7 @@ function build_selection_window(fig_size,
     t_to_idx,
     on_click,
     num_atoms,
-    alignedPositions,
+    alignedPositionsMatrices,
     transitionKDTree,
     dms,
     volData,
@@ -52,8 +52,8 @@ function build_selection_window(fig_size,
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
 
-    ltv = setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click)
-    rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click)
+    ltv = setup_transition_view(window, grid, (1, 1), alignedPositionsMatrices, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click)
+    rtv = setup_transition_view(window, grid, (1, 2), alignedPositionsMatrices, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click)
 
     link_cameras_lscenes([ltv, rtv])
 
@@ -207,13 +207,16 @@ function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotat
         return vals, extremaVals, cmap
     end
 
+    # instead of setting the model, we just multiply by the raw rotation matrix 
+    rot_pos = lift((x, y) -> ap[x][order] * y[x], t, alignment_rotations)
     scatter!(scene,
-        lift((x) -> ap[x][order], t),
+        lift(x -> x[:, 1], rot_pos),
+        lift(x -> x[:, 2], rot_pos),
+        lift(x -> x[:, 3], rot_pos);
         color=lift(x -> x[1], colorInfo),
         colorrange=lift(x -> x[2], colorInfo),
         colormap=lift(x -> x[3], colorInfo),
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
-        model=lift((x, y) -> x[y], alignment_rotations, t),
         markersize=30)
 
     cbar = Colorbar(gg[1, 2], colorrange=lift(x -> x[2], colorInfo), vertical=false, colormap=lift(x -> x[3], colorInfo), tellwidth=false)
@@ -300,8 +303,15 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
                 transparency=true,
                 shading=NoShading,
                 colorrange=volumeRange,
-                model=lift((x, y) -> x[y], alignment_rotations, hovered),
                 visible=true)
+
+            on(hovered) do h
+                R = alignment_rotations[][h]
+                rr = hcat(R, [0, 0, 0])
+                fr = vcat(rr, transpose([0; 0; 0; 1]))
+                v.model[] = fr
+                notify(v.model)
+            end
             v.inspectable[] = false
 
             cbar = Colorbar(gg[1, :],

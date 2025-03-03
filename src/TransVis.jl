@@ -112,7 +112,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
             # for now, use first t as reference 
             ref_t = popfirst!(ts)
-            rot[ref_t] = Matrix(I, 4, 4)
+            rot[ref_t] = Matrix(I, 3, 3)
 
             ref_s1_pos = alignedPositionsMatrices[ref_t][1]
             ref_s2_pos = alignedPositionsMatrices[ref_t][2]
@@ -128,8 +128,8 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
                 # convert to homogeneous matrix 
                 R = (res1 < res2) ? R1 : R2
-                rr = hcat(R, [0, 0, 0])
-                rot[t] = vcat(rr, transpose([0; 0; 0; 1]))
+
+                rot[t] = R
             end
         end
 
@@ -326,7 +326,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range)
 
     display(screen, window)
 end
