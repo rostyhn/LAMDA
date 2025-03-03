@@ -130,25 +130,14 @@ function setup_atom_view!(scene, g, ap, t, order, scalars)
     colorInfo = @lift begin # might be leaking memory
         opt = $(m.selection)
 
-        vals = scalars[opt][t][order]
+        vals = scalars[opt][t]
         extremaVals = extrema(vals)
+        minVal, maxVal = extremaVals
         labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
 
-        # three cases:
-        # sequential ascending, descending and diverging
-        # divergent if we are approximately around 0 when subtracting the absolute values of the min and max
-        minVal, maxVal = extremaVals
-        if isapprox(abs(maxVal) - abs(minVal), 0; atol=1)
-            println("using divergent colorscheme")
-            cmap = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-        else
-            # ascending sequential if min is closer to 0
-            cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
-            if abs(minVal) > abs(maxVal)
-                println("using descending sequential colorscheme")
-                # otherwise reverse it
-                reverse!(cmap)
-            end
+        cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
+        if abs(minVal) > abs(maxVal)
+            reverse!(cmap)
         end
         empty!(scene)
 

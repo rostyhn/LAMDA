@@ -172,7 +172,7 @@ function get_data_alt(trajectory_name)
                 for sf in readdir(scalarf, join=true)
                     scalar_name = basename(sf)
                     if isfile(sf)
-                        scalars[scalar_name] = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Array{Float32}}}(Pickle.npyload(sf))
+                        scalars[scalar_name] = Dict{Tuple{Int16,Int16},Array{Float32}}(Pickle.npyload(sf))
                     end
                 end
             else
