@@ -127,7 +127,9 @@ function build_selection_window(fig_size,
         notify(h_cutoff)
     end
 
-    window[3, 1] = hgrid!(Label(window, "Cluster cutoff value"), cutoff_slider, Label(window, lift(x -> string(x), h_cutoff)))
+    window[3, 1] = hgrid!(Label(window, "Cluster cutoff value"),
+        cutoff_slider,
+        Label(window, lift(x -> string(round(x; sigdigits=3)), h_cutoff)))
 
     dm_menu = Menu(window, options=collect(keys(dms)))
     on(dm_menu.selection) do val
