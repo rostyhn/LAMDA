@@ -56,9 +56,10 @@ end
 function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
+    #FIXME still fires twice thanks to multiple observables
     @time dendrogram = @lift begin
         println("Calculating dendrogram...")
-        lines, clusters = treepositions($h, $cutoff; kwargs...)
+        @time lines, clusters = treepositions($h, $cutoff; kwargs...)
         colors = []
         for c in clusters
             if length(c) == 1
