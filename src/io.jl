@@ -167,12 +167,20 @@ function get_data_alt(trajectory_name)
             scalars = Dict()
             # load in scalars if present
             scalarf = joinpath(t, "scalars")
+            globalMin = floatmax(Float32)
+            globalMax = floatmin(Float32)
             if isdir(scalarf)
                 println("Loading scalars...")
                 for sf in readdir(scalarf, join=true)
-                    scalar_name = basename(sf)
-                    if isfile(sf)
-                        scalars[scalar_name] = Dict{Tuple{Int16,Int16},Array{Float32}}(Pickle.npyload(sf))
+                    fname, ext = splitext(sf)
+                    if isfile(sf) && ext == ".pickle"
+                        d = Dict{Tuple{Int16,Int16},Array{Float32}}(Pickle.npyload(sf))
+                        totExtrema = extrema.(values(d))
+                        totMin = minimum(first.(totExtrema))
+                        totMax = maximum(last.(totExtrema))
+                        globalMin = min(totMin, globalMin)
+                        globalMax = max(totMax, globalMax)
+                        scalars[basename(fname)] = d
                     end
                 end
             else
@@ -197,6 +205,7 @@ function get_data_alt(trajectory_name)
             # TODO: check for correctness
             trajectory_data["alignments"] = alignments
             trajectory_data["scalars"] = scalars
+            trajectory_data["scalar_range"] = (globalMin, globalMax)
             trajectory_data["dms"] = dms
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")

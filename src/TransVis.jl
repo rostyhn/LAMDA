@@ -45,6 +45,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     dms = active_trajectory["dms"]
     scalars = active_trajectory["scalars"]
+    scalar_range = active_trajectory["scalar_range"]
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
     alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
@@ -326,7 +327,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range)
 
     display(screen, window)
 end
