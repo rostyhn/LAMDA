@@ -52,8 +52,8 @@ function build_selection_window(fig_size,
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
 
-    ltv = setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations)
-    rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations)
+    ltv = setup_transition_view(window, grid, (1, 1), alignedPositions, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click)
+    rtv = setup_transition_view(window, grid, (1, 2), alignedPositions, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click)
 
     link_cameras_lscenes([ltv, rtv])
 
@@ -217,19 +217,27 @@ function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotat
     return [], [(gg, [m, cbar])]
 end
 
-function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations)
+function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations, on_click)
     rootScene = LScene(
         fig,
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    m = Menu(fig, options=["Volume", "Initial State", "Final State"],
+    m = Menu(fig,
+        options=["Volume",
+            "Initial State",
+            "Final State"],
         default="Volume")
+
+    btn = Button(fig, label="Show")
+    on(btn.clicks) do n
+        on_click(hovered[], () -> ())
+    end
 
     l = Label(fig, lift(x -> string(x), hovered), tellwidth=false)
     i, j = loc
-    g = vgrid!(rootScene, hgrid!(l, m))
+    g = vgrid!(rootScene, hgrid!(l, m, btn))
     parentGrid[i, j] = g
 
     DataInspector(rootScene)

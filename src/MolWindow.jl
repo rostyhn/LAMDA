@@ -1,7 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!, GridLayoutBase
 
 function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, vol_cmap, on_window_hover, lsExtrema, filterVal, ls_cmap, scalars, fig_size=(400, 400))
-
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl, delete_from_parent!, delete_from_parent!, GridLayoutBase
     ap1, ap2 = atomPositions
 
