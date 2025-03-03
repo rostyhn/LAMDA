@@ -100,9 +100,30 @@ function get_data_alt(trajectory_name)
             transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
             rawAlignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
 
+            # convert to point3fs & generate kd trees
+            println("Computing KDTrees.")
+            alignedPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
+            alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
+            # https://github.com/KristofferC/NearestNeighbors.jl
+            # can store kdTrees as indices only, relinking positions when needed
+            # no need to cache this data, it computes really quickly
+            kdTrees = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
+            for (t, m) in rawAlignedPositionsMatrices
+                # center atom positions first
+                cm1 = mean(m[1], dims=1)
+                cm2 = mean(m[2], dims=1)
+                p1 = (m[1] .- cm1)
+                p2 = (m[2] .- cm2)
+
+                alignedPositionsMatrices[t] = (p1, p2)
+
+                pp1, pp2 = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
+                alignedPositions[t] = (pp1, pp2)
+                kdTrees[t] = (KDTree(pp1), KDTree(pp2))
+            end
+
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
-                # why is this so slow?
                 @time trajectory_data = JLD2.jldopen(cache_file) do file
                     Dict{Any,Any}(file["trajectory_data"])
                 end
@@ -123,33 +144,11 @@ function get_data_alt(trajectory_name)
 
                 @time JLD2.jldsave("$(cache_file)"; trajectory_data,)
             end
+
             # no need to cache data that is already available
             trajectory_data["distanceMatrices"] = distanceMatrices
             trajectory_data["connectivity"] = connectivity
             trajectory_data["transitions"] = transitions
-
-            # center each matrix
-
-            # convert to point3fs & generate kd trees
-            println("Computing KDTrees.")
-            alignedPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
-            alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
-            # https://github.com/KristofferC/NearestNeighbors.jl
-            # can store kdTrees as indices only, relinking positions when needed 
-            kdTrees = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
-            for (t, m) in rawAlignedPositionsMatrices
-                # center atom positions first
-                cm1 = mean(m[1], dims=1)
-                cm2 = mean(m[2], dims=1)
-                p1 = (m[1] .- cm1)
-                p2 = (m[2] .- cm2)
-
-                pp1, pp2 = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
-                alignedPositionsMatrices[t] = (p1, p2)
-                alignedPositions[t] = (pp1, pp2)
-                kdTrees[t] = (KDTree(pp1), KDTree(pp2))
-            end
-
             trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
             trajectory_data["alignedPositions"] = alignedPositions
             trajectory_data["kdTrees"] = kdTrees

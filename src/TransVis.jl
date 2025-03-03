@@ -35,7 +35,7 @@ include("SettingsWindow.jl")
 
 export go
 
-function go(trajectory_name::String)
+function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
     transitionInvariants1 = active_trajectory["t1"]
@@ -59,7 +59,7 @@ function go(trajectory_name::String)
         t_to_idx[t] = i
     end
 
-    h_cutoff = Observable(0.3)
+    h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
     selected_dm = Observable(first(keys(dms)))
     clustering = @lift begin
@@ -255,7 +255,7 @@ function go(trajectory_name::String)
                 prog = Progress(length(transitionSequence))
                 update!(prog, processed)
 
-                chunks = collect(Iterators.partition(eachindex(transitionSequence), 100))
+                chunks = collect(Iterators.partition(eachindex(transitionSequence), chunk_size))
 
                 # 500 seconds at the fastest
                 io = open(fp, "a")

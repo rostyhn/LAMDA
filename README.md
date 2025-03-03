@@ -1,8 +1,12 @@
 # TransVis
 
 ## Setup 
-To set up your julia environment, run `julia -t [num_workers],1 -i startup,jl`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`.
-  
+To set up your julia environment, run `julia -t [num_workers],1 -i startup,jl`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
+
+`go` has some keyword parameters as well. 
+| parameter | type | purpose |
+| `chunk_size` | `Int` | sets how many volumes get processed at a time |
+| `init_h_cutoff` | `Float` | sets the initial height cutoff value for the clustering |
 
 ## Expected data format 
 Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** The following is an example data directory: 
