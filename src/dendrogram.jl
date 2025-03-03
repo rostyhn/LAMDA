@@ -15,13 +15,12 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
-function treepositions(hc, cutoff; orientation=:vertical)
+function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vector{Set{Int}}}
     clusterIdx = cutree(hc; h=cutoff)
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
 
-    xs = []
-    ys = []
+    lines = []
     clusters = []
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
@@ -35,61 +34,68 @@ function treepositions(hc, cutoff; orientation=:vertical)
         nodepos[i] = (xpos, ypos)
 
         if ypos > cutoff
-            push!(xs, [x1, x1])
-            push!(ys, [max(cutoff, y1), ypos])
+            push!(lines, (Point2(x1, max(cutoff, y1)), Point2(x1, ypos)))
             push!(clusters, get_st_clusters(hc.merges, lt, clusterIdx))
 
             # stem
-            push!(xs, [x1, x2])
-            push!(ys, [ypos, ypos])
+            push!(lines, (Point2(x1, ypos), Point2(x2, ypos)))
             push!(clusters, get_st_clusters(hc.merges, i, clusterIdx))
 
-            push!(xs, [x2, x2])
-            push!(ys, [max(cutoff, y2), ypos])
+            push!(lines, (Point2(x2, max(cutoff, y2)), Point2(x2, ypos)))
             push!(clusters, get_st_clusters(hc.merges, rt, clusterIdx))
         end
     end
+
     if orientation == :horizontal
-        return ys, xs, clusters
+        return lines, clusters
     else
-        return xs, ys, clusters
+        return lines, clusters
     end
 end
 
 function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
-    # clear all lines
-    empty!(ax)
-
-    println("Calculating dendrogram...")
-    @time tp = treepositions(h, cutoff; kwargs...)
-
-    function on_hover(inspector, plot, idx, clusters)
-        status = show_data(inspector, plot, idx)
-        if status && length(clusters) > 0
-            hover_callbackfn(clusters)
-        end
-        return status
-    end
-
-    for (x, y, clusters) in zip(tp...)
-        if length(clusters) == 1
-            clusterIdx = first(collect(clusters))
-            color = cmap[(clusterIdx%length(cmap))+1]
-        else
-            color = rootcolor
+    @time dendrogram = @lift begin
+        println("Calculating dendrogram...")
+        lines, clusters = treepositions($h, $cutoff; kwargs...)
+        colors = []
+        for c in clusters
+            if length(c) == 1
+                clusterIdx = first(collect(c))
+                color = cmap[(clusterIdx%length(cmap))+1]
+            else
+                color = rootcolor
+            end
+            push!(colors, color)
         end
 
-        lines!(ax, x, y;
-            color,
-            inspector_label=(plot, index, position) -> "$(string(clusters)[1:min(end, 40)])$(length(string(clusters)) > 40 ? "..." : "")",
-            inspector_hover=(ins, plot, idx) -> on_hover(ins, plot, idx, clusters))
+        # to get label idx just divide by 2
+        labelfn = (plt, idx, pos) -> "$(string(clusters[div(idx,2)])[1:min(end, 40)])$(length(string(clusters[div(idx, 2)])) > 40 ? "..." : "")"
+
+        function on_hover(inspector, plot, idx)
+            status = show_data(inspector, plot, idx)
+            if status && length(clusters[div(idx, 2)]) > 0
+                hover_callbackfn(clusters[div(idx, 2)])
+            end
+            return status
+        end
+
+        cutoff_line = ([0, length(h[].order)], [$cutoff, $cutoff])
+
+        return lines, colors, labelfn, on_hover, cutoff_line
     end
+
+    linesegments!(ax,
+        lift(x -> x[1], dendrogram);
+        color=lift(x -> x[2], dendrogram),
+        inspector_label=lift(x -> x[3], dendrogram),
+        inspector_hover=lift(x -> x[4], dendrogram))
 
     # add cutoff line
-    if cutoff > minimum(h.heights)
-        l = lines!(ax, [0, length(h.order)], [cutoff, cutoff]; linestyle=:dash, color=:grey)
-        l.inspectable[] = false
-    end
+    l = lines!(ax, lift(x -> x[5][1], dendrogram), lift(x -> x[5][2], dendrogram);
+        linestyle=:dash,
+        color=:grey,
+        visible=lift((x, y) -> x > minimum(y.heights), cutoff, h))
+    l.inspectable[] = false
 end
