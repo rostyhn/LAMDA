@@ -109,10 +109,16 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
         rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
 
         for (clusterIdx, g) in $cluster_groups
+
+            # find reference t
+            m = dms[$selected_dm]
+            dist_sum = map(x -> sum(m[x, :][g]), g)
+            ref_t_idx = argmin(dist_sum)
+
             ts = map(x -> transitionSequence[x], g)
 
             # for now, use first t as reference 
-            ref_t = popfirst!(ts)
+            ref_t = popat!(ts, ref_t_idx)
             rot[ref_t] = Matrix(I, 3, 3)
 
             ref_s1_pos = alignedPositionsMatrices[ref_t][1]
