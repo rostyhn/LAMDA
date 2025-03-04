@@ -287,7 +287,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
             on(hovered) do h
                 R = alignment_rotations[][h]
                 rr = hcat(R, [0, 0, 0])
-                fr = vcat(rr, transpose([0; 0; 0; 1]))
+                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
                 v.model[] = fr
                 notify(v.model)
             end
