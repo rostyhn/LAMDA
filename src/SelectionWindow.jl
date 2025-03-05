@@ -15,7 +15,6 @@ function build_selection_window(fig_size,
     sampleRanges,
     volRange,
     vol_cmap,
-    selected_invariant,
     clustering,
     selected_dm,
     scalars,
@@ -23,7 +22,8 @@ function build_selection_window(fig_size,
     cluster_groups,
     alignment_rotations,
     h_range,
-    scalar_range
+    scalar_range,
+    settings_window
 )
 
     window = Figure(size=fig_size)
@@ -139,7 +139,6 @@ function build_selection_window(fig_size,
     end
 
     settings_btn = Button(window, label="Settings")
-    settings_window = build_settings_menu(selected_invariant)
     screen = nothing
     on(settings_btn.clicks) do n
         # n has how many times the button's been clicked
