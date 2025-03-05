@@ -352,9 +352,9 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
 
     # TODO: copy over code for custom implementation 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/stats/hist.jl 
-    # the normalization and bar_labels options do not expect observables, they always crash!
-    h = hist!(hist_ax,
+    h = stephist!(hist_ax,
         hist_values,
+        normalization=:density,
         color=lift(x -> cmap[x[4]%length(cmap)+1], hovered))
 
     on(hist_values) do hv
