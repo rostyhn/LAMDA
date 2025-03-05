@@ -323,13 +323,16 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
         build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
-    screen = GLMakie.Screen()
-
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
     window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments)
 
+    #= 
+    # creating screen after the window is built prevents subtle bugs
+    # such as interactions being trigged before the window is rendered 
+    =#
+    screen = GLMakie.Screen()
     display(screen, window)
 end
 end

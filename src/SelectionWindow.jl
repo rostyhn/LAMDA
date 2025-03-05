@@ -54,6 +54,7 @@ function build_selection_window(fig_size,
     window[1:2, 1] = tGrid
 
     hl = Observable(1)
+
     # contains actual matrix index, the transition idx, the tuple itself and the cluster assignment
     hl_info = @lift begin
         # we only want it to change when hover changes because hover may point to an invalid index
@@ -61,7 +62,7 @@ function build_selection_window(fig_size,
         return ($hl, t_idx, t_list[t_idx], cluster_assignments[][t_idx])
     end
 
-    ltv = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+    ltv, l_hist_ax, l_hist_r = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
 
     hr = Observable(2)
     hr_info = @lift begin
@@ -69,7 +70,17 @@ function build_selection_window(fig_size,
         return ($hr, t_idx, t_list[t_idx], cluster_assignments[][t_idx])
     end
 
-    rtv = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+    rtv, r_hist_ax, r_hist_r = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+
+    @lift begin
+        mr = (-0.01, max($l_hist_r, $r_hist_r) + 0.05)
+
+        xlims!(l_hist_ax, mr)
+        reset_limits!(l_hist_ax; xauto=false)
+
+        xlims!(r_hist_ax, mr)
+        reset_limits!(r_hist_ax; xauto=false)
+    end
 
     link_cameras_lscenes([ltv, rtv])
 
@@ -335,31 +346,35 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
         tellwidth=false)
     #color=lift(x -> cmap[x[4]%length(cmap)+1], hovered))
 
+    hist_r = Observable(0.0)
+
     hist_values = @lift begin
         ts_idx = $cluster_groups[$hovered[4]]
         mtx_idx = map(x -> $reordered_matrix[2][x], ts_idx)
         mat = $reordered_matrix[1]
         vals = mat[mtx_idx, mtx_idx]
         utri = triu!(trues(size(vals)))
-        return vec(vals[utri])
+        d = vec(vals[utri])
+        hist_r[] = maximum(d)
+        notify(hist_r)
+        return d
     end
 
-    # setting tellheight=false makes it crash, it refuses to recompute space 
     hist_ax = Axis(cluster_grid[2, 1],
-        backgroundcolor=:transparent, tellwidth=false)
+        backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
+    # hide y labels because otherwise the width of each column gets adjusted
     hideydecorations!(hist_ax)
 
     # TODO: copy over code for custom implementation 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/stats/hist.jl 
-    h = stephist!(hist_ax,
+    # unfortunately bar_labels doesn't work
+    h = hist!(hist_ax,
         hist_values,
         normalization=:density,
+        strokewidth=1,
+        strokecolor=:black,
         color=lift(x -> cmap[x[4]%length(cmap)+1], hovered))
 
-    on(hist_values) do hv
-        reset_limits!(hist_ax)
-    end
-
-    return rootScene
+    return rootScene, hist_ax, hist_r
 end
