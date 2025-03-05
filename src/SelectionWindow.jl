@@ -2,6 +2,7 @@ using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
 using UMAP
 
+
 function build_selection_window(fig_size,
     data,
     t_list,
@@ -23,11 +24,11 @@ function build_selection_window(fig_size,
     alignment_rotations,
     h_range,
     scalar_range,
-    settings_window
+    settings_window,
+    cluster_assignments
 )
 
     window = Figure(size=fig_size)
-    user_groups = Observable(Dict())
 
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
@@ -35,27 +36,40 @@ function build_selection_window(fig_size,
         rm = zeros(size(m))
 
         # gets the correct idx 
-        mtx_to_t = Dict()
-        t_to_mtx = Dict()
+        idx_to_mtx = zeros(Int, size(m)[1])
         for (i, r) in enumerate($clustering.order)
             rm[i, :] .= m[r, :][$clustering.order]
-            mtx_to_t[i] = t_list[r]
-            t_to_mtx[t_list[r]] = i
+            idx_to_mtx[r] = i
         end
 
         # get minimum and maximum of entire matrix for cmap
         fl = vec(m)
-        return rm, mtx_to_t, (minimum(fl), maximum(fl)), t_to_mtx
+        return rm, idx_to_mtx, (minimum(fl), maximum(fl))
     end
     # can't get it to align left
     # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
-    grid = GridLayout()
-    window[1, 1] = grid
-    hl = Observable(first(t_list))
-    hr = Observable(last(t_list))
 
-    ltv = setup_transition_view(window, grid, (1, 1), alignedPositionsMatrices, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range)
-    rtv = setup_transition_view(window, grid, (1, 2), alignedPositionsMatrices, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range)
+    # grid for the transition views
+    tGrid = GridLayout()
+    window[1:2, 1] = tGrid
+
+    hl = Observable(1)
+    # contains actual matrix index, the transition idx, the tuple itself and the cluster assignment
+    hl_info = @lift begin
+        # we only want it to change when hover changes because hover may point to an invalid index
+        t_idx = clustering[].order[$hl]
+        return ($hl, t_idx, t_list[t_idx], cluster_assignments[][t_idx])
+    end
+
+    ltv = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+
+    hr = Observable(2)
+    hr_info = @lift begin
+        t_idx = clustering[].order[$hr]
+        return ($hr, t_idx, t_list[t_idx], cluster_assignments[][t_idx])
+    end
+
+    rtv = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
 
     link_cameras_lscenes([ltv, rtv])
 
@@ -63,8 +77,9 @@ function build_selection_window(fig_size,
     hovered_cluster = Observable(Set{Int}(1))
 
     cluster_cmap = :tab20
-    graph_ax = Axis(window[2, 1], backgroundcolor=:transparent)
-    hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
+    graph_ax = Axis(window[1, 2], backgroundcolor=:transparent)
+    hidexdecorations!(graph_ax)
+    hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
 
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
@@ -74,8 +89,8 @@ function build_selection_window(fig_size,
         if plot == hm
             xy = mouseposition(hm_ax)
             i, j = Int.(round.(xy))
-            hl[] = reordered_matrix[][2][i]
-            hr[] = reordered_matrix[][2][j]
+            hl[] = i
+            hr[] = j
             notify(hl)
             notify(hr)
         end
@@ -87,9 +102,8 @@ function build_selection_window(fig_size,
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
         cmap = to_colormap(cluster_cmap)
         for (c, ts_idx) in $cluster_groups
-            ts = t_list[ts_idx]
-            t_to_mtx = $reordered_matrix[4]
-            p = show_cluster_on_hmap(ts, t_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
+            idx_to_mtx = $reordered_matrix[2]
+            p = show_cluster_on_hmap(ts_idx, idx_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
             push!(rendered_clusters, p)
         end
     end
@@ -102,11 +116,8 @@ function build_selection_window(fig_size,
         end
         if length($hovered_cluster) > 0
             ts_idx = reduce(vcat, map(x -> $cluster_groups[x], collect($hovered_cluster)))
-            ts = t_list[ts_idx]
-
-            t_to_mtx = $reordered_matrix[4]
-
-            last_bBox = show_cluster_on_hmap(ts, t_to_mtx, hm_ax)
+            idx_to_mtx = $reordered_matrix[2]
+            last_bBox = show_cluster_on_hmap(ts_idx, idx_to_mtx, hm_ax)
         end
     end
 
@@ -160,8 +171,8 @@ function build_selection_window(fig_size,
     return window
 end
 
-function show_cluster_on_hmap(ts, t_to_mtx, scene; color=:red)
-    m_idx = map(x -> t_to_mtx[x], ts)
+function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
+    m_idx = map(x -> idx_to_mtx[x], ts_idx)
 
     lo = minimum(m_idx)
     hi = maximum(m_idx)
@@ -186,12 +197,12 @@ function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotat
     cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
 
     # instead of setting the model, we just multiply by the raw rotation matrix 
-    rot_pos = lift((x, y) -> ap[x][order] * y[x], t, alignment_rotations)
+    rot_pos = lift((x, y) -> ap[x[3]][order] * y[x[3]], t, alignment_rotations)
     scatter!(scene,
         lift(x -> x[:, 1], rot_pos),
         lift(x -> x[:, 2], rot_pos),
         lift(x -> x[:, 3], rot_pos);
-        color=lift((x, y) -> scalars[y][x], t, m.selection),
+        color=lift((x, y) -> scalars[y][x[3]], t, m.selection),
         colorrange=scalar_range,
         colormap=resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)),
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
@@ -202,7 +213,7 @@ function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotat
     return [], [(gg, [m, cbar])]
 end
 
-function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations, on_click, scalar_range)
+function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
     rootScene = LScene(
         fig,
         show_axis=false,
@@ -217,10 +228,10 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
 
     btn = Button(fig, label="Show")
     on(btn.clicks) do n
-        on_click(hovered[], () -> ())
+        on_click(hovered[][3], () -> ())
     end
 
-    l = Label(fig, lift(x -> string(x), hovered), tellwidth=false)
+    l = Label(fig, lift(x -> string(x[3]), hovered), tellwidth=false)
     i, j = loc
     g = vgrid!(rootScene, hgrid!(l, m, btn))
     parentGrid[i, j] = g
@@ -268,7 +279,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
             gg = GridLayout(g[end+1, :])
 
             vd = lift((x, y, z) ->
-                    reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volData, hovered, sampleRanges)
+                    reshape(x[:, y[2]], (length(z[1]), length(z[2]), length(z[3]))), volData, hovered, sampleRanges)
 
             v = volume!(rootScene,
                 lift(x -> extrema(x[1]), sampleRanges),
@@ -284,7 +295,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
 
             # FIXME sometimes the volume will get rotated so hard it disappears
             on(hovered) do h
-                R = alignment_rotations[][h]
+                R = alignment_rotations[][h[3]]
                 rr = hcat(R, [0, 0, 0])
                 fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
                 v.model[] = fr
@@ -311,6 +322,43 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
         for s in is
             push!(ui_elements, s)
         end
+    end
+
+    # setup cluster view for selected transition
+
+    cluster_grid = GridLayout()
+    parentGrid[i+1, j] = cluster_grid
+
+    cmap = to_colormap(:tab20)
+    cluster_grid[1, 1] = Label(fig,
+        lift(x -> "Cluster $(x[4])", hovered),
+        tellwidth=false)
+    #color=lift(x -> cmap[x[4]%length(cmap)+1], hovered))
+
+    hist_values = @lift begin
+        ts_idx = $cluster_groups[$hovered[4]]
+        mtx_idx = map(x -> $reordered_matrix[2][x], ts_idx)
+        mat = $reordered_matrix[1]
+        vals = mat[mtx_idx, mtx_idx]
+        utri = triu!(trues(size(vals)))
+        return vec(vals[utri])
+    end
+
+    # setting tellheight=false makes it crash, it refuses to recompute space 
+    hist_ax = Axis(cluster_grid[2, 1],
+        backgroundcolor=:transparent, tellwidth=false)
+
+    hideydecorations!(hist_ax)
+
+    # TODO: copy over code for custom implementation 
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/stats/hist.jl 
+    # the normalization and bar_labels options do not expect observables, they always crash!
+    h = hist!(hist_ax,
+        hist_values,
+        color=lift(x -> cmap[x[4]%length(cmap)+1], hovered))
+
+    on(hist_values) do hv
+        reset_limits!(hist_ax)
     end
 
     return rootScene
