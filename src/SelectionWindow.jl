@@ -133,7 +133,7 @@ function build_selection_window(fig_size,
         cutoff_slider,
         Label(window, lift(x -> string(round(x; sigdigits=3)), h_cutoff)))
 
-    dm_menu = Menu(window, options=collect(keys(dms)))
+    dm_menu = Menu(window, options=collect(keys(dms)), default=selected_dm[])
     on(dm_menu.selection) do val
         selected_dm[] = val
     end
@@ -281,9 +281,9 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
                 fxaa=false,
                 transparency=true,
                 shading=NoShading,
-                colorrange=volumeRange,
-                visible=true)
+                colorrange=volumeRange)
 
+            # FIXME sometimes the volume will get rotated so hard it disappears
             on(hovered) do h
                 R = alignment_rotations[][h]
                 rr = hcat(R, [0, 0, 0])
@@ -291,6 +291,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
                 v.model[] = fr
                 notify(v.model)
             end
+
             v.inspectable[] = false
 
             cbar = Colorbar(gg[1, :],

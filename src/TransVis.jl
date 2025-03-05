@@ -107,7 +107,6 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
         features = alignments[$selected_alignment]
 
         rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
-
         for (clusterIdx, g) in $cluster_groups
 
             # find reference t
