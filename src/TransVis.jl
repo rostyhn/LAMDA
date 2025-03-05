@@ -6,7 +6,7 @@ using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_p
 using Pickle
 using JLD2
 using CodecZlib
-
+using Clustering: hclust, cutree
 #Vis
 using GLMakie
 using Makie
@@ -15,55 +15,43 @@ using GeometryBasics
 #Processing and Helpers
 using NearestNeighbors
 using LinearAlgebra
-using TSne
 using Base.Threads
 using Statistics
 using ProgressMeter
 using Ripserer
-using PersistenceDiagrams
 using Mmap
 
+
 include("io.jl")
+# unfortunately is used as part of the main module
+include("multiprocess.jl")
 include("processing.jl")
 include("SelectionWindow.jl")
 include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
+include("dendrogram.jl")
+include("SettingsWindow.jl")
 
 export go
 
-function buildBonds(positions, bondDelta)
-    points = Vector{Tuple{Point3f,Point3f}}()
-    weights = Vector{Float64}()
-    indices = Vector{Tuple{Int64,Int64}}()
-
-    for i in 1:length(bondDelta[1, :])
-        for j in 1:i
-            bw = bondDelta[i, j]
-            # avg = (abs((v1 + v2)) / 2) / volumeAbsMax
-            # 0.05 is the threshold val for filtering
-            # check against bond weight to make sure we're only looking at "real" bonds
-            if abs(bw) > 0.0
-                push!(points, (Point3f(positions[i, :]), Point3f(positions[j, :])))
-                push!(weights, bw)
-                push!(indices, (i, j))
-            end
-        end
-    end
-    return (points, weights, indices)
-end
-
-function go(trajectory_name::String)
-
+function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
-
     transitionInvariants1 = active_trajectory["t1"]
     transitionInvariants2 = active_trajectory["t2"]
     transitionInvariants3 = active_trajectory["t3"]
+
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
-    stateKDTree = active_trajectory["kdTree"]
     dms = active_trajectory["dms"]
+    scalars = active_trajectory["scalars"]
+    scalar_range = active_trajectory["scalar_range"]
+    connectivity = active_trajectory["connectivity"]
+    distanceMatrices = active_trajectory["distanceMatrices"]
+    alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
+    alignedPositions = active_trajectory["alignedPositions"] # positions as points
+    kdTrees = active_trajectory["kdTrees"]
+    alignments = active_trajectory["alignments"]
 
     transitionSequence = active_trajectory["transitions"]
 
@@ -72,16 +60,92 @@ function go(trajectory_name::String)
         t_to_idx[t] = i
     end
 
-    connectivity = active_trajectory["connectivity"]
-    distanceMatrices = active_trajectory["distanceMatrices"]
-    alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
-    alignedPositions = active_trajectory["alignedPositions"] # positions as vec point3fs
+    h_cutoff = Observable(init_h_cutoff)
+    h_range = Observable((floatmin(Float32), floatmax(Float32)))
+    selected_dm = Observable(first(keys(dms)))
+    clustering = @lift begin
+        println("Clustering $($selected_dm)...")
+        m = dms[$selected_dm]
+        res = hclust(m, linkage=:ward, branchorder=:barjoseph)
+
+        h_range[] = extrema(res.heights)
+        notify(h_range)
+        return res
+    end
+
+    cluster_groups = @lift begin
+        assignments = cutree($clustering, h=$h_cutoff)
+        groups = Dict{Int,Vector{Int}}()
+        for (i, c) in enumerate(assignments)
+            if c in keys(groups)
+                g = groups[c]
+            else
+                g = Vector{Int}()
+            end
+            push!(g, i)
+            groups[c] = g
+        end
+
+        #=
+        pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
+        for (clusterIdx, g) in groups
+            ts = map(x -> transitionSequence[x], g)
+            pickled_groups[clusterIdx] = ts
+        end
+
+        Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
+        =#
+
+        return groups
+    end
+
+    # perfom intra-cluster alignment
+    selected_alignment = Observable(first(keys(alignments)))
+
+    alignment_rotations = @lift begin
+        # figure out what transitions are grouped together
+        features = alignments[$selected_alignment]
+
+        rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
+        for (clusterIdx, g) in $cluster_groups
+
+            # find reference t
+            m = dms[$selected_dm]
+            dist_sum = map(x -> sum(m[x, :][g]), g)
+            ref_t_idx = argmin(dist_sum)
+
+            ts = map(x -> transitionSequence[x], g)
+
+            # for now, use first t as reference 
+            ref_t = popat!(ts, ref_t_idx)
+            rot[ref_t] = Matrix(I, 3, 3)
+
+            ref_s1_pos = alignedPositionsMatrices[ref_t][1]
+            ref_s2_pos = alignedPositionsMatrices[ref_t][2]
+            ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t])))
+            ref_s2_com = reduce(vcat, map(x -> com(ref_s2_pos, x), eachcol(features[ref_t])))
+            # align each t to ref_t 
+            for t in ts
+                t_s1_pos = alignedPositionsMatrices[t][1]
+                t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(features[t])))
+
+                R1, res1 = pure_align(ref_s1_com, t_s1_com)
+                R2, res2 = pure_align(ref_s2_com, t_s1_com)
+
+                # convert to homogeneous matrix 
+                R = (res1 < res2) ? R1 : R2
+
+                rot[t] = R
+            end
+        end
+
+        return rot
+    end
 
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
     # get min max coordinates of atoms for bounding box
-    # we don't really need these positions anymore
     minX = 1.0e10
     minY = 1.0e10
     minZ = 1.0e10
@@ -113,58 +177,33 @@ function go(trajectory_name::String)
         end
     end
 
-    # 6 is the slope - should only be even odds
-    # 0.1 is the thickness of the white part
-    cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
-
-    bondDeltas = Dict{Tuple{Int,Int},Matrix{Float32}}()
+    # should be cached
+    bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
+    bdMin = floatmax(Float32)
+    bdMax = floatmin(Float32)
     for t in transitionSequence
         s1, s2 = t
-        dm1 = distanceMatrices[s1] .* connectivity[s1]'
-        dm2 = distanceMatrices[s2] .* connectivity[s2]'
+        dm1 = distanceMatrices[s1]
+        dm2 = distanceMatrices[s2]
 
         # for now it's total delta
-        bondDeltas[t] = dm2 - dm1
+        bd = dm2 - dm1
+        vals = vec(bd)
+
+        bdMin = min(bdMin, minimum(vals))
+        bdMax = max(bdMax, maximum(vals))
+
+        bondDeltas[t] = bd
     end
+
+    lsExtrema = (bdMin, bdMax)
+    ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
 
     available_matrices = Dict()
-    available_matrices["bondDeltas"] = normalize_matrices(bondDeltas)
+    available_matrices["bondDeltas"] = bondDeltas
 
-    volRange = Observable((floatmin(Float32), floatmax(Float32)))
-    lsExtrema = Observable((-0.01, 0.01))
-
-    # should move molScreen into a new file
-    molScreen = GLMakie.Screen()
     molGrid = Figure()
-
-    views = Vector()
-    all_scenes = Vector()
-    for i in 1:3
-        lab = Label(molGrid[i, 1], "", rotation=pi / 2)
-        l = LScene(
-            molGrid[i, 2],
-            show_axis=false,
-            scenekw=(backgroundcolor=:black, clear=true),
-        )
-        r = LScene(
-            molGrid[i, 3],
-            show_axis=false,
-            scenekw=(backgroundcolor=:black, clear=true),
-        )
-        push!(views, (lab, l, r))
-        push!(all_scenes, l)
-        push!(all_scenes, r)
-
-        Camera3D(l.scene, center=true, eyeposition=Vec3f(30, 30, 30))
-        Camera3D(r.scene, center=true, eyeposition=Vec3f(30, 30, 30))
-
-        rowsize!(molGrid.layout, i, Relative(0.25))
-    end
-    colsize!(molGrid.layout, 1, Relative(0.05))
-    colsize!(molGrid.layout, 2, Relative(0.475))
-    colsize!(molGrid.layout, 3, Relative(0.475))
-
-    Label(molGrid[4, 1], "Volume Controls", rotation=pi / 2)
+    Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],
         (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
         (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
@@ -184,6 +223,10 @@ function go(trajectory_name::String)
         return nn
     end
 
+    # 0.1 is the thickness of the white part
+    volume_cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
+    volRange = Observable((floatmin(Float32), floatmax(Float32)))
+
     selected_invariant = Observable("t1")
     @time volumeData = @lift begin
         key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
@@ -193,8 +236,12 @@ function go(trajectory_name::String)
 
         fp, is_cached = get_mmap_file(key)
         if !is_cached
-            println("Calculating volume data for $(key); will be saved as $(hash(key))")
-            # https://docs.julialang.org/en/v1/manual/multi-threading/
+            println("Calculating volume data for $(key); will be saved as $(hash(key))...")
+
+            alignedPos = map(x -> alignedPositions[x][1], transitionSequence)
+            kd = map(x -> kdTrees[x][1], transitionSequence)
+            invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
+
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
                 for j in eachindex($sampleRanges[2]) # y
@@ -205,111 +252,87 @@ function go(trajectory_name::String)
                 end
             end
 
-            # setting shared = false does not save the results
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d))
-            chunks = Iterators.partition(enumerate(transitionSequence), div(length(transitionSequence), max(Threads.nthreads() - 1, 1)))
+            try
+                absVolMin = floatmax(Float32)
+                volMin = floatmax(Float32)
+                volMax = floatmin(Float32)
 
-            #write() should be faster, question is how to do it sequentially
-            # might want to set BLAS.set_num_threads(1)
-            d_ch = Channel{Tuple{Array{Tuple{Int,Array{Float32}}},Float32,Float32,Float32}}()
-            map(chunks) do chunk
-                Threads.@spawn begin
-                    sample_range = (length($sampleRanges[1]), length($sampleRanges[2]), length($sampleRanges[3]))
-                    # split into subchunks to save memory
-                    subchunks = Iterators.partition(chunk, 25)
-                    for sc in subchunks
-                        # might want to copy over alignedPositions, stateKDTree etc for the selected values
-                        vd, sc_volmin, sc_volmax, sc_absvolmin = calculateVolumes(sc, sample_range, alignedPositions, stateKDTree, points, $num_neighbors, $kernelWidth, active_trajectory[$selected_invariant])
-                        put!(d_ch, (vd, sc_volmin, sc_volmax, sc_absvolmin))
+                processed = 0
+                prog = Progress(length(transitionSequence))
+                update!(prog, processed)
+
+                chunks = collect(Iterators.partition(eachindex(transitionSequence), chunk_size))
+
+                # 500 seconds at the fastest
+                io = open(fp, "a")
+                for chunk in chunks
+                    sub_chunks = collect(Iterators.partition(chunk, div(length(chunk), nthreads(:default))))
+                    tasks = map(sub_chunks) do ts
+                        Threads.@spawn :default begin
+                            ap_chunk = @view alignedPos[ts]
+                            kd_chunk = @view kd[ts]
+                            iv_chunk = @view invariants[ts]
+                            return calc_vols($sampleRanges, $num_neighbors, $kernelWidth, points, ts, kd_chunk, ap_chunk, iv_chunk)
+                        end
                     end
+
+                    errormonitor.(tasks)
+                    data = fetch.(tasks)
+                    vd = reduce(vcat, first.(data))
+
+                    for d in vd
+                        write(io, d)
+                    end
+                    processed += length(vd)
+
+                    volMin = min(volMin, minimum(getindex.(data, 2)))
+                    volMax = max(volMax, maximum(getindex.(data, 3)))
+                    absVolMin = min(absVolMin, minimum(last.(data)))
+
+                    update!(prog, processed)
                 end
+                close(io)
+                save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
+            catch
+                rm(fp)
+                return error("Volume calculation failed.")
             end
-
-            absVolMin = floatmax(Float32)
-            volMin = floatmax(Float32)
-            volMax = floatmin(Float32)
-
-            processed = 0
-            while processed < length(transitionSequence)
-                # possibly sort by idx before writing with write instead of mmap?
-                vd, c_volmin, c_volmax, c_absvolmin = take!(d_ch)
-                for (idx, d) in vd
-                    volData[idx, :] = d
-                end
-                processed += length(vd)
-                volMin = min(c_volmin, volMin)
-                volMax = max(c_volmax, volMax)
-                absVolMin = min(absVolMin, c_absvolmin)
-            end
-            close(d_ch)
-
-            volRange[] = (volMin, volMax)
-            notify(volRange)
-            save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
-        else
-            volData = Mmap.mmap(fp, Matrix{Float32}, (length(transitionSequence), w * h * d), shared=false, grow=false)
-            volRange[] = read_volume_cache(key)
-            notify(volRange)
         end
 
+        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(transitionSequence)), shared=false, grow=false)
+        volRange[] = read_volume_cache(key)
+        notify(volRange)
+
         if $selected_invariant == "t2"
-            cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
+            volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
         else
             # should be fine, seems off-center because abs(volMin) != abs(volMax)
             # could additionally calculate volAbsMin to remove noisy values
-            cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+            volume_cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
         end
-        notify(cmap)
+        notify(volume_cmap)
+
         return volData
     end
 
     filterRange = lift(x -> LinRange(x[1], x[2], 100), volRange)
-    volFilter = IntervalSlider(molGrid[5, 1:2], range=filterRange, startvalues=(0, 0))
-    Label(molGrid[5, 3], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
-
-    Label(molGrid[6, 1], "Bond Delta")
-    Colorbar(molGrid[6, 2:3], colormap=:bwr, limits=lift(x -> x, lsExtrema), vertical=false)
-    rowsize!(molGrid.layout, 4, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 5, Relative(0.25 / 3))
-    rowsize!(molGrid.layout, 6, Relative(0.25 / 3))
-    cleanup_callbacks = Dict()
-
-    display(molScreen, molGrid)
-    viewIdx = 1
+    volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
+    Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     function on_click(t, on_window_hover)
-        pos1, pos2 = alignedPositions[t]
-        kdTree1, kdTree2 = stateKDTree[t]
-        glyphResolution = 0.1
+        pos1 = alignedPositions[t][1]
+        kdTree1 = kdTrees[t][1]
 
         # 1.0 should be transitionGlyphSize
-        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], -1.0, 3.0, glyphResolution)[:]
-        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t])
+        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
+        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t], connectivity[t[1]])
 
-        thislsExtrema = extrema(ls[2])
-        lsExtrema[] = (min(lsExtrema[][1], thislsExtrema[1]), max(lsExtrema[][1], thislsExtrema[2]))
-        notify(lsExtrema)
-
-        lab, l, r = views[viewIdx]
-
-        cleanup_func = get(cleanup_callbacks, viewIdx, function f() end)
-        cleanup_func()
-
-        cleanup = build_mol_window(l, r, t, alignedPositions[t], lift(x -> x[t], volumeData), volRange, sq, ls, kdTree1, sampleRanges, cmap, on_window_hover, lsExtrema, volFilter.interval)
-        lab.text = string(t)
-
-        cleanup_callbacks[viewIdx] = cleanup
-
-        if viewIdx < length(views)
-            viewIdx += 1
-        else
-            viewIdx = 1
-        end
+        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
     screen = GLMakie.Screen()
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositions, stateKDTree, dms, volumeData, sampleRanges, volRange, cmap, selected_invariant)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range)
 
     display(screen, window)
 end

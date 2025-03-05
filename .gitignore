@@ -2,3 +2,5 @@ cache/
 *.DS_Store
 .git/
 data/
+
+.ipynb_checkpoints

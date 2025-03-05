@@ -1,5 +1,3 @@
-export get_data_alt
-
 function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
     #s2 changes s1 stays
     s = mean(x, dims=1)
@@ -61,9 +59,7 @@ function read_volume_cache(key)
     result = Nothing
     if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
         println("Loading $(key) from $(basename(cache_file))")
-        result = JLD2.jldopen(cache_file; compress=true) do file
-            @show keys(file)
-            @show file["absVolMin"]
+        result = JLD2.jldopen(cache_file) do file
             file["volume_range"]
         end
     end
@@ -77,7 +73,7 @@ function save_volume_cache(key, volume_range, dimensions, absVolMin)
     cache_file = joinpath(cachePath, "$(h).jdl2")
 
     println("Saving $(key) as $(basename(cache_file))")
-    JLD2.jldsave("$(cache_file)", true; volume_range, dimensions, absVolMin)
+    JLD2.jldsave("$(cache_file)"; volume_range, dimensions, absVolMin)
 end
 
 function get_data_alt(trajectory_name)
@@ -90,22 +86,46 @@ function get_data_alt(trajectory_name)
 
         if trajectory_name in keys(trajectories)
             t = trajectories[trajectory_name]
-            dmf = joinpath(t, "dms")
-            if !isdir(dmf)
-                return error("Distance matrix folder not found")
-            end
-
-            dms = readDistanceMatrixFolder(dmf)
-
-            if isempty(dms)
-                return error("No distance matrices found.")
-            end
 
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
+
+            # TODO: make sure these exist!
+            distances_pickle = joinpath(t, "distances.pickle")
+            connectivity_pickle = joinpath(t, "connectivity.pickle")
+            transitions_pickle = joinpath(t, "transitions.pickle")
+            alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
+
+            distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
+            connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
+            transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
+            rawAlignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
+
+            # convert to point3fs & generate kd trees
+            println("Computing KDTrees.")
+            alignedPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
+            alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
+            # https://github.com/KristofferC/NearestNeighbors.jl
+            # can store kdTrees as indices only, relinking positions when needed
+            # no need to cache this data, it computes really quickly
+            kdTrees = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
+            for (t, m) in rawAlignedPositionsMatrices
+                # center atom positions first
+                cm1 = mean(m[1], dims=1)
+                cm2 = mean(m[2], dims=1)
+                p1 = (m[1] .- cm1)
+                p2 = (m[2] .- cm2)
+
+                alignedPositionsMatrices[t] = (p1, p2)
+
+                pp1, pp2 = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
+                alignedPositions[t] = (pp1, pp2)
+                kdTrees[t] = (KDTree(pp1), KDTree(pp2))
+            end
+
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
-                @time trajectory_data = JLD2.jldopen(cache_file; compress=true) do file
-                    file["trajectory_data"]
+                @time trajectory_data = JLD2.jldopen(cache_file) do file
+                    Dict{Any,Any}(file["trajectory_data"])
                 end
             else
                 println("Calculating data for $(trajectory_name).")
@@ -113,49 +133,79 @@ function get_data_alt(trajectory_name)
                     mkdir(cachePath)
                 end
 
-                distances_pickle = joinpath(t, "distances.pickle")
-                connectivity_pickle = joinpath(t, "connectivity.pickle")
-                transitions_pickle = joinpath(t, "transitions.pickle")
-                alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
-
-                distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
-                connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle))
-                transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
-                alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
-
+                println("Calculating transition invariants.")
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
-                # converts into array of Point3fs
-                alignedAtomPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
-                for (t, aligned) in alignedPositionsMatrices
-                    p1, p2 = aligned
-                    alignedAtomPositions[t] = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
-                end
-
-                # https://github.com/KristofferC/NearestNeighbors.jl
-                # can store kdTrees as indices only, relinking positions when needed
-                println("Computing KDTrees.")
-                stateKDTree = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
-                @time for (t, aligned) in alignedAtomPositions
-                    p1, p2 = aligned
-                    stateKDTree[t] = (KDTree(p1), KDTree(p2))
-                end
-
-                trajectory_data = Dict("distanceMatrices" => distanceMatrices,
-                    "alignedPositions" => alignedAtomPositions,
-                    "alignedPositionsMatrices" => alignedPositionsMatrices,
-                    "connectivity" => connectivity,
-                    "transitions" => transitions,
-                    "t1" => t1,
+                trajectory_data = Dict{Any,Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
-                    "kdTree" => stateKDTree,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
-                @time JLD2.jldsave("$(cache_file)", true; trajectory_data,)
+                @time JLD2.jldsave("$(cache_file)"; trajectory_data,)
             end
 
+            # no need to cache data that is already available
+            trajectory_data["distanceMatrices"] = distanceMatrices
+            trajectory_data["connectivity"] = connectivity
+            trajectory_data["transitions"] = transitions
+            trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
+            trajectory_data["alignedPositions"] = alignedPositions
+            trajectory_data["kdTrees"] = kdTrees
+
+            # can probably clean this up to use one generic function
+            dmf = joinpath(t, "dms")
+            if !isdir(dmf)
+                return error("Distance matrix folder not found.")
+            end
+
+            dms = readDistanceMatrixFolder(dmf)
+            if isempty(dms)
+                return error("No distance matrices found.")
+            end
+
+            scalars = Dict()
+            # load in scalars if present
+            scalarf = joinpath(t, "scalars")
+            globalMin = floatmax(Float32)
+            globalMax = floatmin(Float32)
+            if isdir(scalarf)
+                println("Loading scalars...")
+                for sf in readdir(scalarf, join=true)
+                    fname, ext = splitext(sf)
+                    if isfile(sf) && ext == ".pickle"
+                        d = Dict{Tuple{Int16,Int16},Array{Float32}}(Pickle.npyload(sf))
+                        totExtrema = extrema.(values(d))
+                        totMin = minimum(first.(totExtrema))
+                        totMax = maximum(last.(totExtrema))
+                        globalMin = min(totMin, globalMin)
+                        globalMax = max(totMax, globalMax)
+                        scalars[basename(fname)] = d
+                    end
+                end
+            else
+                println("No scalars folder found, ignoring.")
+            end
+
+            # load in alignment features
+            alignmentf = joinpath(t, "alignment")
+            alignments = Dict()
+
+            if isdir(alignmentf)
+                for af in readdir(alignmentf, join=true)
+                    if isfile(af)
+                        alignment_name = basename(af)
+                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Matrix{Float32}}(Pickle.npyload(af))
+                    end
+                end
+            else
+                return error("Alignment folder not found.")
+            end
+
+            # TODO: check for correctness
+            trajectory_data["alignments"] = alignments
+            trajectory_data["scalars"] = scalars
+            trajectory_data["scalar_range"] = (globalMin, globalMax)
             trajectory_data["dms"] = dms
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")

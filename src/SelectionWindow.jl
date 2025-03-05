@@ -1,56 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using StatsBase
-using Graphs
-using GraphMakie
-using NetworkLayout
 using UMAP
-using Clustering
-
-function get_matrix_data(label, dms, reference_configuration, selected_atoms, iv1, alignedPositions, transitionKDTree)
-    if label == "LNCD"
-        numberOfBins = 100
-        minInvariant1, maxInvariant1, transitionInvariants1 = iv1
-
-        @show stepSize = (maxInvariant1 - minInvariant1) / numberOfBins
-        binEdges = [minInvariant1:stepSize:maxInvariant1;]
-
-        transitionDistribution = Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}() # in transition (String), List of control points { sparse neighbourhood distribution }  
-        @time for (t, values) in transitionInvariants1
-
-            p1, p2 = get_from_t_dict(alignedPositions, t)
-            k1, k2 = get_from_t_dict(transitionKDTree, t)
-
-            transitionDistribution[t] = computeInvariantDistributionInNeighborhood(values, p1, binEdges, 10, k1)
-        end
-        @show "done with distributions"
-
-        distancesToReference = computeLNCD.(Ref(transitionDistribution),
-            Ref(reference_configuration),
-            keys(transitionInvariants1),
-            Ref(selected_atoms))
-        zipped = collect(zip(collect(keys(transitionInvariants1)), distancesToReference))
-
-        ref_distances = Dict()
-        for (t, d) in zipped
-            ref_distances[t] = d
-        end
-
-        return ref_distances
-    end
-
-    m = dms[label]["matrix"]
-    t_to_idx = dms[label]["t_to_idx"]
-    row_idx = t_to_idx[reference_configuration]
-    row = m[row_idx, :]
-
-    graph_dist = Dict()
-    for (t, idx) in t_to_idx
-        graph_dist[t] = row[idx]
-    end
-
-    return graph_dist
-end
-
 
 function build_selection_window(fig_size,
     data,
@@ -58,205 +8,311 @@ function build_selection_window(fig_size,
     t_to_idx,
     on_click,
     num_atoms,
-    alignedPositions,
-    transitionKDTree, dms, volData, sampleRanges, volRange, cmap, selected_invariant)
+    alignedPositionsMatrices,
+    transitionKDTree,
+    dms,
+    volData,
+    sampleRanges,
+    volRange,
+    vol_cmap,
+    selected_invariant,
+    clustering,
+    selected_dm,
+    scalars,
+    h_cutoff,
+    cluster_groups,
+    alignment_rotations,
+    h_range,
+    scalar_range
+)
 
     window = Figure(size=fig_size)
-
     user_groups = Observable(Dict())
 
-    selected_dm = Observable(first(keys(dms)))
-
+    # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
-        println("Clustering $($selected_dm)")
-
         m = dms[$selected_dm]
-        res = hclust(m, linkage=:ward, branchorder=:barjoseph)
         rm = zeros(size(m))
 
         # gets the correct idx 
         mtx_to_t = Dict()
-        for (i, r) in enumerate(res.order)
-            rm[i, :] .= m[r, :][res.order]
+        t_to_mtx = Dict()
+        for (i, r) in enumerate($clustering.order)
+            rm[i, :] .= m[r, :][$clustering.order]
             mtx_to_t[i] = t_list[r]
+            t_to_mtx[t_list[r]] = i
         end
 
         # get minimum and maximum of entire matrix for cmap
         fl = vec(m)
-        return rm, mtx_to_t, (minimum(fl), maximum(fl))
+        return rm, mtx_to_t, (minimum(fl), maximum(fl)), t_to_mtx
     end
-
+    # can't get it to align left
+    # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
     grid = GridLayout()
     window[1, 1] = grid
     hl = Observable(first(t_list))
     hr = Observable(last(t_list))
 
-    svl = LScene(grid[1, 1], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
-    svr = LScene(grid[1, 2], show_axis=false, scenekw=(backgroundcolor=:black, clear=true))
+    ltv = setup_transition_view(window, grid, (1, 1), alignedPositionsMatrices, hl, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range)
+    rtv = setup_transition_view(window, grid, (1, 2), alignedPositionsMatrices, hr, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range)
 
-    Label(grid[2, 1], lift(x -> string(x), hl), tellwidth=false)
-    Label(grid[2, 2], lift(x -> string(x), hr), tellwidth=false)
+    link_cameras_lscenes([ltv, rtv])
 
-    invar_menu = Menu(window, options=["t1", "t2", "t3"], tellwidth=false)
-    on(invar_menu.selection) do val
-        selected_invariant[] = val
-    end
-    grid[3, :] = hgrid!(Label(window, "Selected invariant"),
-        invar_menu,
-        Colorbar(window, colormap=cmap, limits=volRange, vertical=false, size=16))
+    # will complain about being passed "nothing" as a value if something isn't inside the set
+    hovered_cluster = Observable(Set{Int}(1))
 
-    @time vl = volume!(svl,
-        lift(x -> x[1], sampleRanges),
-        lift(x -> x[2], sampleRanges),
-        lift(x -> x[3], sampleRanges),
-        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hl, volData, sampleRanges);
-        colormap=cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=lift(x -> x, volRange),
-        overdraw=true,
-        visible=true)
-    vl.inspectable[] = false
-
-    @time vr = volume!(svr,
-        lift(x -> x[1], sampleRanges),
-        lift(x -> x[2], sampleRanges),
-        lift(x -> x[3], sampleRanges),
-        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hr, volData, sampleRanges);
-        colormap=cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=volRange,
-        overdraw=true,
-        visible=true)
-    vr.inspectable[] = false
-
-    graph_ax = Axis(window[2:3, 1], backgroundcolor=:transparent)
-    campixel!(graph_ax.scene)
-
-    hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix), inspector_label=(i, p, idx) -> "")
+    cluster_cmap = :tab20
+    graph_ax = Axis(window[2, 1], backgroundcolor=:transparent)
+    hm_ax, hm = heatmap(window[1:2, 2], lift(x -> x[1], reordered_matrix))
 
     hidedecorations!(hm_ax)
-    DataInspector(hm)
     deregister_interaction!(hm_ax, :rectanglezoom)
-    deregister_interaction!(graph_ax, :rectanglezoom)
-
-    dm_menu = Menu(window, options=collect(keys(dms)))
-    on(dm_menu.selection) do val
-        selected_dm[] = val
-    end
-
-    window[3, 2] = hgrid!(Label(window, "Distance matrix"),
-        dm_menu,
-        Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16))
-
-    embedding = @lift begin
-        println("Calculating umap embedding for $($selected_dm)")
-        # https://github.com/dillondaudert/UMAP.jl/blob/master/src/umap_.jl
-        # not a major bottleneck but should be cached eventually
-        @time em = transpose(umap(dms[$selected_dm], 2; metric=:precomputed, spread=250))
-        return map(x -> Point2f(x), eachrow(em))
-    end
-
-    hovered = Observable(first(t_list))
-    tt_bbox = Observable(BBox(0, 0, 0, 0))
-
-    colors = Observable(fill(:blue, length(embedding[])))
-
-    @time sc = scatter!(graph_ax, embedding; color=colors)
-    sc.inspectable[] = false
-    @time text!(graph_ax, embedding; text=map(x -> string(x), t_list))
-    hidedecorations!(graph_ax)
-
-    on(embedding) do _
-        autolimits!(graph_ax)
-    end
-
-    ax3d = LScene(graph_ax.scene, show_axis=false, bbox=tt_bbox, scenekw=(backgroundcolor=:black, clear=true, size=(250, 250), zorder=100), height=250, width=250)
-    ax3d.scene.visible[] = false
-
-    v = volume!(ax3d,
-        lift(x -> x[1], sampleRanges),
-        lift(x -> x[2], sampleRanges),
-        lift(x -> x[3], sampleRanges),
-        lift((x, y, z) -> reshape(y[t_to_idx[x], :], (length(z[1]), length(z[2]), length(z[3]))), hovered, volData, sampleRanges);
-        colormap=cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=volRange,
-        overdraw=true,
-        visible=true)
-    v.inspectable[] = false
-    translate!(ax3d.scene, 0, 0, 10)
-
-    center!(ax3d.scene)
-
-    on(events(graph_ax).mouseposition) do mp
-        plot, idx = pick(graph_ax)
-        if plot == sc
-            x, y = events(graph_ax.parent).mouseposition[]
-            tt_bbox[] = BBox(x + 15, x + 265, y - 265, y - 15)
-            hovered[] = t_list[idx]
-            ax3d.scene.visible[] = true
-            notify(hovered)
-            notify(tt_bbox)
-            center!(ax3d.scene)
-        else
-            ax3d.scene.visible[] = false
-        end
-
-        return Consume(false)
-    end
-
-    on(events(graph_ax).mousebutton) do event
-        if event.button == Mouse.left && event.action == Mouse.press
-            plot, idx = pick(graph_ax)
-            pos = position_on_plot(plot, idx)
-            if !isnan(pos) && (plot == sc)
-                on_click(t_list[idx], x -> ())
-            end
-        end
-        return Consume(true)
-    end
 
     on(events(hm_ax).mouseposition) do mp
-        colors[] = fill(:blue, length(colors[]))
         plot, _ = pick(hm_ax)
         if plot == hm
             xy = mouseposition(hm_ax)
             i, j = Int.(round.(xy))
-            oldi = t_to_idx[reordered_matrix[][2][i]]
-            oldj = t_to_idx[reordered_matrix[][2][j]]
-            colors[][oldi] = :red
-            colors[][oldj] = :red
-            hl[] = t_list[oldi]
-            hr[] = t_list[oldj]
+            hl[] = reordered_matrix[][2][i]
+            hr[] = reordered_matrix[][2][j]
             notify(hl)
             notify(hr)
-            notify(colors)
         end
-        #t = t_list[idx]
-        #hovered[] = t_list[idx]
-        #ax3d.scene.visible[] = true
-        #notify(hovered)
-        #notify(tt_bbox)
-        #center!(ax3d.scene)
         return Consume(false)
     end
+
+    rendered_clusters = []
+    @lift begin
+        foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
+        cmap = to_colormap(cluster_cmap)
+        for (c, ts_idx) in $cluster_groups
+            ts = t_list[ts_idx]
+            t_to_mtx = $reordered_matrix[4]
+            p = show_cluster_on_hmap(ts, t_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
+            push!(rendered_clusters, p)
+        end
+    end
+
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
+    last_bBox = nothing
+    @lift begin
+        if !isnothing(last_bBox)
+            delete!(parent_scene(last_bBox), last_bBox)
+        end
+        if length($hovered_cluster) > 0
+            ts_idx = reduce(vcat, map(x -> $cluster_groups[x], collect($hovered_cluster)))
+            ts = t_list[ts_idx]
+
+            t_to_mtx = $reordered_matrix[4]
+
+            last_bBox = show_cluster_on_hmap(ts, t_to_mtx, hm_ax)
+        end
+    end
+
+    function on_dendrogram_hover(c)
+        if !isempty(c)
+            hovered_cluster[] = c
+            notify(hovered_cluster)
+        end
+    end
+
+    dendrogram!(graph_ax, clustering, h_cutoff; hover_callbackfn=on_dendrogram_hover, colormap=cluster_cmap)
+
+    cutoff_slider = Slider(window, range=lift(x -> x[1]:0.01:x[2], h_range), startvalue=h_cutoff[], update_while_dragging=false)
+    on(cutoff_slider.value) do x
+        # reset hovered_cluster to avoid crashing
+        hovered_cluster[] = Set{Int}(1)
+        notify(hovered_cluster)
+
+        h_cutoff[] = x
+        notify(h_cutoff)
+    end
+
+    window[3, 1] = hgrid!(Label(window, "Cluster cutoff value"),
+        cutoff_slider,
+        Label(window, lift(x -> string(round(x; sigdigits=3)), h_cutoff)))
+
+    dm_menu = Menu(window, options=collect(keys(dms)), default=selected_dm[])
+    on(dm_menu.selection) do val
+        selected_dm[] = val
+    end
+
+    settings_btn = Button(window, label="Settings")
+    settings_window = build_settings_menu(selected_invariant)
+    screen = nothing
+    on(settings_btn.clicks) do n
+        # n has how many times the button's been clicked
+        if isnothing(screen)
+            screen = GLMakie.Screen(title="TransVis Settings")
+            display(screen, settings_window)
+        else
+            close(screen)
+            screen = nothing
+        end
+    end
+
+    window[3, 2] = hgrid!(Label(window, "Distance matrix"),
+        dm_menu,
+        Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16),
+        settings_btn
+    )
 
     return window
 end
 
-function color_selected(selected_atoms, num_atoms)
-    colors = [:blue for _ in range(1, num_atoms)]
-    for idx in selected_atoms
-        colors[idx] = :red
+function show_cluster_on_hmap(ts, t_to_mtx, scene; color=:red)
+    m_idx = map(x -> t_to_mtx[x], ts)
+
+    lo = minimum(m_idx)
+    hi = maximum(m_idx)
+
+    # need to draw n bounding boxes over the heatmap
+    bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
+
+    p = wireframe!(
+        scene, bbox, color=color,
+        visible=true, inspectable=false,
+        depth_shift=-1.0f-3
+    )
+    return p
+end
+
+function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotations, scalar_range)
+    opts = sort(collect(keys(scalars)))
+
+    gg = GridLayout(g[end+1, :])
+    m = Menu(gg[1, 1], options=opts, default=length(sel[]) == 0 ? first(opts) : sel[])
+
+    cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
+
+    # instead of setting the model, we just multiply by the raw rotation matrix 
+    rot_pos = lift((x, y) -> ap[x][order] * y[x], t, alignment_rotations)
+    scatter!(scene,
+        lift(x -> x[:, 1], rot_pos),
+        lift(x -> x[:, 2], rot_pos),
+        lift(x -> x[:, 3], rot_pos);
+        color=lift((x, y) -> scalars[y][x], t, m.selection),
+        colorrange=scalar_range,
+        colormap=resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)),
+        inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
+        markersize=30)
+
+    cbar = Colorbar(gg[1, 2], colorrange=scalar_range, vertical=false, colormap=cmap, tellwidth=false)
+
+    return [], [(gg, [m, cbar])]
+end
+
+function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations, on_click, scalar_range)
+    rootScene = LScene(
+        fig,
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    m = Menu(fig,
+        options=["Volume",
+            "Initial State",
+            "Final State"],
+        default="Volume")
+
+    btn = Button(fig, label="Show")
+    on(btn.clicks) do n
+        on_click(hovered[], () -> ())
     end
-    return colors
+
+    l = Label(fig, lift(x -> string(x), hovered), tellwidth=false)
+    i, j = loc
+    g = vgrid!(rootScene, hgrid!(l, m, btn))
+    parentGrid[i, j] = g
+
+    DataInspector(rootScene)
+
+    sel = Observable("Volume")
+    bp_sel = Observable("")
+    ap_sel = Observable("")
+
+    scene_listeners = Vector{Any}()
+    ui_elements = Vector{Any}()
+
+    on(m.selection) do cw
+        sel[] = cw
+        notify(sel)
+    end
+
+    @lift begin
+        # cleanup
+        empty!(rootScene)
+
+        for listener in scene_listeners
+            off(listener)
+            listener = Nothing
+        end
+        empty!(scene_listeners)
+
+        # clear UI elements
+        for c in ui_elements
+            gg, elements = c
+            for e in elements
+                empty!(e.blockscene)
+                delete!(e)
+            end
+            if !isnothing(gg)
+                Makie.trim!(gg)
+                # only way to delete a gridlayout
+                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
+            end
+        end
+        Makie.trim!(g)
+
+        if $sel == "Volume"
+            gg = GridLayout(g[end+1, :])
+
+            vd = lift((x, y, z) ->
+                    reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volData, hovered, sampleRanges)
+
+            v = volume!(rootScene,
+                lift(x -> extrema(x[1]), sampleRanges),
+                lift(x -> extrema(x[2]), sampleRanges),
+                lift(x -> extrema(x[3]), sampleRanges),
+                vd;
+                colormap=vol_cmap,
+                algorithm=:absorption,
+                fxaa=false,
+                transparency=true,
+                shading=NoShading,
+                colorrange=volumeRange)
+
+            # FIXME sometimes the volume will get rotated so hard it disappears
+            on(hovered) do h
+                R = alignment_rotations[][h]
+                rr = hcat(R, [0, 0, 0])
+                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+                v.model[] = fr
+                notify(v.model)
+            end
+
+            v.inspectable[] = false
+
+            cbar = Colorbar(gg[1, :],
+                colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
+
+            il = []
+            is = [(gg, [cbar])]
+        elseif $sel == "Initial State"
+            il, is = simple_atom_view!(rootScene, g, ap, hovered, 1, scalars, bp_sel, alignment_rotations, scalar_range)
+        else
+            il, is = simple_atom_view!(rootScene, g, ap, hovered, 2, scalars, ap_sel, alignment_rotations, scalar_range)
+        end
+
+        for l in il
+            push!(scene_listeners, l)
+        end
+
+        for s in is
+            push!(ui_elements, s)
+        end
+    end
+
+    return rootScene
 end

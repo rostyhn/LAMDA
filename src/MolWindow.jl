@@ -1,7 +1,7 @@
-using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!
+using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!, GridLayoutBase
 
-function build_mol_window(beforeView, afterView, transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, cmap, on_window_hover, lsExtrema, filterVal)
-
+function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, vol_cmap, on_window_hover, lsExtrema, filterVal, ls_cmap, scalars, fig_size=(400, 400))
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl, delete_from_parent!, delete_from_parent!, GridLayoutBase
     ap1, ap2 = atomPositions
 
     # atom positions should be a tuple of both states involved
@@ -30,42 +30,35 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
         return selectedLineSets
     end
 
-
     # these functions must return:
-    # a list of plots, listeners, and scenes they created
-    bp = function (scene, inspector)
-        return [scatter!(scene, ap1, color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))], [], []
+    # a list of plots, listeners, and ui elements (gridLayout, [elements]) they created
+    bp = function (scene, inspector, g)
+        return setup_atom_view!(scene, g, ap1, transition, 1, scalars)
     end
 
-    afp = function (scene, inspector)
-        return [scatter!(scene, ap2,
-            color=lift(x -> [i in x ? :red : :blue for i in 1:147], selected),
-            inspector_label=(self, i, p) -> string("Atom ", i))], [], []
+    afp = function (scene, inspector, g)
+        return setup_atom_view!(scene, g, ap2, transition, 2, scalars)
     end
 
-    sq = function (scene, inspector)
+    sq = function (scene, inspector, g)
         ls = linesegments!(scene,
             lift(x -> lineSets[1][x], selectedLineSets),
             color=lift(x -> lineSets[2][x], selectedLineSets),
-            colorrange=lift(x -> x, lsExtrema),
-            lowclip=:black,
-            colormap=:bwr)
+            colorrange=lsExtrema,
+            colormap=ls_cmap)
         ls.inspectable[] = false
 
         m = mesh!(
             scene,
             lift(x -> superquadrics[x], selected),
             color=lift((x, y) -> y[x], selected, aa1),
-            # prevents it from recoloring each time the slider moves
             colorrange=volumeRange,
-            colormap=:bam,
+            colormap=vol_cmap,
             fxaa=false,
         )
         m.inspectable[] = false
 
-        # weak = true removes the connection when the return value of on is gc'd
-        sqHoverListener = on(events(scene).mouseposition, weak=true) do mp
+        sqHoverListener = on(events(scene).mouseposition) do mp
             if is_mouseinside(scene)
                 plot, idx = pick(scene)
                 if plot == ls
@@ -88,16 +81,16 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             end
             return Consume(false)
         end
-        return [ls, m], [sqHoverListener], []
+        return [sqHoverListener], []
     end
 
-    vol = function (scene, inspector)
+    vol = function (scene, inspector, g)
         v = volume!(scene,
-            lift(x -> x[1], sampleRanges),
-            lift(x -> x[2], sampleRanges),
-            lift(x -> x[3], sampleRanges),
+            lift(x -> extrema(x[1]), sampleRanges),
+            lift(x -> extrema(x[2]), sampleRanges),
+            lift(x -> extrema(x[3]), sampleRanges),
             volumeData;
-            colormap=cmap,
+            colormap=vol_cmap,
             algorithm=:absorption,
             fxaa=false,
             transparency=true,
@@ -105,79 +98,95 @@ function build_mol_window(beforeView, afterView, transition, atomPositions, volu
             colorrange=volumeRange,
             visible=true)
         v.inspectable[] = false
-        return [v], [], []
+
+        return [], []
     end
 
     render_funcs = Dict()
-    #render_funcs["State 1"] = bp
-    #render_funcs["State 2"] = afp
+    render_funcs["State $(transition[1])"] = bp
+    render_funcs["State $(transition[2])"] = afp
     render_funcs["Superquadrics"] = sq
     render_funcs["Volume"] = vol
 
-    cl = setup_state_view!(beforeView, "Volume", render_funcs)
-    cr = setup_state_view!(afterView, "Volume", render_funcs)
+    molWindow = Figure(size=fig_size)
+    molWindow[1, 1:2] = hgrid!(Label(molWindow, string(transition), tellwidth=false))
+    setup_state_view!(molWindow, (2, 1), "Volume", render_funcs)
+    setup_state_view!(molWindow, (2, 2), "Volume", render_funcs)
 
-    cleanup = function ()
-        cl()
-        cr()
-    end
+    screen = GLMakie.Screen(title="TransVis - $transition")
+    display(screen, molWindow)
 
-    return cleanup
+    #on(events(molWindow).entered_window) do is_hovered
+    # on_window_hover(transition, is_hovered)
+    #end
 end
 
-function setup_state_view!(rootScene, startState, render_funcs)
+function setup_atom_view!(scene, g, ap, t, order, scalars)
+    opts = sort(collect(keys(scalars)))
+
+    gg = GridLayout(g[end+1, :])
+    m = Menu(gg[1, 1], options=opts, default=first(opts))
+
+    colorInfo = @lift begin # might be leaking memory
+        opt = $(m.selection)
+
+        vals = scalars[opt][t]
+        extremaVals = extrema(vals)
+        minVal, maxVal = extremaVals
+        labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
+
+        cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
+        if abs(minVal) > abs(maxVal)
+            reverse!(cmap)
+        end
+        empty!(scene)
+
+        # complicated because scatter! sets the shader for the scene the first time, changes it when type of color changes
+        scatter!(scene, ap, color=vals, colorrange=extremaVals, colormap=cmap,
+            inspector_label=labelfn, markersize=30)
+        return extremaVals, cmap
+    end
+    cbar = Colorbar(gg[1, 2], colorrange=lift(x -> x[1], colorInfo), vertical=false, colormap=lift(x -> x[2], colorInfo), tellwidth=false)
+
+    return [], [(gg, [m, cbar])]
+end
+
+function setup_state_view!(fig, loc, startState, render_funcs)
+    rootScene = LScene(
+        fig,
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    m = Menu(fig, options=keys(render_funcs),
+        default=startState)
+
+    i, j = loc
+    g = vgrid!(m, rootScene)
+    fig[i, j] = g
+    # g is a reference to the underlying gridlayout for the state, can mutate it to create UI elements
+
     inspector = DataInspector(rootScene)
 
     initial_render_func = render_funcs[startState]
-    ip, il, is = initial_render_func(rootScene, inspector)
+    il, is = initial_render_func(rootScene, inspector, g)
 
     # need to do this because otherwise julia assumes the type of the output vector
     # then tries to convert plots to different types
-    rendered_plots = Vector{Any}()
     scene_listeners = Vector{Any}()
-    overlays = Vector{Any}()
-
-    for p in ip
-        push!(rendered_plots, p)
-    end
+    ui_elements = Vector{Any}()
 
     for l in il
         push!(scene_listeners, l)
     end
 
     for s in is
-        push!(overlays, s)
+        push!(ui_elements, s)
     end
 
-    tt = Scene(rootScene.scene)
-    campixel!(tt)
-
-    menu_bbox = Observable(BBox(0, 0, 0, 0))
-    m = Menu(tt, options=keys(render_funcs),
-        default=startState, is_open=true, bbox=menu_bbox)
-
-    contextMenuListener = on(events(rootScene).mousebutton, priority=1) do event
-        if event.button == Mouse.right && event.action == Mouse.press && is_mouseinside(rootScene)
-            x, y = events(rootScene.parent).mouseposition[]
-            menu_bbox[] = BBox(x, x + 150, y - 100, y)
-            notify(menu_bbox)
-            m.is_open = true
-
-            # block other events
-            return Consume(true)
-        end
-        return Consume(false)
-    end
-
-    cwListener = on(m.selection) do cw
+    on(m.selection) do cw
         cam = camera(rootScene)
-        eyepos = cam.eyeposition[]
-        lookat = cam.lookat[]
-
-        for p in rendered_plots
-            delete!(rootScene, p)
-        end
-        empty!(rendered_plots)
+        empty!(rootScene)
 
         for listener in scene_listeners
             off(listener)
@@ -185,49 +194,31 @@ function setup_state_view!(rootScene, startState, render_funcs)
         end
         empty!(scene_listeners)
 
-        # works, but is probably causing a memory leak -
-        # the scene is still in memory
-        for s in overlays
-            filter!(x -> x != s, rootScene.scene.children)
-            empty!(s)
+        # clear UI elements
+        for c in ui_elements
+            gg, elements = c
+            for e in elements
+                empty!(e.blockscene)
+                delete!(e)
+            end
+            if !isnothing(gg)
+                Makie.trim!(gg)
+                # only way to delete a gridlayout
+                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
+            end
         end
-        empty!(overlays)
+        Makie.trim!(g)
 
         rf = render_funcs[cw]
-        plots, listeners, scenes = rf(rootScene, inspector)
-
-        for p in plots
-            push!(rendered_plots, p)
-        end
+        listeners, scenes = rf(rootScene, inspector, g)
 
         for l in listeners
             push!(scene_listeners, l)
         end
 
         for s in scenes
-            push!(overlays, s)
+            push!(ui_elements, s)
         end
-        update_cam!(rootScene.scene, eyepos, lookat)
+        update_cam!(rootScene.scene)
     end
-
-    #on(events(molWindow).entered_window) do is_hovered
-    # on_window_hover(transition, is_hovered)
-    #end
-    cleanup = function ()
-        off(contextMenuListener)
-        contextMenuListener = Nothing
-
-        off(cwListener)
-        cwListener = Nothing
-
-        for listener in scene_listeners
-            off(listener)
-            listener = Nothing
-        end
-        # inspectors should get cleared off here
-        empty!(rootScene)
-    end
-
-
-    return cleanup
 end
