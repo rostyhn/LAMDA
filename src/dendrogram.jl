@@ -53,7 +53,7 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
     end
 end
 
-function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
+function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables
@@ -99,4 +99,12 @@ function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20,
         color=:grey,
         visible=lift((x, y) -> x > minimum(y.heights), cutoff, h))
     l.inspectable[] = false
+
+    ylims!(ax, h_range[])
+
+    # add listeners to reset limits whenever something changes
+    on(h_range) do r
+        ylims!(ax, r)
+        reset_limits!(ax, yauto=false)
+    end
 end

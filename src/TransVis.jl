@@ -94,7 +94,6 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
         return groups
     end
 
-    @show keys(alignments)
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     # perfom intra-cluster alignment
     selected_alignment = Observable(init_alignment)
