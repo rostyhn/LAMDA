@@ -1,6 +1,28 @@
 # switches what is being rendered inside a scene cleanly.
 # pass a select_fn with selector as a parameter and then basically do whatever you want
 # can modify the grid the scene belongs to and it will get cleared up here
+
+function clear_layout(layout::GridLayout)
+    # Begin by removing the blocks from the recursive GridLayout structure
+    items_to_remove = []
+    for block in Makie.contents(layout)
+        if typeof(block) == GridLayout
+            clear_layout(block)
+        else
+            push!(items_to_remove, block)
+        end
+    end
+
+    for i in items_to_remove
+        empty!(i.blockscene)
+        delete!(i)
+    end
+
+    Makie.trim!(layout)
+    GridLayoutBase.remove_from_gridlayout!(layout.layoutobservables.gridcontent[])
+end
+
+
 function scene_switcher(scene, grid, selector, select_fn)
     scene_listeners = Vector{Any}()
     ui_elements = Vector{Any}()
@@ -16,18 +38,8 @@ function scene_switcher(scene, grid, selector, select_fn)
         empty!(scene_listeners)
 
         # clear UI elements
-        # TODO: make recursive, will allow grids inside grids
-        for c in ui_elements
-            gg, elements = c
-            for e in elements
-                empty!(e.blockscene)
-                delete!(e)
-            end
-            if !isnothing(gg)
-                Makie.trim!(gg)
-                # only way to delete a gridlayout
-                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
-            end
+        for g in ui_elements
+            clear_layout(g)
         end
         Makie.trim!(grid)
 
@@ -43,49 +55,52 @@ function scene_switcher(scene, grid, selector, select_fn)
     end
 end
 
-#TODO: can be even simpler, get rid of UI elements and manage that in a seperate function, only handle rendering here
-# pass time in as observable, pass scalars as color without need to reference t
-function simple_atom_view!(scene, g, ap, t, scalars, sel, scalar_range; init_time=0.0, show_menu=true)
-    gg = GridLayout(g[end+1, :])
-    ui_elements = []
-
-    #TODO: add labels to t_slider
-    time = Observable(init_time)
-    t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
-    on(t_slider.value) do x
-        time[] = x
-    end
-    push!(ui_elements, t_slider)
-
-    if show_menu
-        opts = sort(collect(keys(scalars)))
-        m = Menu(gg[2, 1], options=opts, default=sel[])
-        on(m.selection) do ms
-            sel[] = ms
-            notify(sel)
-        end
-        push!(ui_elements, m)
-    end
-
-    cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
-
+function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
     int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
 
-    scatter!(scene,
+    s = scatter!(scene,
         lift(x -> x[:, 1], int_pos),
         lift(x -> x[:, 2], int_pos),
         lift(x -> x[:, 3], int_pos);
-        color=lift((x, y) -> scalars[y][x], t, sel),
+        color=lift(x -> x, scalars),
         colorrange=scalar_range,
-        colormap=resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)),
+        colormap=cmap,
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
         markersize=30)
 
-    if show_menu
-        cbar = Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=cmap, tellwidth=false)
-        push!(ui_elements, cbar)
+    return s
+end
+
+function volume_view!(scene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; update=false)
+
+    vd = lift((x, y, z) ->
+            reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
+
+    v = volume!(scene,
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
+        vd;
+        colormap=vol_cmap,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        colorrange=volumeRange)
+
+    # FIXME sometimes the volume will get rotated so hard it disappears
+    # if called before screen is rendered it crashes
+    on(t, update=update) do h
+        R = alignment_rotations[][h]
+        rr = hcat(R, [0, 0, 0])
+        fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+        v.model[] = fr
+        notify(v.model)
     end
 
-    return [], [(gg, ui_elements)]
+    v.inspectable[] = false
+
+    return v
 end
+
 

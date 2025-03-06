@@ -250,38 +250,6 @@ function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
     return p
 end
 
-function volume_view!(scene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; update=false)
-
-    vd = lift((x, y, z) ->
-            reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-
-    v = volume!(scene,
-        lift(x -> extrema(x[1]), sampleRanges),
-        lift(x -> extrema(x[2]), sampleRanges),
-        lift(x -> extrema(x[3]), sampleRanges),
-        vd;
-        colormap=vol_cmap,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        colorrange=volumeRange)
-
-    # FIXME sometimes the volume will get rotated so hard it disappears
-    # if called before screen is rendered it crashes
-    on(t, update=update) do h
-        R = alignment_rotations[][h]
-        rr = hcat(R, [0, 0, 0])
-        fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-        v.model[] = fr
-        notify(v.model)
-    end
-
-    v.inspectable[] = false
-
-    return v
-end
-
 # should be in its own function
 function setup_transition_view(
     fig,
@@ -331,9 +299,8 @@ function setup_transition_view(
     parentGrid[i, j] = g
 
     opts = sort(collect(keys(scalars)))
-    bp_sel = Observable(first(opts))
-    ap_sel = Observable(first(opts))
 
+    # would be nice to lift conditionally
     t_ap = @lift begin
         init = ap[$hovered[3]][1] * $alignment_rotations[$hovered[3]]
         final = ap[$hovered[3]][2] * $alignment_rotations[$hovered[3]]
@@ -344,25 +311,51 @@ function setup_transition_view(
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
 
+    atom_cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
+    function atom_widgets(init_time, transition)
+        gg = GridLayout(g[end+1, :])
+
+        opts = sort(collect(keys(scalars)))
+
+        #TODO: add labels to t_slider
+        time = Observable(init_time)
+        t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
+        on(t_slider.value) do x
+            time[] = x
+        end
+
+        scalar_vals = Observable(scalars[first(opts)][transition[]])
+
+        m = Menu(gg[2, 1], options=opts)
+        on(m.selection) do ms
+            scalar_vals[] = scalars[ms][transition[]]
+        end
+
+        Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)
+
+        return gg, time, scalar_vals
+    end
+
     function choose_scene(selection)
         if selection == "Volume"
             gg = GridLayout(g[end+1, :])
 
-            cbar = Colorbar(gg[1, :],
+            Colorbar(gg[1, :],
                 colorrange=volumeRange,
                 vertical=false,
                 colormap=vol_cmap,
                 tellwidth=false)
 
-            elements = [(gg, [cbar])]
-
             volume_view!(rootScene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
-            return [], elements
-
+            return [], [gg]
         elseif selection == "Initial State"
-            return simple_atom_view!(rootScene, g, t_ap, t, scalars, bp_sel, scalar_range)
+            gg, time, scalar_vals = atom_widgets(0.0, t)
+            simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+            return [], [gg]
         else
-            return simple_atom_view!(rootScene, g, t_ap, t, scalars, ap_sel, scalar_range; init_time=1.0)
+            gg, time, scalar_vals = atom_widgets(0.0, t)
+            simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+            return [], [gg]
         end
     end
 

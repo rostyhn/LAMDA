@@ -90,12 +90,15 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
 
     t_idx = lift(x -> t_to_idx[x], t)
 
+    atom_cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
+
     function select_fn(selection)
         if selection == "Volume"
             volume_view!(rootScene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; update=true)
             return [], []
         else
-            return simple_atom_view!(rootScene, g, t_ap, t, scalars, scalar_selection, scalar_range; show_menu=false)
+            simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, Observable(0.0))
+            return [], []
         end
     end
 
