@@ -1,4 +1,5 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
+using GLMakie: Screen
 using StatsBase
 using UMAP
 
@@ -49,6 +50,36 @@ function build_selection_window(fig_size,
     # can't get it to align left
     # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
 
+    open_cluster_windows = Dict{Int,Screen}()
+    function on_show_cluster_click(c_idx)
+        if !(c_idx in keys(open_cluster_windows))
+            ts_idx = cluster_groups[][c_idx]
+            ts = t_list[ts_idx]
+
+            mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+            mat = reordered_matrix[][1]
+            vals = mat[mtx_idx, mtx_idx]
+
+            # want to update volume data in case user messes with volume params
+            # but we keep atom positions consistent with the alignment that existed at the time of creation
+            aap = map(x -> (alignedPositionsMatrices[x][1] * alignment_rotations[][x],
+                    alignedPositionsMatrices[x][2] * alignment_rotations[][x]), ts)
+
+            rel_t_idx = collect(eachindex(ts))
+
+            w = build_cluster_window(ts, rel_t_idx, vals, aap, volData, sampleRanges)
+            s = GLMakie.Screen(title="Cluster $(c_idx)")
+            display(s, w)
+
+            open_cluster_windows[c_idx] = s
+        end
+    end
+
+    # close cluster views if clustering changes
+    on(cluster_groups) do c
+        foreach(s -> close(s), values(open_cluster_windows))
+    end
+
     # grid for the transition views
     tGrid = GridLayout()
     window[1:2, 1] = tGrid
@@ -61,7 +92,7 @@ function build_selection_window(fig_size,
         return ($hl, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
     end
 
-    ltv, l_hist_ax, l_hist_r = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+    ltv, l_hist_ax, l_hist_r = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix, on_show_cluster_click)
 
     hr = Observable(2)
     hr_info = @lift begin
@@ -69,7 +100,7 @@ function build_selection_window(fig_size,
         return ($hr, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
     end
 
-    rtv, r_hist_ax, r_hist_r = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+    rtv, r_hist_ax, r_hist_r = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix, on_show_cluster_click)
 
     @lift begin
         mr = (-0.01, max($l_hist_r, $r_hist_r) + 0.01)
@@ -89,8 +120,8 @@ function build_selection_window(fig_size,
     cluster_cmap = :tab20
     graph_ax = Axis(window[1, 2], backgroundcolor=:transparent)
     hidexdecorations!(graph_ax)
-    hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
 
+    hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -239,7 +270,9 @@ function simple_atom_view!(scene, g, ap, t, init_time, scalars, sel, alignment_r
     return [], [(gg, [m, cbar, t_slider])]
 end
 
-function setup_transition_view(fig,
+# should be in its own function
+function setup_transition_view(
+    fig,
     parentGrid,
     loc,
     ap,
@@ -253,7 +286,9 @@ function setup_transition_view(fig,
     on_click,
     scalar_range,
     cluster_groups,
-    reordered_matrix)
+    reordered_matrix,
+    on_cluster_button_click
+)
 
     rootScene = LScene(
         fig,
@@ -297,7 +332,7 @@ function setup_transition_view(fig,
 
         for listener in scene_listeners
             off(listener)
-            listener = Nothing
+            listener = nothing
         end
         empty!(scene_listeners)
 
@@ -366,8 +401,7 @@ function setup_transition_view(fig,
         end
     end
 
-    # setup cluster view for selected transition
-
+    # setup cluster view for selected transition, should also be its own function
     cluster_grid = GridLayout()
     parentGrid[i+1, j] = cluster_grid
 
@@ -376,6 +410,12 @@ function setup_transition_view(fig,
         lift(x -> "Cluster $(x[4])", hovered),
         tellwidth=false)
     #color=lift(x -> cmap[x[4]%length(cmap)+1], hovered))
+
+    show_cluster_btn = Button(cluster_grid[1, 2], label="Show")
+
+    on(show_cluster_btn.clicks) do n
+        on_cluster_button_click(hovered[][4])
+    end
 
     hist_r = Observable(0.0)
 
@@ -392,7 +432,7 @@ function setup_transition_view(fig,
         return d
     end
 
-    hist_ax = Axis(cluster_grid[2, 1],
+    hist_ax = Axis(cluster_grid[2, 1:2],
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
     # hide y labels because otherwise the width of each column gets adjusted

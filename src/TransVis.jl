@@ -32,6 +32,7 @@ include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
 include("SettingsWindow.jl")
+include("ClusterWindow.jl")
 
 export go
 
