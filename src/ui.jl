@@ -97,5 +97,3 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange; rotation=O
 
     return v
 end
-
-

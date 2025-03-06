@@ -315,6 +315,8 @@ function setup_transition_view(
             time[] = x
         end
 
+        # sadly, GLmakie is not thread-safe, so can't make a play button
+
         scalar_vals = Observable(scalars[first(opts)][transition[]])
 
         m = Menu(gg[2, 1], options=opts)

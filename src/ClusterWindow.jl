@@ -1,5 +1,9 @@
 using Makie
 
+const GRID_SIZE = 16
+const GRID_X = Int(sqrt(GRID_SIZE))
+const GRID_Y = Int(sqrt(GRID_SIZE))
+
 function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrices,
     alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange; fig_size=(400, 400))
     window = Figure(size=fig_size)
@@ -44,22 +48,51 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
         scalar_menu,
         t_slider)
 
-    tGrid = GridLayout()
-    window[2, 1:2] = tGrid
+    l_btn = Button(window, label="◀", tellwidth=false)
+    r_btn = Button(window, label="▶", tellwidth=false)
 
-    idx = 1
-    for i in 1:4
-        for j in 1:4
+    curr_page = Observable(1)
+    ts_chunks = collect(Iterators.partition(ts, GRID_SIZE))
+    num_pages = length(ts_chunks)
+
+    on(l_btn.clicks) do n
+        if curr_page[] > 1
+            curr_page[] -= 1
+        end
+    end
+
+    on(r_btn.clicks) do n
+        if curr_page[] < length(ts_chunks)
+            curr_page[] += 1
+        end
+    end
+
+    pg_label = Label(window, lift(x -> "Page $(x) of $(num_pages)", curr_page), tellwidth=false)
+
+    tGrid = GridLayout()
+    window[2, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
+
+    for i in 1:GRID_X
+        for j in 1:GRID_Y
             rootScene = LScene(
                 tGrid[i, j],
                 show_axis=false,
                 scenekw=(backgroundcolor=:black, clear=true),
             )
+            t = Observable(first(ts))
+            is_visible = Observable(false)
+            idx = (i - 1) * 4 + j
+            on(curr_page, update=true) do cp
+                curr_chunk = ts_chunks[cp]
 
-            if idx <= length(ts)
-                linked_transition_view(rootScene, window, tGrid, (i, j), Observable(ts[idx]), scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time)
+                if idx <= length(curr_chunk)
+                    t[] = curr_chunk[idx]
+                    is_visible[] = true
+                else
+                    is_visible[] = false
+                end
             end
-            idx += 1
+            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible)
         end
     end
 
@@ -85,10 +118,10 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
     return window
 end
 
-function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time)
+function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible)
     DataInspector(rootScene)
 
-    l = Label(fig, lift(x -> string(x), t), tellwidth=false)
+    l = Label(fig, lift(x -> string(x), t), tellwidth=false, visible=lift(x -> x, is_visible))
     i, j = loc
 
     g = vgrid!(rootScene, l)
@@ -102,7 +135,11 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
         if selection == "Volume"
             vd = lift((x, y, z) ->
                     reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y], alignment_rotations, t), update=true)
+            v = volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y], alignment_rotations, t), update=true)
+            @lift begin
+                v.visible[] = $is_visible
+                notify(v.visible)
+            end
             return [], []
         else
             t_ap = @lift begin
@@ -112,7 +149,11 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
                 return (init, final)
             end
 
-            simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, time)
+            s = simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, time)
+            @lift begin
+                s.visible[] = $is_visible
+                notify(s.visible)
+            end
             return [], []
         end
     end
