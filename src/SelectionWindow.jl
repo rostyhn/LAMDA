@@ -250,7 +250,7 @@ function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
     return p
 end
 
-function volume_view!(scene, g, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; show_colorbar=true, update=false)
+function volume_view!(scene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; update=false)
 
     vd = lift((x, y, z) ->
             reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
@@ -279,15 +279,7 @@ function volume_view!(scene, g, t_idx, t, volData, sampleRanges, vol_cmap, volum
 
     v.inspectable[] = false
 
-    elements = []
-    if show_colorbar
-        gg = GridLayout(g[end+1, :])
-        cbar = Colorbar(gg[1, :],
-            colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
-        elements = [(gg, [cbar])]
-    end
-
-    return [], elements
+    return v
 end
 
 # should be in its own function
@@ -354,7 +346,19 @@ function setup_transition_view(
 
     function choose_scene(selection)
         if selection == "Volume"
-            return volume_view!(rootScene, g, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
+            gg = GridLayout(g[end+1, :])
+
+            cbar = Colorbar(gg[1, :],
+                colorrange=volumeRange,
+                vertical=false,
+                colormap=vol_cmap,
+                tellwidth=false)
+
+            elements = [(gg, [cbar])]
+
+            volume_view!(rootScene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
+            return [], elements
+
         elseif selection == "Initial State"
             return simple_atom_view!(rootScene, g, t_ap, t, scalars, bp_sel, scalar_range)
         else
