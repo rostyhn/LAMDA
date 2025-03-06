@@ -57,23 +57,22 @@ function build_selection_window(fig_size,
 
     # contains actual matrix index, the transition idx, the tuple itself and the cluster assignment
     hl_info = @lift begin
-        # we only want it to change when hover changes because hover may point to an invalid index
-        t_idx = clustering[].order[$hl]
-        return ($hl, t_idx, t_list[t_idx], cluster_assignments[][t_idx])
+        t_idx = $clustering.order[$hl]
+        return ($hl, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
     end
 
     ltv, l_hist_ax, l_hist_r = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
 
     hr = Observable(2)
     hr_info = @lift begin
-        t_idx = clustering[].order[$hr]
-        return ($hr, t_idx, t_list[t_idx], cluster_assignments[][t_idx])
+        t_idx = $clustering.order[$hr]
+        return ($hr, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
     end
 
     rtv, r_hist_ax, r_hist_r = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
 
     @lift begin
-        mr = (-0.01, max($l_hist_r, $r_hist_r) + 0.05)
+        mr = (-0.01, max($l_hist_r, $r_hist_r) + 0.01)
 
         xlims!(l_hist_ax, mr)
         reset_limits!(l_hist_ax; xauto=false)
@@ -349,9 +348,10 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
     hist_r = Observable(0.0)
 
     hist_values = @lift begin
-        ts_idx = $cluster_groups[$hovered[4]]
-        mtx_idx = map(x -> $reordered_matrix[2][x], ts_idx)
-        mat = $reordered_matrix[1]
+        # only change on hovered because hovered may be invalid
+        ts_idx = cluster_groups[][$hovered[4]]
+        mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+        mat = reordered_matrix[][1]
         vals = mat[mtx_idx, mtx_idx]
         utri = triu!(trues(size(vals)))
         d = vec(vals[utri])
