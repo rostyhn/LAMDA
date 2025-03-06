@@ -266,6 +266,8 @@ function setup_transition_view(
     on_click,
     scalar_range,
 )
+    t_idx = lift(x -> x[2], hovered)
+    t = lift(x -> x[3], hovered)
 
     rootScene = LScene(
         fig,
@@ -289,19 +291,16 @@ function setup_transition_view(
 
     btn = Button(fig, label="Show")
     on(btn.clicks) do n
-        on_click(hovered[][3], () -> ())
+        on_click(t_idx[], () -> ())
     end
 
-    l = Label(fig, lift(x -> string(x[3]), hovered), tellwidth=false)
+    l = Label(fig, lift(x -> string(x), t_idx), tellwidth=false)
 
     i, j = loc
     g = vgrid!(rootScene, hgrid!(l, m, btn))
     parentGrid[i, j] = g
 
     opts = sort(collect(keys(scalars)))
-
-    t_idx = lift(x -> x[2], hovered)
-    t = lift(x -> x[3], hovered)
 
     atom_cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
     function atom_widgets(init_time, transition)

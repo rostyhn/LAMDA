@@ -11,18 +11,9 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
     scene_selector = Observable("Initial State")
     scalar_selector = Observable(first(keys(scalars)))
 
-    title = Label(window[1, 1], "Cluster $(c_idx)", tellwidth=false)
+    title = Label(window, "Cluster $(c_idx)", fontsize=30)
 
-    scalar_menu = Menu(window[1, 2],
-        options=sort(collect(keys(scalars))),
-        default=scalar_selector[], tellwidth=false)
-
-    on(scalar_menu.selection) do s
-        scalar_selector[] = s
-        notify(scalar_selector)
-    end
-
-    render_menu = Menu(window[1, 3],
+    render_menu = Menu(window,
         options=["Initial State", "Volume"],
         default=scene_selector[], tellwidth=false)
 
@@ -30,6 +21,28 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
         scene_selector[] = s
         notify(scene_selector)
     end
+
+    scalar_menu = Menu(window,
+        options=sort(collect(keys(scalars))),
+        default=scalar_selector[],
+    )
+
+    on(scalar_menu.selection) do s
+        scalar_selector[] = s
+        notify(scalar_selector)
+    end
+
+    time = Observable(0.0)
+    t_slider = Slider(window, range=0.0:0.05:1.0, startvalue=0.0)
+    on(t_slider.value) do x
+        time[] = x
+    end
+
+    window[1, 1:2] = hgrid!(title,
+        Label(window, "Render mode"),
+        render_menu,
+        scalar_menu,
+        t_slider)
 
     tGrid = GridLayout()
     window[2, 1:2] = tGrid
@@ -44,7 +57,7 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
             )
 
             if idx <= length(ts)
-                linked_transition_view(rootScene, window, tGrid, (i, j), Observable(ts[idx]), scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, ts, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange)
+                linked_transition_view(rootScene, window, tGrid, (i, j), Observable(ts[idx]), scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time)
             end
             idx += 1
         end
@@ -72,7 +85,7 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
     return window
 end
 
-function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, ts, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange)
+function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time)
     DataInspector(rootScene)
 
     l = Label(fig, lift(x -> string(x), t), tellwidth=false)
@@ -80,7 +93,6 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
 
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
-
 
     t_idx = lift(x -> t_to_idx[x], t)
 
@@ -100,7 +112,7 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
                 return (init, final)
             end
 
-            simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, Observable(0.0))
+            simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, time)
             return [], []
         end
     end
