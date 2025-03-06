@@ -116,7 +116,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
 
             # for now, use first t as reference 
             ref_t = popat!(ts, ref_t_idx)
-            rot[ref_t] = Matrix(I, 3, 3)
+            rot[ref_t] = Matrix(1.0I, 3, 3)
 
             ref_s1_pos = alignedPositionsMatrices[ref_t][1]
             ref_s2_pos = alignedPositionsMatrices[ref_t][2]

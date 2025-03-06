@@ -62,12 +62,16 @@ function build_selection_window(fig_size,
 
             # want to update volume data in case user messes with volume params
             # but we keep atom positions consistent with the alignment that existed at the time of creation
-            aap = map(x -> (alignedPositionsMatrices[x][1] * alignment_rotations[][x],
-                    alignedPositionsMatrices[x][2] * alignment_rotations[][x]), ts)
-
             rel_t_idx = collect(eachindex(ts))
 
-            w = build_cluster_window(c_idx, ts, rel_t_idx, vals, aap, volData, sampleRanges, scalars, scalar_range)
+            w = build_cluster_window(c_idx, ts, rel_t_idx, vals,
+                alignedPositionsMatrices,
+                alignment_rotations,
+                volData,
+                sampleRanges,
+                scalars,
+                scalar_range, t_to_idx, vol_cmap, volRange
+            )
             s = GLMakie.Screen(title="Cluster $(c_idx)")
             display(s, w)
 
@@ -230,11 +234,10 @@ function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
     return p
 end
 
-function volume_view!(scene, g, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
-    gg = GridLayout(g[end+1, :])
+function volume_view!(scene, g, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; show_colorbar=true, update=false)
 
     vd = lift((x, y, z) ->
-            reshape(x[:, y[2]], (length(z[1]), length(z[2]), length(z[3]))), volData, t, sampleRanges)
+            reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
 
     v = volume!(scene,
         lift(x -> extrema(x[1]), sampleRanges),
@@ -249,8 +252,9 @@ function volume_view!(scene, g, t, volData, sampleRanges, vol_cmap, volumeRange,
         colorrange=volumeRange)
 
     # FIXME sometimes the volume will get rotated so hard it disappears
-    on(t) do h
-        R = alignment_rotations[][h[3]]
+    # if called before screen is rendered it crashes
+    on(t, update=update) do h
+        R = alignment_rotations[][h]
         rr = hcat(R, [0, 0, 0])
         fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
         v.model[] = fr
@@ -259,10 +263,15 @@ function volume_view!(scene, g, t, volData, sampleRanges, vol_cmap, volumeRange,
 
     v.inspectable[] = false
 
-    cbar = Colorbar(gg[1, :],
-        colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
+    elements = []
+    if show_colorbar
+        gg = GridLayout(g[end+1, :])
+        cbar = Colorbar(gg[1, :],
+            colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
+        elements = [(gg, [cbar])]
+    end
 
-    return [], [(gg, [cbar])]
+    return [], elements
 end
 
 # should be in its own function
@@ -327,11 +336,12 @@ function setup_transition_view(
         return (init, final)
     end
 
+    t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
 
     function choose_scene(selection)
         if selection == "Volume"
-            return volume_view!(rootScene, g, hovered, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
+            return volume_view!(rootScene, g, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
         elseif selection == "Initial State"
             return simple_atom_view!(rootScene, g, t_ap, t, scalars, bp_sel, scalar_range)
         else
