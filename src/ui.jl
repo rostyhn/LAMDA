@@ -71,11 +71,7 @@ function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
     return s
 end
 
-function volume_view!(scene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; update=false)
-
-    vd = lift((x, y, z) ->
-            reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-
+function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange; rotation=Observable(Matrix{Float32}(1.0I, 3, 3)), update=false)
     v = volume!(scene,
         lift(x -> extrema(x[1]), sampleRanges),
         lift(x -> extrema(x[2]), sampleRanges),
@@ -90,8 +86,7 @@ function volume_view!(scene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRa
 
     # FIXME sometimes the volume will get rotated so hard it disappears
     # if called before screen is rendered it crashes
-    on(t, update=update) do h
-        R = alignment_rotations[][h]
+    on(rotation, update=update) do R
         rr = hcat(R, [0, 0, 0])
         fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
         v.model[] = fr

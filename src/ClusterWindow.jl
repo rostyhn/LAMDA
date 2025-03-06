@@ -81,12 +81,6 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
 
-    t_ap = @lift begin
-        init = ap[$t][1] * $alignment_rotations[$t]
-        final = ap[$t][2] * $alignment_rotations[$t]
-
-        return (init, final)
-    end
 
     t_idx = lift(x -> t_to_idx[x], t)
 
@@ -94,9 +88,18 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
 
     function select_fn(selection)
         if selection == "Volume"
-            volume_view!(rootScene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations; update=true)
+            vd = lift((x, y, z) ->
+                    reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
+            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y], alignment_rotations, t), update=true)
             return [], []
         else
+            t_ap = @lift begin
+                init = ap[$t][1] * $alignment_rotations[$t]
+                final = ap[$t][2] * $alignment_rotations[$t]
+
+                return (init, final)
+            end
+
             simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, Observable(0.0))
             return [], []
         end

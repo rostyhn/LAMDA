@@ -300,14 +300,6 @@ function setup_transition_view(
 
     opts = sort(collect(keys(scalars)))
 
-    # would be nice to lift conditionally
-    t_ap = @lift begin
-        init = ap[$hovered[3]][1] * $alignment_rotations[$hovered[3]]
-        final = ap[$hovered[3]][2] * $alignment_rotations[$hovered[3]]
-
-        return (init, final)
-    end
-
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
 
@@ -346,14 +338,24 @@ function setup_transition_view(
                 colormap=vol_cmap,
                 tellwidth=false)
 
-            volume_view!(rootScene, t_idx, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
-            return [], [gg]
-        elseif selection == "Initial State"
-            gg, time, scalar_vals = atom_widgets(0.0, t)
-            simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+            vd = lift((x, y, z) ->
+                    reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
+
+            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y], alignment_rotations, t))
             return [], [gg]
         else
-            gg, time, scalar_vals = atom_widgets(0.0, t)
+            t_ap = @lift begin
+                init = ap[$hovered[3]][1] * $alignment_rotations[$hovered[3]]
+                final = ap[$hovered[3]][2] * $alignment_rotations[$hovered[3]]
+                return (init, final)
+            end
+
+            if selection == "Initial State"
+                gg, time, scalar_vals = atom_widgets(0.0, t)
+            else
+                gg, time, scalar_vals = atom_widgets(1.0, t)
+            end
+
             simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
             return [], [gg]
         end
