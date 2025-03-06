@@ -32,10 +32,12 @@ include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
 include("SettingsWindow.jl")
+include("ClusterWindow.jl")
+include("ui.jl")
 
 export go
 
-function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
+function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_with=nothing, distance_matrix=nothing)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
     transitionInvariants1 = active_trajectory["t1"]
@@ -62,7 +64,9 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
-    selected_dm = Observable(first(keys(dms)))
+
+    init_dist_mat = (!isnothing(distance_matrix) && distance_matrix in keys(dms)) ? distance_matrix : first(keys(dms))
+    selected_dm = Observable(init_dist_mat)
     clustering = @lift begin
         println("Clustering $($selected_dm)...")
         m = dms[$selected_dm]
@@ -73,8 +77,12 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
         return res
     end
 
+    cluster_assignments = @lift begin
+        return cutree($clustering, h=$h_cutoff)
+    end
+
     cluster_groups = @lift begin
-        assignments = cutree($clustering, h=$h_cutoff)
+        assignments = $cluster_assignments
         groups = Dict{Int,Vector{Int}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
@@ -85,30 +93,20 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
             push!(g, i)
             groups[c] = g
         end
-
-        #=
-        pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
-        for (clusterIdx, g) in groups
-            ts = map(x -> transitionSequence[x], g)
-            pickled_groups[clusterIdx] = ts
-        end
-
-        Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
-        =#
-
         return groups
     end
 
+    init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     # perfom intra-cluster alignment
-    selected_alignment = Observable(first(keys(alignments)))
+    selected_alignment = Observable(init_alignment)
 
     alignment_rotations = @lift begin
+        println("Calculating alignment with $($selected_alignment)")
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
 
         rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
         for (clusterIdx, g) in $cluster_groups
-
             # find reference t
             m = dms[$selected_dm]
             dist_sum = map(x -> sum(m[x, :][g]), g)
@@ -118,7 +116,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
             # for now, use first t as reference 
             ref_t = popat!(ts, ref_t_idx)
-            rot[ref_t] = Matrix(I, 3, 3)
+            rot[ref_t] = Matrix(1.0I, 3, 3)
 
             ref_s1_pos = alignedPositionsMatrices[ref_t][1]
             ref_s2_pos = alignedPositionsMatrices[ref_t][2]
@@ -330,10 +328,16 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
         build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
     end
 
-    screen = GLMakie.Screen()
-    # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, selected_invariant, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range)
+    settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
+    # atomPositions, stateKDTree, numAtoms, firstTransition 
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments)
+
+    #= 
+    # creating screen after the window is built prevents subtle bugs
+    # such as interactions being trigged before the window is rendered 
+    =#
+    screen = GLMakie.Screen()
     display(screen, window)
 end
 end
