@@ -33,6 +33,7 @@ include("math.jl")
 include("dendrogram.jl")
 include("SettingsWindow.jl")
 include("ClusterWindow.jl")
+include("ui.jl")
 
 export go
 
@@ -106,7 +107,6 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
 
         rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
         for (clusterIdx, g) in $cluster_groups
-
             # find reference t
             m = dms[$selected_dm]
             dist_sum = map(x -> sum(m[x, :][g]), g)

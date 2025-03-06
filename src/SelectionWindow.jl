@@ -67,7 +67,7 @@ function build_selection_window(fig_size,
 
             rel_t_idx = collect(eachindex(ts))
 
-            w = build_cluster_window(ts, rel_t_idx, vals, aap, volData, sampleRanges)
+            w = build_cluster_window(c_idx, ts, rel_t_idx, vals, aap, volData, sampleRanges, scalars, scalar_range)
             s = GLMakie.Screen(title="Cluster $(c_idx)")
             display(s, w)
 
@@ -122,6 +122,7 @@ function build_selection_window(fig_size,
     hidexdecorations!(graph_ax)
 
     hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
+
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -229,45 +230,39 @@ function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
     return p
 end
 
-function simple_atom_view!(scene, g, ap, t, init_time, scalars, sel, alignment_rotations, scalar_range)
-    opts = sort(collect(keys(scalars)))
-
+function volume_view!(scene, g, t, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
     gg = GridLayout(g[end+1, :])
 
-    #TODO: add labels to t_slider
-    t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
-    on(t_slider.value) do x
-        time[] = x
+    vd = lift((x, y, z) ->
+            reshape(x[:, y[2]], (length(z[1]), length(z[2]), length(z[3]))), volData, t, sampleRanges)
+
+    v = volume!(scene,
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
+        vd;
+        colormap=vol_cmap,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        colorrange=volumeRange)
+
+    # FIXME sometimes the volume will get rotated so hard it disappears
+    on(t) do h
+        R = alignment_rotations[][h[3]]
+        rr = hcat(R, [0, 0, 0])
+        fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+        v.model[] = fr
+        notify(v.model)
     end
 
-    m = Menu(gg[2, 1], options=opts, default=length(sel[]) == 0 ? first(opts) : sel[])
-    cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
+    v.inspectable[] = false
 
-    # instead of setting the model, we just multiply by the raw rotation matrix 
-    trans = @lift begin
-        init = ap[$t[3]][1] * $alignment_rotations[$t[3]]
-        final = ap[$t[3]][2] * $alignment_rotations[$t[3]]
+    cbar = Colorbar(gg[1, :],
+        colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
 
-        return final - init
-    end
-
-    time = Observable(init_time)
-
-    int_pos = lift((x, y, z) -> ap[x[3]][1] + (y .* z), t, trans, time)
-
-    scatter!(scene,
-        lift(x -> x[:, 1], int_pos),
-        lift(x -> x[:, 2], int_pos),
-        lift(x -> x[:, 3], int_pos);
-        color=lift((x, y) -> scalars[y][x[3]], t, m.selection),
-        colorrange=scalar_range,
-        colormap=resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)),
-        inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
-        markersize=30)
-
-    cbar = Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=cmap, tellwidth=false)
-
-    return [], [(gg, [m, cbar, t_slider])]
+    return [], [(gg, [cbar])]
 end
 
 # should be in its own function
@@ -296,11 +291,19 @@ function setup_transition_view(
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
+    DataInspector(rootScene)
+
     m = Menu(fig,
         options=["Volume",
             "Initial State",
             "Final State"],
         default="Volume")
+
+    sel = Observable("Volume")
+    on(m.selection) do cw
+        sel[] = cw
+        notify(sel)
+    end
 
     btn = Button(fig, label="Show")
     on(btn.clicks) do n
@@ -308,98 +311,35 @@ function setup_transition_view(
     end
 
     l = Label(fig, lift(x -> string(x[3]), hovered), tellwidth=false)
+
     i, j = loc
     g = vgrid!(rootScene, hgrid!(l, m, btn))
     parentGrid[i, j] = g
 
-    DataInspector(rootScene)
+    opts = sort(collect(keys(scalars)))
+    bp_sel = Observable(first(opts))
+    ap_sel = Observable(first(opts))
 
-    sel = Observable("Volume")
-    bp_sel = Observable("")
-    ap_sel = Observable("")
+    t_ap = @lift begin
+        init = ap[$hovered[3]][1] * $alignment_rotations[$hovered[3]]
+        final = ap[$hovered[3]][2] * $alignment_rotations[$hovered[3]]
 
-    scene_listeners = Vector{Any}()
-    ui_elements = Vector{Any}()
-
-    on(m.selection) do cw
-        sel[] = cw
-        notify(sel)
+        return (init, final)
     end
 
-    @lift begin
-        # cleanup
-        empty!(rootScene)
+    t = lift(x -> x[3], hovered)
 
-        for listener in scene_listeners
-            off(listener)
-            listener = nothing
-        end
-        empty!(scene_listeners)
-
-        # clear UI elements
-        # TODO: make recursive, will allow grids inside grids
-        for c in ui_elements
-            gg, elements = c
-            for e in elements
-                empty!(e.blockscene)
-                delete!(e)
-            end
-            if !isnothing(gg)
-                Makie.trim!(gg)
-                # only way to delete a gridlayout
-                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
-            end
-        end
-        Makie.trim!(g)
-
-        if $sel == "Volume"
-            gg = GridLayout(g[end+1, :])
-
-            vd = lift((x, y, z) ->
-                    reshape(x[:, y[2]], (length(z[1]), length(z[2]), length(z[3]))), volData, hovered, sampleRanges)
-
-            v = volume!(rootScene,
-                lift(x -> extrema(x[1]), sampleRanges),
-                lift(x -> extrema(x[2]), sampleRanges),
-                lift(x -> extrema(x[3]), sampleRanges),
-                vd;
-                colormap=vol_cmap,
-                algorithm=:absorption,
-                fxaa=false,
-                transparency=true,
-                shading=NoShading,
-                colorrange=volumeRange)
-
-            # FIXME sometimes the volume will get rotated so hard it disappears
-            on(hovered) do h
-                R = alignment_rotations[][h[3]]
-                rr = hcat(R, [0, 0, 0])
-                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-                v.model[] = fr
-                notify(v.model)
-            end
-
-            v.inspectable[] = false
-
-            cbar = Colorbar(gg[1, :],
-                colorrange=volumeRange, vertical=false, colormap=vol_cmap, tellwidth=false)
-
-            il = []
-            is = [(gg, [cbar])]
-        elseif $sel == "Initial State"
-            il, is = simple_atom_view!(rootScene, g, ap, hovered, 0.0, scalars, bp_sel, alignment_rotations, scalar_range)
+    function choose_scene(selection)
+        if selection == "Volume"
+            return volume_view!(rootScene, g, hovered, volData, sampleRanges, vol_cmap, volumeRange, alignment_rotations)
+        elseif selection == "Initial State"
+            return simple_atom_view!(rootScene, g, t_ap, t, scalars, bp_sel, scalar_range)
         else
-            il, is = simple_atom_view!(rootScene, g, ap, hovered, 1.0, scalars, ap_sel, alignment_rotations, scalar_range)
-        end
-
-        for l in il
-            push!(scene_listeners, l)
-        end
-
-        for s in is
-            push!(ui_elements, s)
+            return simple_atom_view!(rootScene, g, t_ap, t, scalars, ap_sel, scalar_range; init_time=1.0)
         end
     end
+
+    scene_switcher(rootScene, g, sel, choose_scene)
 
     # setup cluster view for selected transition, should also be its own function
     cluster_grid = GridLayout()
