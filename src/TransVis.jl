@@ -35,7 +35,7 @@ include("SettingsWindow.jl")
 
 export go
 
-function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
+function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_with=nothing, distance_matrix=nothing)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
     transitionInvariants1 = active_trajectory["t1"]
@@ -62,7 +62,9 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
-    selected_dm = Observable(first(keys(dms)))
+
+    init_dist_mat = (!isnothing(distance_matrix) && distance_matrix in keys(dms)) ? distance_matrix : first(keys(dms))
+    selected_dm = Observable(init_dist_mat)
     clustering = @lift begin
         println("Clustering $($selected_dm)...")
         m = dms[$selected_dm]
@@ -92,10 +94,13 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3)
         return groups
     end
 
+    @show keys(alignments)
+    init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     # perfom intra-cluster alignment
-    selected_alignment = Observable(first(keys(alignments)))
+    selected_alignment = Observable(init_alignment)
 
     alignment_rotations = @lift begin
+        println("Calculating alignment with $($selected_alignment)")
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
 

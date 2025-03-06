@@ -7,6 +7,8 @@ To set up your julia environment, run `julia -t [num_workers],1 -i startup,jl`; 
 | parameter | type | purpose |
 | `chunk_size` | `Int` | sets how many volumes get processed at a time |
 | `init_h_cutoff` | `Float` | sets the initial height cutoff value for the clustering |
+| `align_with` | `String` | sets the initial feature values used to align the transitions |
+| `distance_matrix` | `String` | sets which distance matrix to initially render |
 
 ## Expected data format 
 Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** The following is an example data directory: 
