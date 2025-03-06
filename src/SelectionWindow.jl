@@ -61,7 +61,7 @@ function build_selection_window(fig_size,
         return ($hl, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
     end
 
-    ltv, l_hist_ax, l_hist_r = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+    ltv, l_hist_ax, l_hist_r = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
 
     hr = Observable(2)
     hr_info = @lift begin
@@ -69,7 +69,7 @@ function build_selection_window(fig_size,
         return ($hr, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
     end
 
-    rtv, r_hist_ax, r_hist_r = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+    rtv, r_hist_ax, r_hist_r = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
 
     @lift begin
         mr = (-0.01, max($l_hist_r, $r_hist_r) + 0.01)
@@ -198,32 +198,63 @@ function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
     return p
 end
 
-function simple_atom_view!(scene, g, ap, t, order, scalars, sel, alignment_rotations, scalar_range)
+function simple_atom_view!(scene, g, ap, t, init_time, scalars, sel, alignment_rotations, scalar_range)
     opts = sort(collect(keys(scalars)))
 
     gg = GridLayout(g[end+1, :])
-    m = Menu(gg[1, 1], options=opts, default=length(sel[]) == 0 ? first(opts) : sel[])
 
+    #TODO: add labels to t_slider
+    t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
+    on(t_slider.value) do x
+        time[] = x
+    end
+
+    m = Menu(gg[2, 1], options=opts, default=length(sel[]) == 0 ? first(opts) : sel[])
     cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
 
     # instead of setting the model, we just multiply by the raw rotation matrix 
-    rot_pos = lift((x, y) -> ap[x[3]][order] * y[x[3]], t, alignment_rotations)
+    trans = @lift begin
+        init = ap[$t[3]][1] * $alignment_rotations[$t[3]]
+        final = ap[$t[3]][2] * $alignment_rotations[$t[3]]
+
+        return final - init
+    end
+
+    time = Observable(init_time)
+
+    int_pos = lift((x, y, z) -> ap[x[3]][1] + (y .* z), t, trans, time)
+
     scatter!(scene,
-        lift(x -> x[:, 1], rot_pos),
-        lift(x -> x[:, 2], rot_pos),
-        lift(x -> x[:, 3], rot_pos);
+        lift(x -> x[:, 1], int_pos),
+        lift(x -> x[:, 2], int_pos),
+        lift(x -> x[:, 3], int_pos);
         color=lift((x, y) -> scalars[y][x[3]], t, m.selection),
         colorrange=scalar_range,
         colormap=resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)),
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
         markersize=30)
 
-    cbar = Colorbar(gg[1, 2], colorrange=scalar_range, vertical=false, colormap=cmap, tellwidth=false)
+    cbar = Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=cmap, tellwidth=false)
 
-    return [], [(gg, [m, cbar])]
+    return [], [(gg, [m, cbar, t_slider])]
 end
 
-function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampleRanges, volData, vol_cmap, volumeRange, t_to_idx, alignment_rotations, on_click, scalar_range, cluster_groups, reordered_matrix)
+function setup_transition_view(fig,
+    parentGrid,
+    loc,
+    ap,
+    hovered,
+    scalars,
+    sampleRanges,
+    volData,
+    vol_cmap,
+    volumeRange,
+    alignment_rotations,
+    on_click,
+    scalar_range,
+    cluster_groups,
+    reordered_matrix)
+
     rootScene = LScene(
         fig,
         show_axis=false,
@@ -271,6 +302,7 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
         empty!(scene_listeners)
 
         # clear UI elements
+        # TODO: make recursive, will allow grids inside grids
         for c in ui_elements
             gg, elements = c
             for e in elements
@@ -320,9 +352,9 @@ function setup_transition_view(fig, parentGrid, loc, ap, hovered, scalars, sampl
             il = []
             is = [(gg, [cbar])]
         elseif $sel == "Initial State"
-            il, is = simple_atom_view!(rootScene, g, ap, hovered, 1, scalars, bp_sel, alignment_rotations, scalar_range)
+            il, is = simple_atom_view!(rootScene, g, ap, hovered, 0.0, scalars, bp_sel, alignment_rotations, scalar_range)
         else
-            il, is = simple_atom_view!(rootScene, g, ap, hovered, 2, scalars, ap_sel, alignment_rotations, scalar_range)
+            il, is = simple_atom_view!(rootScene, g, ap, hovered, 1.0, scalars, ap_sel, alignment_rotations, scalar_range)
         end
 
         for l in il
