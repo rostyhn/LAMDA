@@ -43,6 +43,8 @@ function scene_switcher(scene, grid, selector, select_fn)
     end
 end
 
+#TODO: can be even simpler, get rid of UI elements and manage that in a seperate function, only handle rendering here
+# pass time in as observable, pass scalars as color without need to reference t
 function simple_atom_view!(scene, g, ap, t, scalars, sel, scalar_range; init_time=0.0, show_menu=true)
     gg = GridLayout(g[end+1, :])
     ui_elements = []
