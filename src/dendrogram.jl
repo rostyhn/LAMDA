@@ -64,7 +64,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         for c in clusters
             if length(c) == 1
                 clusterIdx = first(collect(c))
-                color = cmap[(clusterIdx%length(cmap))+1]
+                color = cmap[mod1(clusterIdx, length(cmap))]
             else
                 color = rootcolor
             end

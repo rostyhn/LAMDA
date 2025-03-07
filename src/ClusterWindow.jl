@@ -3,14 +3,15 @@ using Makie
 const GRID_SIZE = 16
 const GRID_X = Int(sqrt(GRID_SIZE))
 const GRID_Y = Int(sqrt(GRID_SIZE))
+const SCENE_SELECTED = to_color(:grey)
+const BLACK = to_color(:black)
 
 function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMatrices,
     alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
-    hl = Observable(1)
-    hr = Observable(2)
+    mat_hovered = Observable((0, 0))
 
     scene_selector = Observable("Initial State")
     scalar_selector = Observable(first(keys(scalars)))
@@ -103,14 +104,16 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
 
     on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
-        if plot == hm
-            xy = mouseposition(hm_ax)
-            i, j = Int.(round.(xy))
-            hl[] = i
-            hr[] = j
-            notify(hl)
-            notify(hr)
+        if is_mouseinside(hm_ax.scene)
+            if plot == hm
+                xy = mouseposition(hm_ax)
+                i, j = Int.(round.(xy))
+                mat_hovered[] = (i, j)
+            end
+        else
+            mat_hovered[] = (0, 0)
         end
+        notify(mat_hovered)
         return Consume(false)
     end
     fp = first(ts_pairs)
@@ -186,8 +189,42 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
             end
         end
     end
+
+    function color_scene!(idx, color)
+        if idx != 0
+            s = scenes[mod1(idx, length(scenes))]
+            s.backgroundcolor[] = color
+        end
+    end
+
+
+    last_lh = 0
+    last_rh = 0
+    on(mat_hovered, update=true) do h
+        lh, rh = h
+
+        curr_chunk = last.(ts_chunks[curr_page[]])
+
+        if lh != last_lh
+            if lh in curr_chunk
+                color_scene!(lh, SCENE_SELECTED)
+            end
+            color_scene!(last_lh, BLACK)
+            last_lh = lh
+        end
+
+        if rh != last_rh
+            if rh in curr_chunk
+                color_scene!(rh, SCENE_SELECTED)
+            end
+            color_scene!(last_rh, BLACK)
+            last_rh = rh
+        end
+    end
+
     return window
 end
+
 
 function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible, mtx_idx)
     l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))

@@ -153,13 +153,15 @@ function build_selection_window(fig_size,
 
     on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
-        if plot == hm
-            xy = mouseposition(hm_ax)
-            i, j = Int.(round.(xy))
-            hl[] = i
-            hr[] = j
-            notify(hl)
-            notify(hr)
+        if is_mouseinside(hm_ax.scene)
+            if plot == hm
+                xy = mouseposition(hm_ax)
+                i, j = Int.(round.(xy))
+                hl[] = i
+                hr[] = j
+                notify(hl)
+                notify(hr)
+            end
         end
         return Consume(false)
     end
@@ -175,7 +177,7 @@ function build_selection_window(fig_size,
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[c%length(cmap)+1])
+            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[mod1(c, length(cmap))])
 
             push!(rendered_clusters, p)
         end
@@ -406,7 +408,6 @@ function setup_cluster_view(fig,
         notify(hist_r)
         return d
     end
-
     hist_ax = Axis(cluster_grid[2, 1:2],
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
@@ -421,7 +422,7 @@ function setup_cluster_view(fig,
         normalization=:density,
         strokewidth=1,
         strokecolor=:black,
-        color=lift(x -> cmap[x%length(cmap)+1], c_idx))
+        color=lift(x -> cmap[mod1(x, length(cmap))], c_idx))
 
     return hist_ax, hist_r
 end
