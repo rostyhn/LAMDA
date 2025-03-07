@@ -57,21 +57,26 @@ function build_selection_window(fig_size,
             ts_idx = cluster_groups[][c_idx]
             ts = t_list[ts_idx]
 
-            mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+            ts_idx_to_mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+            mtx_idx = sort(ts_idx_to_mtx_idx)
             mat = reordered_matrix[][1]
             vals = mat[mtx_idx, mtx_idx]
 
             # want to update volume data in case user messes with volume params
             # but we keep atom positions consistent with the alignment that existed at the time of creation
-            rel_t_idx = collect(eachindex(ts))
-
-            w = build_cluster_window(c_idx, ts, rel_t_idx, vals,
+            w = build_cluster_window(c_idx,
+                ts,
+                collect(eachindex(ts_idx_to_mtx_idx)),
+                vals,
                 alignedPositionsMatrices,
                 alignment_rotations,
                 volData,
                 sampleRanges,
                 scalars,
-                scalar_range, t_to_idx, vol_cmap, volRange
+                scalar_range,
+                t_to_idx,
+                vol_cmap,
+                volRange
             )
             s = GLMakie.Screen(title="Cluster $(c_idx)")
             display(s, w)
@@ -165,7 +170,13 @@ function build_selection_window(fig_size,
         cmap = to_colormap(cluster_colors)
         for (c, ts_idx) in $cluster_groups
             idx_to_mtx = $reordered_matrix[2]
-            p = show_cluster_on_hmap(ts_idx, idx_to_mtx, hm_ax.scene; color=cmap[c%length(cmap)+1])
+            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+
+            lo = minimum(m_idx)
+            hi = maximum(m_idx)
+
+            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[c%length(cmap)+1])
+
             push!(rendered_clusters, p)
         end
     end
@@ -179,7 +190,13 @@ function build_selection_window(fig_size,
         if length($hovered_cluster) > 0
             ts_idx = reduce(vcat, map(x -> $cluster_groups[x], collect($hovered_cluster)))
             idx_to_mtx = $reordered_matrix[2]
-            last_bBox = show_cluster_on_hmap(ts_idx, idx_to_mtx, hm_ax)
+
+            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+
+            lo = minimum(m_idx)
+            hi = maximum(m_idx)
+
+            last_bBox = draw_bbox_pixel_space!(hm_ax.scene, lo, hi)
         end
     end
 
@@ -233,22 +250,6 @@ function build_selection_window(fig_size,
     return window
 end
 
-function show_cluster_on_hmap(ts_idx, idx_to_mtx, scene; color=:red)
-    m_idx = map(x -> idx_to_mtx[x], ts_idx)
-
-    lo = minimum(m_idx)
-    hi = maximum(m_idx)
-
-    # need to draw n bounding boxes over the heatmap
-    bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
-
-    p = wireframe!(
-        scene, bbox, color=color,
-        visible=true, inspectable=false,
-        depth_shift=-1.0f-3
-    )
-    return p
-end
 
 # should be in its own function
 function setup_transition_view(

@@ -4,7 +4,7 @@ const GRID_SIZE = 16
 const GRID_X = Int(sqrt(GRID_SIZE))
 const GRID_Y = Int(sqrt(GRID_SIZE))
 
-function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrices,
+function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMatrices,
     alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
@@ -48,11 +48,15 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
         scalar_menu,
         t_slider)
 
+
     l_btn = Button(window, label="◀", tellwidth=false)
     r_btn = Button(window, label="▶", tellwidth=false)
 
+    # transition coupled with matrix coords
+    ts_pairs = sort(collect(zip(ts, idx_to_mtx_idx)), by=x -> x[2])
+
     curr_page = Observable(1)
-    ts_chunks = collect(Iterators.partition(ts, GRID_SIZE))
+    ts_chunks = collect(Iterators.partition(ts_pairs, GRID_SIZE))
     num_pages = length(ts_chunks)
 
     on(l_btn.clicks) do n
@@ -72,30 +76,6 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
     tGrid = GridLayout()
     window[2, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
 
-    for i in 1:GRID_X
-        for j in 1:GRID_Y
-            rootScene = LScene(
-                tGrid[i, j],
-                show_axis=false,
-                scenekw=(backgroundcolor=:black, clear=true),
-            )
-            t = Observable(first(ts))
-            is_visible = Observable(false)
-            idx = (i - 1) * 4 + j
-            on(curr_page, update=true) do cp
-                curr_chunk = ts_chunks[cp]
-
-                if idx <= length(curr_chunk)
-                    t[] = curr_chunk[idx]
-                    is_visible[] = true
-                else
-                    is_visible[] = false
-                end
-            end
-            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible)
-        end
-    end
-
     hm_ax, hm = heatmap(window[2, 3], vals, colorrange=(0.0, 1.0))
     DataInspector(hm)
 
@@ -114,14 +94,73 @@ function build_cluster_window(c_idx, ts, rel_t_idx, vals, alignedPositionMatrice
         end
         return Consume(false)
     end
+    fp = first(ts_pairs)
 
+    scenes = []
+    scene_info = []
+    for i in 1:GRID_X
+        for j in 1:GRID_Y
+            rootScene = LScene(
+                tGrid[i, j],
+                show_axis=false,
+                scenekw=(backgroundcolor=:black, clear=true),
+            )
+            DataInspector(rootScene)
+
+            t = Observable(fp[1])
+            mtx_idx = Observable(fp[2])
+
+            is_visible = Observable(false)
+            idx = (i - 1) * 4 + j
+            on(curr_page, update=true) do cp
+                curr_chunk = ts_chunks[cp]
+
+                if idx <= length(curr_chunk)
+                    t[] = curr_chunk[idx][1]
+                    mtx_idx[] = curr_chunk[idx][2]
+                    is_visible[] = true
+                else
+                    is_visible[] = false
+                end
+            end
+            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible, mtx_idx)
+
+            push!(scenes, rootScene.scene)
+            push!(scene_info, mtx_idx)
+        end
+    end
+
+    # draws rectangle on matrix whenever a transition is hovered over
+    # not elegant, but it works and is relatively efficient
+    bBox = nothing
+    last_bBox = 0
+    on(events(window).mouseposition) do mp
+        if is_mouseinside(window)
+            for (i, s) in enumerate(scenes)
+                if mp in viewport(s)[]
+                    if last_bBox != i
+                        if !isnothing(bBox)
+                            delete!(parent_scene(bBox), bBox)
+                        end
+                        bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][], scene_info[i][])
+                        last_bBox = i
+                        break
+                    end
+                end
+            end
+        else
+            if !isnothing(bBox)
+                last_bBox = 0
+                delete!(parent_scene(bBox), bBox)
+                bBox = nothing
+            end
+        end
+    end
     return window
 end
 
-function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible)
-    DataInspector(rootScene)
-
-    l = Label(fig, lift(x -> string(x), t), tellwidth=false, visible=lift(x -> x, is_visible))
+function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible, mtx_idx)
+    l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))
     i, j = loc
 
     g = vgrid!(rootScene, l)
