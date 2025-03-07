@@ -79,6 +79,25 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
     hm_ax, hm = heatmap(window[2, 3], vals, colorrange=(0.0, 1.0))
     DataInspector(hm)
 
+    # draw boxes around pages
+    page_boxes = []
+    for ts_p in ts_chunks
+        idxs = last.(ts_p)
+        lo = minimum(idxs)
+        hi = maximum(idxs)
+        p = draw_bbox_pixel_space!(hm_ax, lo, hi; color=:grey)
+        push!(page_boxes, p)
+    end
+
+    last_cp = 0
+    on(curr_page, update=true) do cp
+        page_boxes[cp].color[] = :red
+        if last_cp > 0
+            page_boxes[last_cp].color[] = :grey
+        end
+        last_cp = cp
+    end
+
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -112,6 +131,8 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
 
             is_visible = Observable(false)
             idx = (i - 1) * 4 + j
+
+            # could be more efficient if this gets updated per page instead of per transition
             on(curr_page, update=true) do cp
                 curr_chunk = ts_chunks[cp]
 
@@ -136,6 +157,7 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
     last_bBox = 0
     on(events(window).mouseposition) do mp
         if is_mouseinside(window)
+            found = false
             for (i, s) in enumerate(scenes)
                 if mp in viewport(s)[]
                     if last_bBox != i
@@ -144,8 +166,16 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
                         end
                         bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][], scene_info[i][])
                         last_bBox = i
-                        break
                     end
+                    found = true
+                    break
+                end
+            end
+            if !found
+                if !isnothing(bBox)
+                    last_bBox = 0
+                    delete!(parent_scene(bBox), bBox)
+                    bBox = nothing
                 end
             end
         else
