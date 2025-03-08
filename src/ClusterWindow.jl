@@ -6,7 +6,7 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
-function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMatrices,
+function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositionMatrices,
     alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
@@ -16,7 +16,7 @@ function build_cluster_window(c_idx, ts, idx_to_mtx_idx, vals, alignedPositionMa
     scene_selector = Observable("Initial State")
     scalar_selector = Observable(first(keys(scalars)))
 
-    title = Label(window, "Cluster $(c_idx)", fontsize=30)
+    title = Label(window, "Cluster $(str_limit(clusters))", fontsize=30)
 
     render_menu = Menu(window,
         options=["Initial State", "Volume"],

@@ -51,10 +51,10 @@ function build_selection_window(fig_size,
     # can't get it to align left
     # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
 
-    open_cluster_windows = Dict{Int,Screen}()
-    function on_show_cluster_click(c_idx)
-        if !(c_idx in keys(open_cluster_windows))
-            ts_idx = cluster_groups[][c_idx]
+    open_cluster_windows = Dict{Set{Int},Screen}()
+    function on_show_cluster_click(clusters)
+        if !(clusters in keys(open_cluster_windows))
+            ts_idx = reduce(vcat, map(x -> cluster_groups[][x], collect(clusters)))
             ts = t_list[ts_idx]
 
             ts_idx_to_mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
@@ -64,7 +64,7 @@ function build_selection_window(fig_size,
 
             # want to update volume data in case user messes with volume params
             # but we keep atom positions consistent with the alignment that existed at the time of creation
-            w = build_cluster_window(c_idx,
+            w = build_cluster_window(clusters,
                 ts,
                 collect(eachindex(ts_idx_to_mtx_idx)),
                 vals,
@@ -78,10 +78,10 @@ function build_selection_window(fig_size,
                 vol_cmap,
                 volRange
             )
-            s = GLMakie.Screen(title="Cluster $(c_idx)")
+            s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
 
-            open_cluster_windows[c_idx] = s
+            open_cluster_windows[clusters] = s
         end
     end
 
@@ -90,58 +90,51 @@ function build_selection_window(fig_size,
         foreach(s -> close(s), values(open_cluster_windows))
     end
 
-    # grid for the transition views
-    tGrid = GridLayout()
-    window[1:2, 1] = tGrid
-
-    hl = Observable(1)
-
-    # contains actual matrix index, the transition idx, the tuple itself and the cluster assignment
-    hl_info = @lift begin
-        t_idx = $clustering.order[$hl]
-        return ($hl, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
-    end
-
-    ltv = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, hl_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
-    l_hist_ax, l_hist_r = setup_cluster_view(window,
-        tGrid, (2, 1),
-        lift((x, y) -> y[x[2]], hl_info, cluster_assignments),
-        cluster_groups,
-        reordered_matrix,
-        on_show_cluster_click
-    )
-
-    hr = Observable(2)
-    hr_info = @lift begin
-        t_idx = $clustering.order[$hr]
-        return ($hr, t_idx, t_list[t_idx], $cluster_assignments[t_idx])
-    end
-
-    rtv = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, hr_info, scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
-
-    r_hist_ax, r_hist_r = setup_cluster_view(window,
-        tGrid,
-        (2, 2),
-        lift((x, y) -> y[x[2]], hr_info, cluster_assignments),
-        cluster_groups,
-        reordered_matrix,
-        on_show_cluster_click
-    )
-
-    @lift begin
-        mr = (-0.01, max($l_hist_r, $r_hist_r) + 0.01)
-
-        xlims!(l_hist_ax, mr)
-        reset_limits!(l_hist_ax; xauto=false)
-
-        xlims!(r_hist_ax, mr)
-        reset_limits!(r_hist_ax; xauto=false)
-    end
-
-    link_cameras_lscenes([ltv, rtv])
-
     # will complain about being passed "nothing" as a value if something isn't inside the set
     hovered_cluster = Observable(Set{Int}(1))
+
+    cGrid = GridLayout()
+    window[1, 1] = cGrid
+
+    setup_cluster_view(window,
+        cGrid,
+        (1, 1:2),
+        hovered_cluster,
+        cluster_groups,
+        reordered_matrix,
+        on_show_cluster_click
+    )
+
+    tGrid = GridLayout()
+    window[2, 1] = tGrid
+
+    # contains actual matrix index, the transition idx, the tuple itself and the cluster assignment
+    hovered_transitions = Observable((1, 1))
+    hovered_info = @lift begin
+        l, r = $hovered_transitions
+        function build_info(idx)
+            t_idx = clustering[].order[idx]
+            return (idx, t_idx, t_list[t_idx])
+        end
+
+        li = build_info(l)
+        ri = build_info(r)
+
+        cl = $cluster_assignments[li[2]]
+        cr = $cluster_assignments[ri[2]]
+        if cl == cr
+            hovered_cluster[] = Set{Int}(cl)
+            notify(hovered_cluster)
+        end
+
+        return build_info(l), build_info(r)
+    end
+
+    ltv = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
+
+    rtv = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
+
+    link_cameras_lscenes([ltv, rtv])
 
     graph_ax = Axis(window[1, 2], backgroundcolor=:transparent)
     hidexdecorations!(graph_ax)
@@ -157,10 +150,8 @@ function build_selection_window(fig_size,
             if plot == hm
                 xy = mouseposition(hm_ax)
                 i, j = Int.(round.(xy))
-                hl[] = i
-                hr[] = j
-                notify(hl)
-                notify(hr)
+                hovered_transitions[] = (i, j)
+                notify(hovered_info)
             end
         end
         return Consume(false)
@@ -299,7 +290,7 @@ function setup_transition_view(
         on_click(t_idx[], () -> ())
     end
 
-    l = Label(fig, lift(x -> string(x), t_idx), tellwidth=false)
+    l = Label(fig, lift(x -> string(x), t), tellwidth=false)
 
     i, j = loc
     g = vgrid!(rootScene, hgrid!(l, m, btn))
@@ -376,7 +367,7 @@ end
 function setup_cluster_view(fig,
     parentGrid,
     loc,
-    c_idx,
+    clusters,
     cluster_groups,
     reordered_matrix,
     on_cluster_button_click
@@ -387,29 +378,29 @@ function setup_cluster_view(fig,
 
     cmap = to_colormap(cluster_colors)
     cluster_grid[1, 1] = Label(fig,
-        lift(x -> "Cluster $(x)", c_idx),
+        lift(x -> "Cluster $(str_limit(x))", clusters),
         tellwidth=false)
 
     show_cluster_btn = Button(cluster_grid[1, 2], label="Show")
 
     on(show_cluster_btn.clicks) do n
-        on_cluster_button_click(c_idx[])
+        on_cluster_button_click(clusters[])
     end
-
-    hist_r = Observable(0.0)
 
     hist_values = @lift begin
-        # only change on hovered because hovered may be invalid
-        ts_idx = cluster_groups[][$c_idx]
-        mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
-        mat = reordered_matrix[][1]
-        vals = mat[mtx_idx, mtx_idx]
-        utri = triu!(trues(size(vals)))
-        d = vec(vals[utri])
-        hist_r[] = maximum(d)
-        notify(hist_r)
-        return d
+        d = []
+        for c_idx in collect($clusters)
+            ts_idx = cluster_groups[][c_idx]
+            mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+            mat = reordered_matrix[][1]
+            vals = mat[mtx_idx, mtx_idx]
+            utri = triu!(trues(size(vals)))
+            push!(d, vec(vals[utri]))
+        end
+
+        return reduce(vcat, d)
     end
+
     hist_ax = Axis(cluster_grid[2, 1:2],
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
@@ -419,12 +410,26 @@ function setup_cluster_view(fig,
     # TODO: copy over code for custom implementation 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/stats/hist.jl 
     # unfortunately bar_labels doesn't work
+    color = @lift begin
+        cl = collect($clusters)
+        if length(cl) != 1
+            return to_color(:grey)
+        else
+            return cmap[mod1(first(cl), length(cmap))]
+        end
+    end
+
     hist!(hist_ax,
         hist_values,
         normalization=:density,
         strokewidth=1,
         strokecolor=:black,
-        color=lift(x -> cmap[mod1(x, length(cmap))], c_idx))
+        color=color
+    )
 
-    return hist_ax, hist_r
+    on(hist_values) do hv
+        reset_limits!(hist_ax)
+    end
+
+    return hist_ax
 end

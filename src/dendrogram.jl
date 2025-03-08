@@ -72,8 +72,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         end
 
         # to get label idx just divide by 2
-        labelfn = (plt, idx, pos) -> "$(string(clusters[div(idx,2)])[1:min(end, 40)])$(length(string(clusters[div(idx, 2)])) > 40 ? "..." : "")"
-
+        labelfn = (plt, idx, pos) -> str_limit(clusters[div(idx, 2)])
         function on_hover(inspector, plot, idx)
             status = show_data(inspector, plot, idx)
             if status && length(clusters[div(idx, 2)]) > 0

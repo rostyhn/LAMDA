@@ -77,6 +77,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
         return res
     end
 
+    # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
     cluster_assignments = @lift begin
         return cutree($clustering, h=$h_cutoff)
     end
