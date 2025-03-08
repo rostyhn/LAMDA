@@ -73,11 +73,25 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
 
         # to get label idx just divide by 2
         labelfn = (plt, idx, pos) -> str_limit(clusters[div(idx, 2)])
+
+        last_bBox = nothing
         function on_hover(inspector, plot, idx)
             status = show_data(inspector, plot, idx)
+
+            if !isnothing(last_bBox)
+                delete!(parent_scene(plot), last_bBox)
+                last_bBox = nothing
+            end
+
             if status && length(clusters[div(idx, 2)]) > 0
                 hover_callbackfn(clusters[div(idx, 2)])
+                lo = plot[1][][idx-1]
+                hi = plot[1][][idx]
+
+                bBox = Rect2(lo[1], lo[2], hi[1] - lo[1], hi[2] - lo[2])
+                last_bBox = wireframe!(parent_scene(plot), bBox, color=:red, inspectable=false)
             end
+
             return status
         end
 
