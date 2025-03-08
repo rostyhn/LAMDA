@@ -53,7 +53,7 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
     end
 end
 
-function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
+function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, hovered_index=Observable(0), kwargs...)
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables
@@ -77,19 +77,8 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         last_bBox = nothing
         function on_hover(inspector, plot, idx)
             status = show_data(inspector, plot, idx)
-
-            if !isnothing(last_bBox)
-                delete!(parent_scene(plot), last_bBox)
-                last_bBox = nothing
-            end
-
             if status && length(clusters[div(idx, 2)]) > 0
                 hover_callbackfn(clusters[div(idx, 2)])
-                lo = plot[1][][idx-1]
-                hi = plot[1][][idx]
-
-                bBox = Rect2(lo[1], lo[2], hi[1] - lo[1], hi[2] - lo[2])
-                last_bBox = wireframe!(parent_scene(plot), bBox, color=:red, inspectable=false)
             end
 
             return status
@@ -97,14 +86,36 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
 
         cutoff_line = ([0, length(h[].order)], [$cutoff, $cutoff])
 
-        return lines, colors, labelfn, on_hover, cutoff_line
+        cl_to_idx = Dict{Set{Int},Int}()
+        for (i, c) in enumerate(clusters)
+            cl_to_idx[c] = i * 2 # multiply by 2 to get line idx
+        end
+
+        return lines, colors, labelfn, on_hover, cutoff_line, cl_to_idx
     end
 
-    linesegments!(ax,
+    p = linesegments!(ax,
         lift(x -> x[1], dendrogram);
         color=lift(x -> x[2], dendrogram),
         inspector_label=lift(x -> x[3], dendrogram),
         inspector_hover=lift(x -> x[4], dendrogram))
+
+    last_bBox = nothing
+    on(hovered_index) do clusters
+        c_dict = dendrogram[][6]
+        idx = c_dict[clusters]
+
+        lo = p[1][][idx-1]
+        hi = p[1][][idx]
+
+        if !isnothing(last_bBox)
+            delete!(parent_scene(p), last_bBox)
+            last_bBox = nothing
+        end
+
+        bBox = Rect2(lo[1], lo[2], hi[1] - lo[1], hi[2] - lo[2])
+        last_bBox = wireframe!(parent_scene(p), bBox, color=:red, inspectable=false, depth_shift=-1.0f-3)
+    end
 
     # add cutoff line
     l = lines!(ax, lift(x -> x[5][1], dendrogram), lift(x -> x[5][2], dendrogram);
