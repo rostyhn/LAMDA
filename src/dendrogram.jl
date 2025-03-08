@@ -88,15 +88,17 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
 
         cl_to_idx = Dict{Set{Int},Int}()
         for (i, c) in enumerate(clusters)
-            cl_to_idx[c] = i * 2 # multiply by 2 to get line idx
+            cl_to_idx[c] = i
         end
 
         return lines, colors, labelfn, on_hover, cutoff_line, cl_to_idx
     end
 
-    p = linesegments!(ax,
+    colors = lift(x -> deepcopy(x[2]), dendrogram)
+
+    linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        color=lift(x -> x[2], dendrogram),
+        color=colors,
         inspector_label=lift(x -> x[3], dendrogram),
         inspector_hover=lift(x -> x[4], dendrogram))
 
@@ -105,16 +107,13 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         c_dict = dendrogram[][6]
         idx = c_dict[clusters]
 
-        lo = p[1][][idx-1]
-        hi = p[1][][idx]
-
         if !isnothing(last_bBox)
-            delete!(parent_scene(p), last_bBox)
-            last_bBox = nothing
+            colors[][last_bBox] = dendrogram[][2][last_bBox]
         end
 
-        bBox = Rect2(lo[1], lo[2], hi[1] - lo[1], hi[2] - lo[2])
-        last_bBox = wireframe!(parent_scene(p), bBox, color=:red, inspectable=false, depth_shift=-1.0f-3)
+        colors[][idx] = to_color(:red)
+        notify(colors)
+        last_bBox = idx
     end
 
     # add cutoff line
