@@ -38,14 +38,16 @@ function build_selection_window(fig_size,
 
         # gets the correct idx 
         idx_to_mtx = zeros(Int, size(m)[1])
+        t_to_mtx = Dict()
         for (i, r) in enumerate($clustering.order)
             rm[i, :] .= m[r, :][$clustering.order]
             idx_to_mtx[r] = i
+            t_to_mtx[t_list[r]] = i
         end
 
         # get minimum and maximum of entire matrix for cmap
         fl = vec(m)
-        return rm, idx_to_mtx, (minimum(fl), maximum(fl))
+        return rm, idx_to_mtx, (minimum(fl), maximum(fl)), t_to_mtx
     end
     # can't get it to align left
     # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
@@ -112,15 +114,15 @@ function build_selection_window(fig_size,
     hovered_info = @lift begin
         l, r = $hovered_transitions
         function build_info(idx)
-            t_idx = clustering[].order[idx]
-            return (idx, t_idx, t_list[t_idx])
+            t_idx = $clustering.order[idx]
+            return (idx, t_to_idx[t_list[t_idx]], t_list[t_idx], t_idx)
         end
 
         li = build_info(l)
         ri = build_info(r)
 
-        cl = $cluster_assignments[li[2]]
-        cr = $cluster_assignments[ri[2]]
+        cl = $cluster_assignments[li[4]]
+        cr = $cluster_assignments[ri[4]]
         if cl == cr
             hovered_cluster[] = Set{Int}(cl)
             notify(hovered_cluster)
