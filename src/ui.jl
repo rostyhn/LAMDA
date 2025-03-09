@@ -65,6 +65,7 @@ function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
         color=lift(x -> x, scalars),
         colorrange=scalar_range,
         colormap=cmap,
+        depthsorting=true,
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
         markersize=30)
 
