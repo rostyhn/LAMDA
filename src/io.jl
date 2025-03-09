@@ -152,6 +152,7 @@ function get_data_alt(trajectory_name)
             trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
             trajectory_data["alignedPositions"] = alignedPositions
             trajectory_data["kdTrees"] = kdTrees
+            trajectory_data["name"] = trajectory_name
 
             # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")

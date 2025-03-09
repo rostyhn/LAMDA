@@ -33,19 +33,27 @@ include("math.jl")
 include("dendrogram.jl")
 include("SettingsWindow.jl")
 include("ClusterWindow.jl")
+include("ReductionWindow.jl")
 include("ui.jl")
 
 export go
 
-function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_with=nothing, distance_matrix=nothing)
+function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
+    window = build_reduction_window(active_trajectory, main_window)
+
+    screen = GLMakie.Screen()
+    display(screen, window)
+end
+
+function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing, distance_matrix=nothing)
+    # GLMakie.closeall() # close reduction window 
     transitionInvariants1 = active_trajectory["t1"]
     transitionInvariants2 = active_trajectory["t2"]
     transitionInvariants3 = active_trajectory["t3"]
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
-    dms = active_trajectory["dms"]
     scalars = active_trajectory["scalars"]
     scalar_range = active_trajectory["scalar_range"]
     connectivity = active_trajectory["connectivity"]
@@ -54,23 +62,21 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
     alignedPositions = active_trajectory["alignedPositions"] # positions as points
     kdTrees = active_trajectory["kdTrees"]
     alignments = active_trajectory["alignments"]
+    dm = active_trajectory["selected_dm"]
+    transitionSequence = active_trajectory["reduced_transitions"]
+    trajectory_name = active_trajectory["name"]
 
-    transitionSequence = active_trajectory["transitions"]
-
+    # absolute index for volume data
     t_to_idx = Dict()
-    for (i, t) in enumerate(transitionSequence)
+    for (i, t) in enumerate(active_trajectory["transitions"])
         t_to_idx[t] = i
     end
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-    init_dist_mat = (!isnothing(distance_matrix) && distance_matrix in keys(dms)) ? distance_matrix : first(keys(dms))
-    selected_dm = Observable(init_dist_mat)
     clustering = @lift begin
-        println("Clustering $($selected_dm)...")
-        m = dms[$selected_dm]
-        res = hclust(m, linkage=:ward, branchorder=:barjoseph)
+        res = hclust($dm, linkage=:ward, branchorder=:barjoseph)
 
         h_range[] = extrema(res.heights)
         notify(h_range)
@@ -120,7 +126,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
         rot = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
         for (clusterIdx, g) in $cluster_groups
             # find reference t
-            m = dms[$selected_dm]
+            m = $dm
             dist_sum = map(x -> sum(m[x, :][g]), g)
             ref_t_idx = argmin(dist_sum)
 
@@ -244,13 +250,16 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
         h = length($sampleRanges[2])
         d = length($sampleRanges[3])
 
+        # calculate volume data for all transitions just once
+        abs_t_seq = active_trajectory["transitions"]
+
         fp, is_cached = get_mmap_file(key)
         if !is_cached
             println("Calculating volume data for $(key); will be saved as $(hash(key))...")
 
-            alignedPos = map(x -> alignedPositions[x][1], transitionSequence)
-            kd = map(x -> kdTrees[x][1], transitionSequence)
-            invariants = map(x -> active_trajectory[$selected_invariant][x], transitionSequence)
+            alignedPos = map(x -> alignedPositions[x][1], abs_t_seq)
+            kd = map(x -> kdTrees[x][1], abs_t_seq)
+            invariants = map(x -> active_trajectory[$selected_invariant][x], abs_t_seq)
 
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
@@ -268,10 +277,10 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
                 volMax = floatmin(Float32)
 
                 processed = 0
-                prog = Progress(length(transitionSequence))
+                prog = Progress(length(abs_t_seq))
                 update!(prog, processed)
 
-                chunks = collect(Iterators.partition(eachindex(transitionSequence), chunk_size))
+                chunks = collect(Iterators.partition(eachindex(abs_t_seq), chunk_size))
 
                 # 500 seconds at the fastest
                 io = open(fp, "a")
@@ -309,7 +318,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
             end
         end
 
-        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(transitionSequence)), shared=false, grow=false)
+        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(abs_t_seq)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
         notify(volRange)
 
@@ -343,7 +352,7 @@ function go(trajectory_name::String; chunk_size=100, init_h_cutoff=0.3, align_wi
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dms, volumeData, sampleRanges, volRange, volume_cmap, clustering, selected_dm, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments)
+    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dm, volumeData, sampleRanges, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments)
 
     #= 
     # creating screen after the window is built prevents subtle bugs

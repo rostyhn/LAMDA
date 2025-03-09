@@ -13,13 +13,12 @@ function build_selection_window(fig_size,
     num_atoms,
     alignedPositionsMatrices,
     transitionKDTree,
-    dms,
+    dm,
     volData,
     sampleRanges,
     volRange,
     vol_cmap,
     clustering,
-    selected_dm,
     scalars,
     h_cutoff,
     cluster_groups,
@@ -34,7 +33,7 @@ function build_selection_window(fig_size,
 
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
-        m = dms[$selected_dm]
+        m = $dm
         rm = zeros(size(m))
 
         # gets the correct idx 
@@ -218,11 +217,6 @@ function build_selection_window(fig_size,
         cutoff_slider,
         Label(window, lift(x -> string(round(x; sigdigits=3)), h_cutoff)))
 
-    dm_menu = Menu(window, options=collect(keys(dms)), default=selected_dm[])
-    on(dm_menu.selection) do val
-        selected_dm[] = val
-    end
-
     settings_btn = Button(window, label="Settings")
     screen = nothing
     on(settings_btn.clicks) do n
@@ -236,8 +230,7 @@ function build_selection_window(fig_size,
         end
     end
 
-    window[3, 2] = hgrid!(Label(window, "Distance matrix"),
-        dm_menu,
+    window[3, 2] = hgrid!(
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16),
         settings_btn
     )

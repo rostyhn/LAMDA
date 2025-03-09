@@ -94,7 +94,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         return lines, colors, labelfn, on_hover, cutoff_line, cl_to_idx
     end
 
-    colors = lift(x -> deepcopy(x[2]), dendrogram)
+    colors = lift(x -> x[2], dendrogram)
 
     linesegments!(ax,
         lift(x -> x[1], dendrogram);
@@ -103,18 +103,23 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         inspector_hover=lift(x -> x[4], dendrogram))
 
     last_bBox = nothing
-    on(hovered_index) do clusters
-        c_dict = dendrogram[][6]
-        idx = c_dict[clusters]
+
+    #=
+    @lift begin
+
+        # FIXME doesn't keep up with changes in dendrogram
+        c_dict = $dendrogram[6]
+        idx = c_dict[$hovered_index]
 
         if !isnothing(last_bBox)
-            colors[][last_bBox] = dendrogram[][2][last_bBox]
+            colors[][last_bBox] = $dendrogram[2][last_bBox]
         end
 
         colors[][idx] = to_color(:red)
         notify(colors)
         last_bBox = idx
     end
+    =#
 
     # add cutoff line
     l = lines!(ax, lift(x -> x[5][1], dendrogram), lift(x -> x[5][2], dendrogram);

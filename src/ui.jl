@@ -86,12 +86,12 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange; rotation=O
 
     # FIXME sometimes the volume will get rotated so hard it disappears
     # if called before screen is rendered it crashes
-    on(rotation, update=update) do R
+    #=on(rotation, update=update) do R
         rr = hcat(R, [0, 0, 0])
         fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
         v.model[] = fr
         notify(v.model)
-    end
+    end=#
 
     v.inspectable[] = false
 
