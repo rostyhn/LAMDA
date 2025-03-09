@@ -136,10 +136,28 @@ function build_selection_window(fig_size,
 
     link_cameras_lscenes([ltv, rtv])
 
-    graph_ax = Axis(window[1, 2], backgroundcolor=:transparent)
+    cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
+    on(cutoff_tb.stored_string) do s
+        # reset hovered_cluster to avoid crashing
+        hovered_cluster[] = Set{Int}(1)
+        notify(hovered_cluster)
+
+        h_cutoff[] = parse(Float64, s)
+        notify(h_cutoff)
+    end
+
+    dGrid = GridLayout()
+    window[1:2, 2] = dGrid
+
+    dGrid[1, 1] = hgrid!(
+        Label(window, "Cluster cutoff value", tellwidth=false),
+        cutoff_tb)
+
+    graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
+    deregister_interaction!(graph_ax, :rectanglezoom)
     hidexdecorations!(graph_ax)
 
-    hm_ax, hm = heatmap(window[2, 2], lift(x -> x[1], reordered_matrix))
+    hm_ax, hm = heatmap(dGrid[3, 1], lift(x -> x[1], reordered_matrix))
 
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
@@ -201,22 +219,7 @@ function build_selection_window(fig_size,
     end
 
     dendrogram!(graph_ax, clustering, h_cutoff, h_range; hover_callbackfn=on_dendrogram_hover, colormap=cluster_colors, hovered_index=hovered_cluster)
-
-    cutoff_slider = Slider(window, range=lift(x -> x[1]:0.01:x[2], h_range), startvalue=h_cutoff[], update_while_dragging=false)
-    on(cutoff_slider.value) do x
-        # reset hovered_cluster to avoid crashing
-        hovered_cluster[] = Set{Int}(1)
-        notify(hovered_cluster)
-
-        h_cutoff[] = x
-        notify(h_cutoff)
-    end
-
     linkxaxes!(graph_ax, hm_ax)
-
-    window[3, 1] = hgrid!(Label(window, "Cluster cutoff value"),
-        cutoff_slider,
-        Label(window, lift(x -> string(round(x; sigdigits=3)), h_cutoff)))
 
     settings_btn = Button(window, label="Settings")
     screen = nothing
@@ -231,7 +234,7 @@ function build_selection_window(fig_size,
         end
     end
 
-    window[3, 2] = hgrid!(
+    dGrid[4, 1] = hgrid!(
         Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16),
         settings_btn
     )
@@ -395,7 +398,7 @@ function setup_cluster_view(fig,
         return reduce(vcat, d)
     end
 
-    hist_ax = Axis(cluster_grid[2, 1:2],
+    hist_ax = Axis(cluster_grid[2, 1:2], title="Intra-cluster distances",
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
     # hide y labels because otherwise the width of each column gets adjusted
