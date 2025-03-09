@@ -7,7 +7,7 @@ const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
 function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositionMatrices,
-    alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange; fig_size=(400, 400))
+    alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange, mat_range; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
@@ -77,7 +77,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositio
     tGrid = GridLayout()
     window[2, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
 
-    hm_ax, hm = heatmap(window[2, 3], vals, colorrange=(0.0, 1.0))
+    hm_ax, hm = heatmap(window[2, 3], vals, colorrange=mat_range)
     DataInspector(hm)
 
     # draw boxes around pages
