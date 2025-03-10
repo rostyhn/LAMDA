@@ -1,4 +1,4 @@
-function build_reduction_window(active_trajectory, on_click; kwargs...)
+function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, kwargs...)
     window = Figure(size=(400, 400))
     # only need transitions and distance matrix
     dms = active_trajectory["dms"]
@@ -9,7 +9,7 @@ function build_reduction_window(active_trajectory, on_click; kwargs...)
         t_to_idx[t] = i
     end
 
-    h_cutoff = Observable(0.01)
+    h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
     init_dist_mat = first(keys(dms))
@@ -171,7 +171,7 @@ function build_reduction_window(active_trajectory, on_click; kwargs...)
     on(go_btn.clicks) do n
         active_trajectory["selected_dm"] = Observable(reduced[][1])
         active_trajectory["reduced_transitions"] = reduced[][2]
-        on_click(active_trajectory, kwargs...)
+        on_click(active_trajectory; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 
     Colorbar(window[3, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false)

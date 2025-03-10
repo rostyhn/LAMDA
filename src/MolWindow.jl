@@ -135,7 +135,7 @@ function setup_atom_view!(scene, g, ap, t, order, scalars)
         minVal, maxVal = extremaVals
         labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
 
-        cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
+        cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
         if abs(minVal) > abs(maxVal)
             reverse!(cmap)
         end

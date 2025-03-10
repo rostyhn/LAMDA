@@ -194,9 +194,10 @@ function get_data_alt(trajectory_name)
 
             if isdir(alignmentf)
                 for af in readdir(alignmentf, join=true)
-                    if isfile(af)
-                        alignment_name = basename(af)
-                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Matrix{Float32}}(Pickle.npyload(af))
+                    fname, ext = splitext(af)
+                    if isfile(af) && ext == ".pickle"
+                        alignment_name = basename(fname)
+                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(af))
                     end
                 end
             else

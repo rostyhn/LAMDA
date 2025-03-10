@@ -69,6 +69,8 @@ function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
         inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
         markersize=30)
 
+    update_cam!(parent_scene(s))
+
     return s
 end
 
@@ -104,17 +106,22 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange; rotation=O
 
     # FIXME sometimes the volume will get rotated so hard it disappears
     # if called before screen is rendered it crashes
-    #=on(rotation, update=update) do R
+    #=s = parent_scene(v_lo)
+    on(rotation, update=update) do R
         rr = hcat(R, [0, 0, 0])
         fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-        v_lo.model[] = fr
-        v_hi.model[] = fr
-        notify(v_lo.model)
-        notify(v_hi.model)
+
+        #TODO: add shift translation
+        # s.transformation.translate[] =
+        # flip could invert the matrix
+        s.transformation.model[] = fr
+        #notify(s.transformation.model[])
     end=#
 
     v_hi.inspectable[] = false
     v_lo.inspectable[] = false
+
+    update_cam!(parent_scene(v_lo))
 
     return v_lo, v_hi
 end

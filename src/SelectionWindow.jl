@@ -130,11 +130,9 @@ function build_selection_window(fig_size,
         return build_info(l), build_info(r)
     end
 
-    ltv = setup_transition_view(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
+    setup_transition_view!(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
 
-    rtv = setup_transition_view(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
-
-    link_cameras_lscenes([ltv, rtv])
+    setup_transition_view!(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
@@ -242,9 +240,7 @@ function build_selection_window(fig_size,
     return window
 end
 
-
-# should be in its own function
-function setup_transition_view(
+function setup_transition_view!(
     fig,
     parentGrid,
     loc,
@@ -295,7 +291,7 @@ function setup_transition_view(
 
     opts = sort(collect(keys(scalars)))
 
-    atom_cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
+    atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function atom_widgets(init_time, transition)
         gg = GridLayout(g[end+1, :])
 
@@ -335,12 +331,19 @@ function setup_transition_view(
             vd = lift((x, y, z) ->
                     reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
 
-            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y], alignment_rotations, t))
+            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y][2], alignment_rotations, t))
             return [], [gg]
         else
             t_ap = @lift begin
-                init = ap[$hovered[3]][1] * $alignment_rotations[$hovered[3]]
-                final = ap[$hovered[3]][2] * $alignment_rotations[$hovered[3]]
+                shift, rot, flip = $alignment_rotations[$hovered[3]]
+                s1 = (ap[$hovered[3]][1] .- shift) * rot
+                s1 = s1 .- mean(s1, dims=1)
+                s2 = (ap[$hovered[3]][2] .- shift) * rot
+                s2 = s2 .- mean(s2, dims=1)
+
+                init = flip ? s2 : s1
+                final = flip ? s1 : s2
+
                 return (init, final)
             end
 

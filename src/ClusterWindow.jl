@@ -235,13 +235,13 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
 
     t_idx = lift(x -> t_to_idx[x], t)
 
-    atom_cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147))
-
+    atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function select_fn(selection)
         if selection == "Volume"
             vd = lift((x, y, z) ->
                     reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-            v_lo, v_hi = volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y], alignment_rotations, t), update=true)
+            v_lo, v_hi = volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y][2], alignment_rotations, t), update=true)
+
             @lift begin
                 v_lo.visible[] = $is_visible
                 v_hi.visible[] = $is_visible
@@ -251,8 +251,13 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
             return [], []
         else
             t_ap = @lift begin
-                init = ap[$t][1] * $alignment_rotations[$t]
-                final = ap[$t][2] * $alignment_rotations[$t]
+                shift, rot, flip = $alignment_rotations[$t]
+                s1 = (ap[$t][1] .- shift) * rot
+                s1 = s1 .- mean(s1, dims=1)
+                s2 = (ap[$t][2] .- shift) * rot
+                s2 = s2 .- mean(s2, dims=1)
+                init = flip ? s2 : s1
+                final = flip ? s1 : s2
 
                 return (init, final)
             end
