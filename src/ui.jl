@@ -73,17 +73,36 @@ function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
 end
 
 function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange; rotation=Observable(Matrix{Float32}(1.0I, 3, 3)), update=false)
-    v = volume!(scene,
+    lowmap = reverse(resample_cmap(:RdPu_3, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.1) .^ 6))
+    himap = resample_cmap(:greens, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.1) .^ 6)
+
+    v_lo = volume!(scene,
         lift(x -> extrema(x[1]), sampleRanges),
         lift(x -> extrema(x[2]), sampleRanges),
         lift(x -> extrema(x[3]), sampleRanges),
         vd;
-        colormap=vol_cmap,
+        colormap=lowmap,
+        highclip=:transparent,
+        lowclip=:transparent,
         algorithm=:absorption,
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        colorrange=volumeRange)
+        colorrange=lift(x -> (x[1], 0.0), volumeRange))
+
+    v_hi = volume!(scene,
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
+        vd;
+        colormap=himap,
+        highclip=:transparent,
+        lowclip=:transparent,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        colorrange=lift(x -> (0.0, x[2]), volumeRange))
 
     # FIXME sometimes the volume will get rotated so hard it disappears
     # if called before screen is rendered it crashes
@@ -94,9 +113,10 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange; rotation=O
         notify(v.model)
     end=#
 
-    v.inspectable[] = false
+    v_hi.inspectable[] = false
+    v_lo.inspectable[] = false
 
-    return v
+    return v_lo, v_hi
 end
 
 

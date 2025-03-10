@@ -11,6 +11,7 @@ using Clustering: hclust, cutree
 using GLMakie
 using Makie
 using GeometryBasics
+# using GLFW
 
 #Processing and Helpers
 using NearestNeighbors
@@ -43,6 +44,8 @@ function go(trajectory_name::String; kwargs...)
     active_trajectory = get_data_alt(trajectory_name)
     window = build_reduction_window(active_trajectory, main_window)
 
+    # TODO: always set to first monitor so its consistent
+    # Passing GLFW.Monitor doesn't work for some reason
     screen = GLMakie.Screen()
     display(screen, window)
 end
@@ -101,7 +104,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             groups[c] = g
         end
 
-        #=
+        #= 
         pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
@@ -110,7 +113,6 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
         =#
-
         return groups
     end
 
@@ -327,7 +329,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         else
             # should be fine, seems off-center because abs(volMin) != abs(volMax)
             # could additionally calculate volAbsMin to remove noisy values
-            volume_cmap[] = resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+            volume_cmap[] = resample_cmap(:bam, 100)
         end
         notify(volume_cmap)
 
