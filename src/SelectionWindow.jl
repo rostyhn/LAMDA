@@ -6,7 +6,6 @@ using UMAP
 const cluster_colors = :tab20
 
 function build_selection_window(fig_size,
-    data,
     t_list,
     t_to_idx,
     on_click,
@@ -26,7 +25,8 @@ function build_selection_window(fig_size,
     h_range,
     scalar_range,
     settings_window,
-    cluster_assignments
+    cluster_assignments,
+    stretchedPrincipalAxes
 )
 
     window = Figure(size=fig_size)
@@ -96,7 +96,7 @@ function build_selection_window(fig_size,
     cGrid = GridLayout()
     window[1, 1] = cGrid
 
-    setup_cluster_view(window,
+    setup_cluster_view!(window,
         cGrid,
         (1, 1:2),
         hovered_cluster,
@@ -130,9 +130,9 @@ function build_selection_window(fig_size,
         return build_info(l), build_info(r)
     end
 
-    setup_transition_view!(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
+    setup_transition_view!(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes)
 
-    setup_transition_view!(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range)
+    setup_transition_view!(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes)
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
@@ -254,6 +254,7 @@ function setup_transition_view!(
     alignment_rotations,
     on_click,
     scalar_range,
+    stretchedPrincipalAxes
 )
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
@@ -269,6 +270,7 @@ function setup_transition_view!(
     m = Menu(fig,
         options=["Volume",
             "Initial State",
+            "Superquadrics",
             "Final State"],
         default="Volume")
 
@@ -318,6 +320,8 @@ function setup_transition_view!(
         return gg, time, scalar_vals
     end
 
+    # could pass all of these functions further down
+
     function choose_scene(selection)
         if selection == "Volume"
             gg = GridLayout(g[end+1, :])
@@ -331,7 +335,7 @@ function setup_transition_view!(
             vd = lift((x, y, z) ->
                     reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
 
-            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y][2], alignment_rotations, t))
+            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange, lift((x, y) -> x[y], alignment_rotations, t))
             return [], [gg]
         else
             t_ap = @lift begin
@@ -347,14 +351,23 @@ function setup_transition_view!(
                 return (init, final)
             end
 
-            if selection == "Initial State"
-                gg, time, scalar_vals = atom_widgets(0.0, t)
-            else
-                gg, time, scalar_vals = atom_widgets(1.0, t)
-            end
+            if selection == "Superquadrics"
+                vd = lift((x, y, z) ->
+                        reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
+                points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
+                spa = lift(x -> stretchedPrincipalAxes[x], t)
 
-            simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
-            return [], [gg]
+                return superquadrics_view!(rootScene, points, spa, vd, vol_cmap, volumeRange)
+            else
+                if selection == "Initial State"
+                    gg, time, scalar_vals = atom_widgets(0.0, t)
+                else
+                    gg, time, scalar_vals = atom_widgets(1.0, t)
+                end
+
+                simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+                return [], [gg]
+            end
         end
     end
 
@@ -364,7 +377,7 @@ function setup_transition_view!(
 end
 
 
-function setup_cluster_view(fig,
+function setup_cluster_view!(fig,
     parentGrid,
     loc,
     clusters,

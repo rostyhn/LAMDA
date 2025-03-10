@@ -240,7 +240,7 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
         if selection == "Volume"
             vd = lift((x, y, z) ->
                     reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-            v_lo, v_hi = volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange; rotation=lift((x, y) -> x[y][2], alignment_rotations, t), update=true)
+            v_lo, v_hi = volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange, lift((x, y) -> x[y], alignment_rotations, t); update=true)
 
             @lift begin
                 v_lo.visible[] = $is_visible

@@ -52,20 +52,22 @@ end
 
 function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing, distance_matrix=nothing)
     # GLMakie.closeall() # close reduction window 
-    transitionInvariants1 = active_trajectory["t1"]
-    transitionInvariants2 = active_trajectory["t2"]
-    transitionInvariants3 = active_trajectory["t3"]
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     scalars = active_trajectory["scalars"]
     scalar_range = active_trajectory["scalar_range"]
+
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
+
     alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
     alignedPositions = active_trajectory["alignedPositions"] # positions as points
     kdTrees = active_trajectory["kdTrees"]
+
     alignments = active_trajectory["alignments"]
+
     dm = active_trajectory["selected_dm"]
+
     transitionSequence = active_trajectory["reduced_transitions"]
     trajectory_name = active_trajectory["name"]
 
@@ -104,7 +106,6 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             groups[c] = g
         end
 
-        #=
         pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
@@ -112,7 +113,6 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         end
 
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
-        =#
         return groups
     end
 
@@ -125,7 +125,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
 
-        rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool}}()
+        rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool,Tuple{Int,Int}}}()
         for (clusterIdx, g) in $cluster_groups
             # find reference t
             m = $dm
@@ -143,7 +143,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
             ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(features[ref_t][1])))
 
-            rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false)
+            rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false, ref_t)
 
             for t in ts
                 t_s1_pos = alignedPositionsMatrices[t][1]
@@ -161,8 +161,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
                 R = (res1 < res2) ? R1 : R2
                 shift = (res1 < res2) ? t_s1_shift : t_s2_shift
-                rot[t] = (shift, R, res1 > res2)
-                @show shift
+                rot[t] = (shift, R, res1 > res2, ref_t)
             end
         end
 
@@ -206,9 +205,11 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     # should be cached
     bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
+    bonds = Dict()
     bdMin = floatmax(Float32)
     bdMax = floatmin(Float32)
-    for t in transitionSequence
+    println("Calculating bonds...")
+    @showprogress for t in transitionSequence
         s1, s2 = t
         dm1 = distanceMatrices[s1]
         dm2 = distanceMatrices[s2]
@@ -221,13 +222,11 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         bdMax = max(bdMax, maximum(vals))
 
         bondDeltas[t] = bd
+        bonds[t] = calc_bonds(connectivity[t[1]])
     end
 
     lsExtrema = (bdMin, bdMax)
     ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-
-    available_matrices = Dict()
-    available_matrices["bondDeltas"] = bondDeltas
 
     molGrid = Figure()
     Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
@@ -355,7 +354,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         kdTree1 = kdTrees[t][1]
 
         # 1.0 should be transitionGlyphSize
-        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], transitionInvariants2[t], 3.0, 0.1)[:]
+        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], 3.0, 0.1)[:]
         ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t], connectivity[t[1]])
 
         build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
@@ -364,7 +363,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), available_matrices, transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dm, volumeData, sampleRanges, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments)
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dm, volumeData, sampleRanges, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments, stretchedPrincipalAxes)
 
     #= 
     # creating screen after the window is built prevents subtle bugs
