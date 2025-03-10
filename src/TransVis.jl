@@ -328,8 +328,9 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
         else
             # should be fine, seems off-center because abs(volMin) != abs(volMax)
-            # could additionally calculate volAbsMin to remove noisy values
-            volume_cmap[] = resample_cmap(:bam, 100)
+            lowmap = reverse(resample_cmap(:RdPu_3, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.1) .^ 6))
+            himap = resample_cmap(:greens, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.1) .^ 6)
+            volume_cmap[] = vcat(lowmap, himap)
         end
         notify(volume_cmap)
 
