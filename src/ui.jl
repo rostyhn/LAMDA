@@ -133,7 +133,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
 end
 
 
-function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, vol_cmap, invariantRange)
+function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, vol_cmap, invariantRange, inspector)
     aa1 = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, volumeData)
     sq = Observable(superquadric.(1.0, points[], stretchedPrincipalAxes[], 3.0, 0.1)[:])
 
@@ -168,33 +168,24 @@ function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, 
     )
     m_hi.inspectable[] = false
 
-    #=
     sqHoverListener = on(events(scene).mouseposition) do mp
         if is_mouseinside(scene)
             plot, idx = pick(scene)
-            if plot == ls
-                inspector.plot.text[] = string("Weight ", ls.color[][idx])
-                inspector.plot.visible[] = true
-                inspector.plot.position = mp
-                return Consume(true)
-            elseif plot != Nothing
+            if plot != Nothing
                 pos = position_on_plot(plot, idx)
-                idx, d = NearestNeighbors.nn(transitionKDTree, pos)
                 if !isnan(pos)
-                    inspector.plot.text[] = string("Atom ", idx)
+                    inspector.plot.text[] = string(plot.color[][idx])
                     inspector.plot.visible[] = true
                     inspector.plot.position = mp
-                    return Consume(true)
                 end
-            else
-                return Consume(true)
             end
+            return Consume(true)
         end
         return Consume(false)
-    end=#
+    end
 
     update_cam!(parent_scene(m_lo))
-    return [calc_sq], []
+    return [calc_sq, sqHoverListener], []
 end
 
 

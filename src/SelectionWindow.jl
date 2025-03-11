@@ -256,7 +256,7 @@ function setup_transition_view!(
     on_click,
     scalar_range,
     stretchedPrincipalAxes,
-    selected_invariant
+    selected_invariant,
 )
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
@@ -267,7 +267,7 @@ function setup_transition_view!(
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    DataInspector(rootScene)
+    inspector = DataInspector(rootScene)
 
     m = Menu(fig,
         options=["Volume",
@@ -371,7 +371,7 @@ function setup_transition_view!(
                     colormap=vol_cmap,
                     tellwidth=false)
 
-                il, is = superquadrics_view!(rootScene, points, spa, invariant, vol_cmap, invariantRange)
+                il, is = superquadrics_view!(rootScene, points, spa, invariant, vol_cmap, invariantRange, inspector)
                 return il, [gg]
             else
                 if selection == "Initial State"
