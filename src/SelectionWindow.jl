@@ -306,7 +306,7 @@ function setup_transition_view!(
             else
                 gg = GridLayout(g[end+1, :])
                 time, slider = widgets["Movement"](0.0, gg)
-                render_views[selection](rootScene, t, time)
+                render_views[selection](rootScene, cluster_idx, time)
                 return [], [gg]
             end
         end

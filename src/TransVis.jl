@@ -403,18 +403,29 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_movement_view(scene, transition, time)
-        t_ap = create_position_alignment_observer(transition)
-        bondVals = lift(x -> scalars["absAvgBonds"][x], transition)
+    function render_movement_view(scene, cluster_idx, time)
+        # first attempt, this is really dependent on the quality of the alignment
+        t_ap = @lift begin
+            g = $cluster_groups[$cluster_idx]
+            ts = map(x -> transitionSequence[x], g)
+            bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
+            posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
 
-        simple_atom_view!(scene, t_ap, bondVals, (0.5, 2.0), atom_cmap, time)
+            inits = reduce(vcat, first.(posValsTup))
+            fins = reduce(vcat, last.(posValsTup))
 
+            return (inits, fins), bondVals
+        end
+
+        simple_atom_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time)
+
+        #=
         l = @lift begin
             # calculate 10 interpolated positions for each moving atom
-            idx = findall(x -> x > 0.5, $bondVals)
+            idx = findall(x -> x > 0.5, $t_ap[2])
 
-            init_lines = $t_ap[1][idx, :]
-            final_lines = $t_ap[2][idx, :]
+            init_lines = $t_ap[1][1][idx, :]
+            final_lines = $t_ap[1][2][idx, :]
 
             lines = []
             interpolated_range = collect(0.0:0.1:1.0)
@@ -428,7 +439,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
         lin = lines!(scene, l, overdraw=true)
         lin.inspectable = false
-
+        =#
         return [], []
     end
 

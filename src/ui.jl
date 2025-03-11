@@ -58,11 +58,17 @@ end
 function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
     int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
 
-    s = scatter!(scene,
-        lift(x -> x[:, 1], int_pos),
-        lift(x -> x[:, 2], int_pos),
-        lift(x -> x[:, 3], int_pos);
-        color=lift(x -> x, scalars),
+    # makes it so the atom view can handle points changing
+    colors = Observable(scalars[])
+    points = Observable(Point3f.(eachrow(int_pos[])))
+    on(int_pos) do ip
+        points.val = Point3f.(eachrow(ip))
+        colors[] = scalars[]
+        points[] = points[]
+    end
+
+    s = scatter!(scene, points;
+        color=colors,
         colorrange=scalar_range,
         lowclip=:transparent,
         colormap=cmap,
