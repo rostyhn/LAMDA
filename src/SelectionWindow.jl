@@ -220,14 +220,17 @@ function build_selection_window(fig_size,
         r_last_bBox = calc_cluster_bounding_box($r_hovered_cluster, $cluster_groups, $reordered_matrix[2], r_last_bBox)
     end
 
-    function on_dendrogram_hover(c)
-        #=if !isempty(c)
-            hovered_cluster[] = c
-            notify(hovered_cluster)
-        end=#
+    function on_dendrogram_click(clusters, keyboard)
+        if Keyboard.a in keyboard
+            l_hovered_cluster[] = clusters
+            notify(l_hovered_cluster)
+        elseif Keyboard.d in keyboard
+            r_hovered_cluster[] = clusters
+            notify(r_hovered_cluster)
+        end
     end
 
-    dendrogram!(graph_ax, clustering, h_cutoff, h_range; hover_callbackfn=on_dendrogram_hover, colormap=cluster_colors)
+    dendrogram!(graph_ax, clustering, h_cutoff, h_range; on_click=on_dendrogram_click, colormap=cluster_colors)
     linkxaxes!(graph_ax, hm_ax)
 
     settings_btn = Button(window, label="Settings")

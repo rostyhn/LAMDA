@@ -53,7 +53,7 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
     end
 end
 
-function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, hovered_index=Observable(0), kwargs...)
+function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, on_click=((x, y) -> ()), kwargs...)
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables
@@ -72,16 +72,8 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         end
 
         # to get label idx just divide by 2
-        labelfn = (plt, idx, pos) -> str_limit(clusters[div(idx, 2)])
-
-        last_bBox = nothing
-        function on_hover(inspector, plot, idx)
-            status = show_data(inspector, plot, idx)
-            if status && length(clusters[div(idx, 2)]) > 0
-                hover_callbackfn(clusters[div(idx, 2)])
-            end
-
-            return status
+        function get_cluster(i)
+            return clusters[div(i, 2)]
         end
 
         cutoff_line = ([0, length(h[].order)], [$cutoff, $cutoff])
@@ -91,16 +83,38 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
             cl_to_idx[c] = i
         end
 
-        return lines, colors, labelfn, on_hover, cutoff_line, cl_to_idx
+        return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters
     end
 
     colors = lift(x -> x[2], dendrogram)
 
-    linesegments!(ax,
+    hovered = Observable(Set{Int}(1))
+
+    function on_hover(plt, idx, pos)
+        cl = dendrogram[][5](2)
+        if div(idx, 2) < length(dendrogram[][6])
+            cl = dendrogram[][5](idx)
+        end
+        hovered[] = cl
+        notify(hovered)
+        return string(cl)
+    end
+
+    ls = linesegments!(ax,
         lift(x -> x[1], dendrogram);
         color=colors,
-        inspector_label=lift(x -> x[3], dendrogram),
-        inspector_hover=lift(x -> x[4], dendrogram))
+        inspector_label=on_hover,
+    )
+
+    on(events(parent_scene(ls)).mousebutton) do e
+        if is_mouseinside(parent_scene(ls))
+            if e.button == Mouse.left && e.action == Mouse.press
+                on_click(hovered[], events(ls).keyboardstate)
+            end
+        end
+        return Consume(true)
+    end
+
 
     last_bBox = nothing
 
@@ -122,7 +136,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
     =#
 
     # add cutoff line
-    l = lines!(ax, lift(x -> x[5][1], dendrogram), lift(x -> x[5][2], dendrogram);
+    l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
         linestyle=:dash,
         color=:grey,
         visible=lift((x, y) -> x > minimum(y.heights), cutoff, h))
