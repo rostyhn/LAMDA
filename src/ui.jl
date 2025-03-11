@@ -133,8 +133,8 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
 end
 
 
-function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, vol_cmap, invariantRange, inspector)
-    aa1 = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, volumeData)
+function superquadrics_view!(scene, points, stretchedPrincipalAxes, invariant, vol_cmap, invariantRange, inspector)
+    aa1 = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, invariant)
     sq = Observable(superquadric.(1.0, points[], stretchedPrincipalAxes[], 3.0, 0.1)[:])
 
     calc_sq = on(stretchedPrincipalAxes; update=true) do spa
@@ -142,11 +142,32 @@ function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, 
         notify(sq)
     end
 
+    # try to only render visible points, helps with point picking when hovering 
+    v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), aa1, points)
+    v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), aa1, points)
+
+    lo_sq = Observable(sq[][v_lo[]])
+    lo_col = Observable(aa1[][v_lo[]])
+
+    hi_sq = Observable(sq[][v_hi[]])
+    hi_col = Observable(aa1[][v_hi[]])
+
+    on(v_lo) do idx
+        lo_sq.val = sq[][idx]
+        lo_col[] = aa1[][idx]
+        notify(lo_sq)
+    end
+
+    on(v_hi) do idx
+        hi_sq.val = sq[][idx]
+        hi_col[] = aa1[][idx]
+        notify(hi_sq)
+    end
+
     m_lo = mesh!(
         scene,
-        sq,
-        color=aa1,
-        lowclip=:transparent,
+        lo_sq,
+        color=lo_col,#aa1,
         highclip=:transparent,
         transparency=true,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
@@ -157,10 +178,9 @@ function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, 
 
     m_hi = mesh!(
         scene,
-        sq,
-        color=aa1,
+        hi_sq,
+        color=hi_col,
         lowclip=:transparent,
-        highclip=:transparent,
         transparency=true,
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
