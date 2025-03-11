@@ -126,6 +126,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             m = $dm
             dist_sum = map(x -> sum(m[x, :][g]), g)
             ref_t_idx = g[argmin(dist_sum)]
+
             reps[clusterIdx] = transitionSequence[ref_t_idx]
         end
         return reps
@@ -220,6 +221,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     # should be cached
     bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
+    absAvgBonds = Dict{Tuple{Int16,Int16},Array{Float32}}()
     bonds = Dict()
     bdMin = floatmax(Float32)
     bdMax = floatmin(Float32)
@@ -236,9 +238,17 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         bdMin = min(bdMin, minimum(vals))
         bdMax = max(bdMax, maximum(vals))
 
+        avgs = Vector{Float32}(undef, length(bd[:, 1]))
+        for (i, r) in enumerate(eachrow(bd * connectivity[t[1]]))
+            cartesians = length(findall(!iszero, r))
+            avgs[i] = sum(abs.(r)) / cartesians
+        end
+        absAvgBonds[t] = avgs
         bondDeltas[t] = bd
         bonds[t] = calc_bonds(connectivity[t[1]])
     end
+
+    scalars["absAvgBonds"] = absAvgBonds
 
     lsExtrema = (bdMin, bdMax)
     ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)

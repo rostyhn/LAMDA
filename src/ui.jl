@@ -188,6 +188,10 @@ function superquadrics_view!(scene, points, stretchedPrincipalAxes, invariant, v
     )
     m_hi.inspectable[] = false
 
+    on(lo_sq) do ls
+        update_cam!(parent_scene(m_lo))
+    end
+
     sqHoverListener = on(events(scene).mouseposition) do mp
         if is_mouseinside(scene)
             plot, idx = pick(scene)
