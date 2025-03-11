@@ -6,20 +6,19 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
-function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositionMatrices,
-    alignment_rotations, volData, sampleRanges, scalars, scalarRange, t_to_idx, vol_cmap, volumeRange, mat_range; fig_size=(400, 400))
+function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
     mat_hovered = Observable((0, 0))
 
-    scene_selector = Observable("Initial State")
+    scene_selector = Observable("Atom")
     scalar_selector = Observable(first(keys(scalars)))
 
     title = Label(window, "Cluster $(str_limit(clusters))", fontsize=30)
 
     render_menu = Menu(window,
-        options=["Initial State", "Volume"],
+        options=collect(keys(render_views)),
         default=scene_selector[], tellwidth=false)
 
     on(render_menu.selection) do s
@@ -118,6 +117,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositio
     end
     fp = first(ts_pairs)
 
+    idx = 1
     scenes = []
     scene_info = []
     for i in 1:GRID_X
@@ -129,6 +129,13 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositio
             )
             DataInspector(rootScene)
 
+            #=val = fp[1]
+            if idx > length(fp)
+                val = nothing
+            end
+            t = Observable{Union{Nothing,Tuple{Int,Int}}}(fp[1])
+
+            =#
             t = Observable(fp[1])
             mtx_idx = Observable(fp[2])
 
@@ -147,11 +154,13 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositio
                     is_visible[] = false
                 end
             end
-            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, alignedPositionMatrices, alignment_rotations, scalars, scalarRange, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible, mtx_idx)
+
+            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, scalars, t_to_idx, time, is_visible, render_views)
 
             push!(scenes, rootScene.scene)
             push!(scene_info, mtx_idx)
         end
+        idx += 1
     end
 
     # draws rectangle on matrix whenever a transition is hovered over
@@ -226,7 +235,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, alignedPositio
 end
 
 
-function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, ap, alignment_rotations, scalars, scalar_range, t_to_idx, volData, sampleRanges, vol_cmap, volumeRange, time, is_visible, mtx_idx)
+function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, scalars, t_to_idx, time, is_visible, render_views)
     l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))
     i, j = loc
 
@@ -235,13 +244,10 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
 
     t_idx = lift(x -> t_to_idx[x], t)
 
-    atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
+    inspector = DataInspector(rootScene)
     function select_fn(selection)
         if selection == "Volume"
-            vd = lift((x, y, z) ->
-                    reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-            v_lo, v_hi = volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange, lift((x, y) -> x[y], alignment_rotations, t); update=true)
-
+            v_lo, v_hi = render_views[selection](rootScene, t_idx, t)
             @lift begin
                 v_lo.visible[] = $is_visible
                 v_hi.visible[] = $is_visible
@@ -249,25 +255,15 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
                 notify(v_hi.visible)
             end
             return [], []
-        else
-            t_ap = @lift begin
-                shift, rot, flip = $alignment_rotations[$t]
-                s1 = (ap[$t][1] .- shift) * rot
-                s1 = s1 .- mean(s1, dims=1)
-                s2 = (ap[$t][2] .- shift) * rot
-                s2 = s2 .- mean(s2, dims=1)
-                init = flip ? s2 : s1
-                final = flip ? s1 : s2
-
-                return (init, final)
-            end
-
-            s = simple_atom_view!(rootScene, t_ap, lift((x, y) -> scalars[x][y], scalar_selection, t), scalar_range, atom_cmap, time)
+        elseif selection == "Atom"
+            s = render_views[selection](rootScene, t, lift((x, y) -> scalars[x][y], scalar_selection, t), time)
             @lift begin
                 s.visible[] = $is_visible
                 notify(s.visible)
             end
             return [], []
+        else
+            return render_views[selection](rootScene, inspector, t)
         end
     end
 

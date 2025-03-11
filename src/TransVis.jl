@@ -349,21 +349,94 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
     Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
+    invariantRange = @lift begin
+        vals = values(active_trajectory[$selected_invariant])
+        absInvMin = minimum(minimum.(vals))
+        absInvMax = maximum(maximum.(vals))
+        return (absInvMin, absInvMax)
+    end
+
+    function create_position_alignment_observer(transition)
+        return @lift begin
+            shift, rot, flip = $alignment_rotations[$transition]
+            s1 = (alignedPositionsMatrices[$transition][1] .- shift) * rot
+            s1 = s1 .- mean(s1, dims=1)
+            s2 = (alignedPositionsMatrices[$transition][2] .- shift) * rot
+            s2 = s2 .- mean(s2, dims=1)
+
+            init = flip ? s2 : s1
+            final = flip ? s1 : s2
+
+            return (init, final)
+        end
+    end
+
+    # did this to avoid drilling down and passing parameters constantly
+    atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
+    function render_atom_view(scene, transition, scalar_vals, time)
+        t_ap = create_position_alignment_observer(transition)
+        return simple_atom_view!(scene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+    end
+
+    function render_volume_view(scene, t_idx, transition)
+        vd = lift((x, y, z) ->
+                reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volumeData, t_idx, sampleRanges)
+
+        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
+    end
+
+    function render_superquadrics_view(scene, inspector, transition)
+        t_ap = create_position_alignment_observer(transition)
+
+        invariant = lift((x, y) -> active_trajectory[x][y], selected_invariant, transition)
+        points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
+        spa = lift(x -> stretchedPrincipalAxes[x], transition)
+
+        return superquadrics_view!(scene, points, spa, invariant, volume_cmap, invariantRange, inspector)
+    end
+
+    function atom_widgets(init_time, transition, grid)
+        gg = GridLayout(grid[end+1, :])
+
+        opts = sort(collect(keys(scalars)))
+
+        #TODO: add labels to t_slider
+        time = Observable(init_time)
+        t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
+        on(t_slider.value) do x
+            time[] = x
+        end
+
+        scalar_vals = Observable(scalars[first(opts)][transition[]])
+
+        m = Menu(gg[2, 1], options=opts)
+        on(m.selection) do ms
+            scalar_vals[] = scalars[ms][transition[]]
+        end
+
+        Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)
+
+        return gg, time, scalar_vals
+    end
+
+    # just pass this dictionary around and pass in the arguments it needs
+    render_views = Dict()
+    render_views["Atom"] = render_atom_view
+    render_views["Volume"] = render_volume_view
+    render_views["Superquadric"] = render_superquadrics_view
+
+    widgets = Dict()
+    widgets["Atom"] = atom_widgets
+
     function on_click(t, on_window_hover)
-        pos1 = alignedPositions[t][1]
-        kdTree1 = kdTrees[t][1]
-
-        # 1.0 should be transitionGlyphSize
-        sq = superquadric.(1.0, pos1, stretchedPrincipalAxes[t], 3.0, 0.1)[:]
-        ls = buildBonds(alignedPositionsMatrices[t][1], bondDeltas[t], connectivity[t[1]])
-
-        build_mol_window(t, alignedPositions[t], lift((y, z) -> reshape(y[:, t_to_idx[t]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, sampleRanges), volRange, sq, ls, kdTree1, sampleRanges, volume_cmap, on_window_hover, lsExtrema, volFilter.interval, ls_cmap, scalars)
+        t_idx = t_to_idx[t]
+        build_mol_window(t, t_idx, render_views, widgets)
     end
 
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dm, volumeData, sampleRanges, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments, stretchedPrincipalAxes, lift(x -> active_trajectory[x], selected_invariant))
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, cluster_assignments, render_views, widgets, invariantRange)
 
     #= 
     # creating screen after the window is built prevents subtle bugs

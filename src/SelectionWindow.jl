@@ -10,24 +10,19 @@ function build_selection_window(fig_size,
     t_to_idx,
     on_click,
     num_atoms,
-    alignedPositionsMatrices,
-    transitionKDTree,
     dm,
-    volData,
-    sampleRanges,
     volRange,
     vol_cmap,
     clustering,
     scalars,
     h_cutoff,
     cluster_groups,
-    alignment_rotations,
     h_range,
-    scalar_range,
     settings_window,
     cluster_assignments,
-    stretchedPrincipalAxes,
-    selected_invariant
+    render_views,
+    widgets,
+    invariantRange
 )
 
     window = Figure(size=fig_size)
@@ -68,17 +63,10 @@ function build_selection_window(fig_size,
                 ts,
                 collect(eachindex(ts_idx_to_mtx_idx)),
                 vals,
-                alignedPositionsMatrices,
-                alignment_rotations,
-                volData,
-                sampleRanges,
                 scalars,
-                scalar_range,
                 t_to_idx,
-                vol_cmap,
-                volRange,
-                reordered_matrix[][3]
-            )
+                reordered_matrix[][3],
+                render_views)
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
 
@@ -131,9 +119,9 @@ function build_selection_window(fig_size,
         return build_info(l), build_info(r)
     end
 
-    setup_transition_view!(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes, selected_invariant)
+    setup_transition_view!(window, tGrid, (1, 1), lift(x -> x[1], hovered_info), scalars, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
 
-    setup_transition_view!(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes, selected_invariant)
+    setup_transition_view!(window, tGrid, (1, 2), lift(x -> x[2], hovered_info), scalars, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
@@ -245,18 +233,14 @@ function setup_transition_view!(
     fig,
     parentGrid,
     loc,
-    ap,
     hovered,
     scalars,
-    sampleRanges,
-    volData,
     vol_cmap,
     volumeRange,
-    alignment_rotations,
     on_click,
-    scalar_range,
-    stretchedPrincipalAxes,
-    selected_invariant,
+    render_views,
+    widgets,
+    invariantRange
 )
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
@@ -269,14 +253,12 @@ function setup_transition_view!(
 
     inspector = DataInspector(rootScene)
 
-    m = Menu(fig,
-        options=["Volume",
-            "Initial State",
-            "Superquadrics",
-            "Final State"],
-        default="Volume")
-
     sel = Observable("Volume")
+
+    m = Menu(fig,
+        options=collect(keys(render_views)),
+        default=sel[])
+
     on(m.selection) do cw
         sel[] = cw
         notify(sel)
@@ -284,7 +266,7 @@ function setup_transition_view!(
 
     btn = Button(fig, label="Show")
     on(btn.clicks) do n
-        on_click(t_idx[], () -> ())
+        on_click(t[], () -> ())
     end
 
     l = Label(fig, lift(x -> string(x), t), tellwidth=false)
@@ -295,41 +277,8 @@ function setup_transition_view!(
 
     opts = sort(collect(keys(scalars)))
 
-    atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function atom_widgets(init_time, transition)
-        gg = GridLayout(g[end+1, :])
-
-        opts = sort(collect(keys(scalars)))
-
-        #TODO: add labels to t_slider
-        time = Observable(init_time)
-        t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
-        on(t_slider.value) do x
-            time[] = x
-        end
-
-        # sadly, GLmakie is not thread-safe, so can't make a play button
-
-        scalar_vals = Observable(scalars[first(opts)][transition[]])
-
-        m = Menu(gg[2, 1], options=opts)
-        on(m.selection) do ms
-            scalar_vals[] = scalars[ms][transition[]]
-        end
-
-        Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)
-
-        return gg, time, scalar_vals
-    end
-
     # could pass all of these functions further down
 
-    invariantRange = @lift begin
-        vals = values($selected_invariant)
-        absInvMin = minimum(minimum.(vals))
-        absInvMax = maximum(maximum.(vals))
-        return (absInvMin, absInvMax)
-    end
     function choose_scene(selection)
         if selection == "Volume"
             gg = GridLayout(g[end+1, :])
@@ -340,47 +289,21 @@ function setup_transition_view!(
                 colormap=vol_cmap,
                 tellwidth=false)
 
-            vd = lift((x, y, z) ->
-                    reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
-
-            volume_view!(rootScene, vd, sampleRanges, vol_cmap, volumeRange, lift((x, y) -> x[y], alignment_rotations, t))
+            render_views[selection](rootScene, t_idx, t)
             return [], [gg]
         else
-            t_ap = @lift begin
-                shift, rot, flip = $alignment_rotations[$hovered[3]]
-                s1 = (ap[$hovered[3]][1] .- shift) * rot
-                s1 = s1 .- mean(s1, dims=1)
-                s2 = (ap[$hovered[3]][2] .- shift) * rot
-                s2 = s2 .- mean(s2, dims=1)
-
-                init = flip ? s2 : s1
-                final = flip ? s1 : s2
-
-                return (init, final)
-            end
-
-            if selection == "Superquadrics"
-                invariant = lift((x, y) -> x[y], selected_invariant, t)
-                points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
-                spa = lift(x -> stretchedPrincipalAxes[x], t)
-
+            if selection == "Superquadric"
                 gg = GridLayout(g[end+1, :])
                 Colorbar(gg[1, :],
                     colorrange=invariantRange,
                     vertical=false,
                     colormap=vol_cmap,
                     tellwidth=false)
-
-                il, is = superquadrics_view!(rootScene, points, spa, invariant, vol_cmap, invariantRange, inspector)
+                il, is = render_views[selection](rootScene, inspector, t)
                 return il, [gg]
             else
-                if selection == "Initial State"
-                    gg, time, scalar_vals = atom_widgets(0.0, t)
-                else
-                    gg, time, scalar_vals = atom_widgets(1.0, t)
-                end
-
-                simple_atom_view!(rootScene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+                gg, time, scalar_vals = widgets["Atom"](0.0, t, g)
+                render_views[selection](rootScene, t, scalar_vals, time)
                 return [], [gg]
             end
         end
