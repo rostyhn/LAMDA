@@ -106,6 +106,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             groups[c] = g
         end
 
+        #=
         pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
@@ -113,7 +114,21 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         end
 
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
+        =#
+
         return groups
+    end
+
+    cluster_representatives = @lift begin
+        reps = Dict{Int,Tuple{Int,Int}}()
+        for (clusterIdx, g) in $cluster_groups
+            # find reference t
+            m = $dm
+            dist_sum = map(x -> sum(m[x, :][g]), g)
+            ref_t_idx = g[argmin(dist_sum)]
+            reps[clusterIdx] = transitionSequence[ref_t_idx]
+        end
+        return reps
     end
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
@@ -436,7 +451,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, cluster_assignments, render_views, widgets, invariantRange)
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, cluster_assignments, render_views, widgets, invariantRange, cluster_representatives)
 
     #= 
     # creating screen after the window is built prevents subtle bugs

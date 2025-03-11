@@ -22,7 +22,8 @@ function build_selection_window(fig_size,
     cluster_assignments,
     render_views,
     widgets,
-    invariantRange
+    invariantRange,
+    cluster_representatives
 )
 
     window = Figure(size=fig_size)
@@ -103,20 +104,20 @@ function build_selection_window(fig_size,
         l, r = $hovered_transitions
         function build_info(idx)
             t_idx = $clustering.order[idx]
-            return (idx, t_to_idx[t_list[t_idx]], t_list[t_idx], t_idx)
+            cluster = $cluster_assignments[t_idx]
+            rep = $cluster_representatives[cluster]
+            return (cluster, t_to_idx[rep], rep, t_idx)
         end
 
         li = build_info(l)
         ri = build_info(r)
 
-        cl = $cluster_assignments[li[4]]
-        cr = $cluster_assignments[ri[4]]
-        if cl == cr
-            hovered_cluster[] = Set{Int}(cl)
+        if li[1] == ri[1]
+            hovered_cluster[] = Set{Int}(li[1])
             notify(hovered_cluster)
         end
 
-        return build_info(l), build_info(r)
+        return li, ri
     end
 
     setup_transition_view!(window, tGrid, (1, 1), lift(x -> x[1], hovered_info), scalars, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
@@ -242,6 +243,8 @@ function setup_transition_view!(
     widgets,
     invariantRange
 )
+
+    cluster_idx = lift(x -> x[1], hovered)
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
 
@@ -269,7 +272,7 @@ function setup_transition_view!(
         on_click(t[], () -> ())
     end
 
-    l = Label(fig, lift(x -> string(x), t), tellwidth=false)
+    l = Label(fig, lift((x, y) -> string("Cluster $(y) - $(x)"), t, cluster_idx), tellwidth=false)
 
     i, j = loc
     g = vgrid!(rootScene, hgrid!(l, m, btn))
