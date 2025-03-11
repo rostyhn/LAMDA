@@ -13,7 +13,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     mat_hovered = Observable((0, 0))
 
     scene_selector = Observable("Atom")
-    scalar_selector = Observable(first(keys(scalars)))
+    scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
     title = Label(window, "Cluster $(str_limit(clusters))", fontsize=30)
 
@@ -260,7 +260,7 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
             render_views[selection](rootScene, t_idx, t)
             return [], []
         elseif selection == "Atom"
-            render_views[selection](rootScene, t, lift((x, y) -> scalars[x][y], scalar_selection, t), time)
+            render_views[selection](rootScene, t, lift(x -> scalars[x], scalar_selection), time)
             return [], []
         else
             return render_views[selection](rootScene, inspector, t)

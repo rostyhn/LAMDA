@@ -400,7 +400,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, scalar_vals, time)
         t_ap = create_position_alignment_observer(transition)
-        return simple_atom_view!(scene, t_ap, scalar_vals, scalar_range, atom_cmap, time)
+        return simple_atom_view!(scene, t_ap, lift((x, y) -> x[y], scalar_vals, transition), scalar_range, atom_cmap, time)
     end
 
     function render_volume_view(scene, t_idx, transition)
@@ -420,7 +420,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return superquadrics_view!(scene, points, spa, invariant, volume_cmap, invariantRange, inspector)
     end
 
-    function atom_widgets(init_time, transition, grid)
+    function atom_widgets(init_time, grid)
         gg = GridLayout(grid[end+1, :])
 
         opts = sort(collect(keys(scalars)))
@@ -432,11 +432,10 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             time[] = x
         end
 
-        scalar_vals = Observable(scalars[first(opts)][transition[]])
-
-        m = Menu(gg[2, 1], options=opts)
+        scalar_vals = Observable(scalars[first(opts)])
+        m = Menu(gg[2, 1], options=opts, default=first(opts))
         on(m.selection) do ms
-            scalar_vals[] = scalars[ms][transition[]]
+            scalar_vals[] = scalars[ms]
         end
 
         Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)

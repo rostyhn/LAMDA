@@ -42,7 +42,7 @@ function setup_state_view!(fig, loc, startState, transition, t_idx, render_views
             il, is = render_views[selection](rootScene, inspector, t_obs)
             return il, []
         else
-            gg, time, scalar_vals = widgets["Atom"](0.0, t_obs, g)
+            gg, time, scalar_vals = widgets["Atom"](0.0, g)
             render_views[selection](rootScene, t_obs, scalar_vals, time)
             return [], [gg]
         end

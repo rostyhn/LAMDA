@@ -120,9 +120,9 @@ function build_selection_window(fig_size,
         return li, ri
     end
 
-    setup_transition_view!(window, tGrid, (1, 1), lift(x -> x[1], hovered_info), scalars, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    setup_transition_view!(window, tGrid, (1, 1), lift(x -> x[1], hovered_info), vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
 
-    setup_transition_view!(window, tGrid, (1, 2), lift(x -> x[2], hovered_info), scalars, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    setup_transition_view!(window, tGrid, (1, 2), lift(x -> x[2], hovered_info), vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
@@ -235,7 +235,6 @@ function setup_transition_view!(
     parentGrid,
     loc,
     hovered,
-    scalars,
     vol_cmap,
     volumeRange,
     on_click,
@@ -278,10 +277,6 @@ function setup_transition_view!(
     g = vgrid!(rootScene, hgrid!(l, m, btn))
     parentGrid[i, j] = g
 
-    opts = sort(collect(keys(scalars)))
-
-    # could pass all of these functions further down
-
     function choose_scene(selection)
         if selection == "Volume"
             gg = GridLayout(g[end+1, :])
@@ -305,7 +300,7 @@ function setup_transition_view!(
                 il, is = render_views[selection](rootScene, inspector, t)
                 return il, [gg]
             else
-                gg, time, scalar_vals = widgets["Atom"](0.0, t, g)
+                gg, time, scalar_vals = widgets["Atom"](0.0, g)
                 render_views[selection](rootScene, t, scalar_vals, time)
                 return [], [gg]
             end
