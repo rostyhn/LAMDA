@@ -133,24 +133,40 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
 end
 
 
-function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, vol_cmap, volumeRange)
+function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, vol_cmap, invariantRange)
     aa1 = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, volumeData)
     sq = Observable(superquadric.(1.0, points[], stretchedPrincipalAxes[], 3.0, 0.1)[:])
 
-    calc_sq = onany(points, stretchedPrincipalAxes; update=true) do points, stretchedPrincipalAxes
-        sq[] = superquadric.(1.0, points, stretchedPrincipalAxes, 3.0, 0.1)[:]
+    calc_sq = on(stretchedPrincipalAxes; update=true) do spa
+        sq[] = superquadric.(1.0, points[], spa, 3.0, 0.1)[:]
         notify(sq)
     end
 
-    m = mesh!(
+    m_lo = mesh!(
         scene,
         sq,
         color=aa1,
-        colorrange=volumeRange,
-        colormap=vol_cmap,
+        lowclip=:transparent,
+        highclip=:transparent,
+        transparency=true,
+        colorrange=lift(x -> (x[1], 0.0), invariantRange),
+        colormap=lift(x -> x[1:49], vol_cmap),
         fxaa=false,
     )
-    m.inspectable[] = false
+    m_lo.inspectable[] = false
+
+    m_hi = mesh!(
+        scene,
+        sq,
+        color=aa1,
+        lowclip=:transparent,
+        highclip=:transparent,
+        transparency=true,
+        colorrange=lift(x -> (0.0, x[2]), invariantRange),
+        colormap=lift(x -> x[50:100], vol_cmap),
+        fxaa=false,
+    )
+    m_hi.inspectable[] = false
 
     #=
     sqHoverListener = on(events(scene).mouseposition) do mp
@@ -177,7 +193,8 @@ function superquadrics_view!(scene, points, stretchedPrincipalAxes, volumeData, 
         return Consume(false)
     end=#
 
-    return [calc_sq...], []
+    update_cam!(parent_scene(m_lo))
+    return [calc_sq], []
 end
 
 

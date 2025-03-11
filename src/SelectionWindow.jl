@@ -26,7 +26,8 @@ function build_selection_window(fig_size,
     scalar_range,
     settings_window,
     cluster_assignments,
-    stretchedPrincipalAxes
+    stretchedPrincipalAxes,
+    selected_invariant
 )
 
     window = Figure(size=fig_size)
@@ -130,9 +131,9 @@ function build_selection_window(fig_size,
         return build_info(l), build_info(r)
     end
 
-    setup_transition_view!(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes)
+    setup_transition_view!(window, tGrid, (1, 1), alignedPositionsMatrices, lift(x -> x[1], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes, selected_invariant)
 
-    setup_transition_view!(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes)
+    setup_transition_view!(window, tGrid, (1, 2), alignedPositionsMatrices, lift(x -> x[2], hovered_info), scalars, sampleRanges, volData, vol_cmap, volRange, alignment_rotations, on_click, scalar_range, stretchedPrincipalAxes, selected_invariant)
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
@@ -254,7 +255,8 @@ function setup_transition_view!(
     alignment_rotations,
     on_click,
     scalar_range,
-    stretchedPrincipalAxes
+    stretchedPrincipalAxes,
+    selected_invariant
 )
     t_idx = lift(x -> x[2], hovered)
     t = lift(x -> x[3], hovered)
@@ -322,6 +324,12 @@ function setup_transition_view!(
 
     # could pass all of these functions further down
 
+    invariantRange = @lift begin
+        vals = values($selected_invariant)
+        absInvMin = minimum(minimum.(vals))
+        absInvMax = maximum(maximum.(vals))
+        return (absInvMin, absInvMax)
+    end
     function choose_scene(selection)
         if selection == "Volume"
             gg = GridLayout(g[end+1, :])
@@ -352,12 +360,19 @@ function setup_transition_view!(
             end
 
             if selection == "Superquadrics"
-                vd = lift((x, y, z) ->
-                        reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volData, t_idx, sampleRanges)
+                invariant = lift((x, y) -> x[y], selected_invariant, t)
                 points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
                 spa = lift(x -> stretchedPrincipalAxes[x], t)
 
-                return superquadrics_view!(rootScene, points, spa, vd, vol_cmap, volumeRange)
+                gg = GridLayout(g[end+1, :])
+                Colorbar(gg[1, :],
+                    colorrange=invariantRange,
+                    vertical=false,
+                    colormap=vol_cmap,
+                    tellwidth=false)
+
+                il, is = superquadrics_view!(rootScene, points, spa, invariant, vol_cmap, invariantRange)
+                return il, [gg]
             else
                 if selection == "Initial State"
                     gg, time, scalar_vals = atom_widgets(0.0, t)

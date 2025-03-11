@@ -363,7 +363,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dm, volumeData, sampleRanges, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments, stretchedPrincipalAxes)
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, alignedPositionsMatrices, kdTrees, dm, volumeData, sampleRanges, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, alignment_rotations, h_range, scalar_range, settings_window, cluster_assignments, stretchedPrincipalAxes, lift(x -> active_trajectory[x], selected_invariant))
 
     #= 
     # creating screen after the window is built prevents subtle bugs
