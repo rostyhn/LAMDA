@@ -115,8 +115,6 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         notify(mat_hovered)
         return Consume(false)
     end
-    fp = first(ts_pairs)
-
     scenes = []
     scene_info = []
     for i in 1:GRID_X
@@ -149,8 +147,8 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
                     mtx_idx[] = curr_chunk[idx][2]
                     is_visible[] = true
                 else
-                    t[] = nothing
-                    mtx_idx[] = nothing
+                    t.val = nothing
+                    mtx_idx.val = nothing
                     is_visible[] = false
                 end
             end
@@ -237,20 +235,27 @@ end
 
 
 function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, scalars, t_to_idx, time, is_visible, render_views)
+    t_idx::Observable{Union{Nothing,Int}} = lift(x -> get(t_to_idx, x, nothing), t)
+    is_empty = lift((x, y) -> isnothing(x) || isnothing(y), t, t_idx)
+
     l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))
     i, j = loc
 
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
 
-    t_idx = lift(x -> get(t_to_idx, x, nothing), t)
-
-    is_empty = lift(x -> isnothing(x), t)
     inspector = DataInspector(rootScene)
     function select_fn(selection)
+        #band-aid solution for now, will break if user goes to last page and then switches selection
         if is_empty[]
             return [], []
         end
+
+        @lift begin
+            parent_scene(rootScene).visible[] = $is_visible
+            notify(parent_scene(rootScene).visible)
+        end
+
         if selection == "Volume"
             render_views[selection](rootScene, t_idx, t)
             return [], []
@@ -261,6 +266,7 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
             return render_views[selection](rootScene, inspector, t)
         end
     end
+
 
     scene_switcher(rootScene, g, scene_selection, select_fn)
 end
