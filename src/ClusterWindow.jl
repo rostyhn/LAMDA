@@ -117,7 +117,6 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     end
     fp = first(ts_pairs)
 
-    idx = 1
     scenes = []
     scene_info = []
     for i in 1:GRID_X
@@ -129,19 +128,18 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
             )
             DataInspector(rootScene)
 
-            #=val = fp[1]
-            if idx > length(fp)
-                val = nothing
+            idx = (i - 1) * 4 + j
+            init_t = nothing
+            init_mtx = nothing
+            if idx <= length(ts_pairs)
+                init_t = ts_pairs[idx][1]
+                init_mtx = ts_pairs[idx][2]
             end
-            t = Observable{Union{Nothing,Tuple{Int,Int}}}(fp[1])
 
-            =#
-            t = Observable(fp[1])
-            mtx_idx = Observable(fp[2])
+            t = Observable{Union{Nothing,Tuple{Int,Int}}}(init_t)
+            mtx_idx = Observable{Union{Nothing,Int}}(init_mtx)
 
             is_visible = Observable(false)
-            idx = (i - 1) * 4 + j
-
             # could be more efficient if this gets updated per page instead of per transition
             on(curr_page, update=true) do cp
                 curr_chunk = ts_chunks[cp]
@@ -151,6 +149,8 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
                     mtx_idx[] = curr_chunk[idx][2]
                     is_visible[] = true
                 else
+                    t[] = nothing
+                    mtx_idx[] = nothing
                     is_visible[] = false
                 end
             end
@@ -160,7 +160,6 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
             push!(scenes, rootScene.scene)
             push!(scene_info, mtx_idx)
         end
-        idx += 1
     end
 
     # draws rectangle on matrix whenever a transition is hovered over
@@ -176,8 +175,10 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
                         if !isnothing(bBox)
                             delete!(parent_scene(bBox), bBox)
                         end
-                        bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][], scene_info[i][])
-                        last_bBox = i
+                        if !isnothing(scene_info[i][])
+                            bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][], scene_info[i][])
+                            last_bBox = i
+                        end
                     end
                     found = true
                     break
@@ -242,25 +243,19 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
 
-    t_idx = lift(x -> t_to_idx[x], t)
+    t_idx = lift(x -> get(t_to_idx, x, nothing), t)
 
+    is_empty = lift(x -> isnothing(x), t)
     inspector = DataInspector(rootScene)
     function select_fn(selection)
+        if is_empty[]
+            return [], []
+        end
         if selection == "Volume"
-            v_lo, v_hi = render_views[selection](rootScene, t_idx, t)
-            @lift begin
-                v_lo.visible[] = $is_visible
-                v_hi.visible[] = $is_visible
-                notify(v_lo.visible)
-                notify(v_hi.visible)
-            end
+            render_views[selection](rootScene, t_idx, t)
             return [], []
         elseif selection == "Atom"
-            s = render_views[selection](rootScene, t, lift((x, y) -> scalars[x][y], scalar_selection, t), time)
-            @lift begin
-                s.visible[] = $is_visible
-                notify(s.visible)
-            end
+            render_views[selection](rootScene, t, lift((x, y) -> scalars[x][y], scalar_selection, t), time)
             return [], []
         else
             return render_views[selection](rootScene, inspector, t)
