@@ -81,15 +81,25 @@ function build_selection_window(fig_size,
     end
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    hovered_cluster = Observable(Set{Int}(1))
+    l_hovered_cluster = Observable(Set{Int}(1))
+    r_hovered_cluster = Observable(Set{Int}(1))
 
     cGrid = GridLayout()
     window[1, 1] = cGrid
 
     setup_cluster_view!(window,
         cGrid,
-        (1, 1:2),
-        hovered_cluster,
+        (1, 1),
+        l_hovered_cluster,
+        cluster_groups,
+        reordered_matrix,
+        on_show_cluster_click
+    )
+
+    setup_cluster_view!(window,
+        cGrid,
+        (1, 2),
+        r_hovered_cluster,
         cluster_groups,
         reordered_matrix,
         on_show_cluster_click
@@ -112,10 +122,11 @@ function build_selection_window(fig_size,
         li = build_info(l)
         ri = build_info(r)
 
-        if li[1] == ri[1]
-            hovered_cluster[] = Set{Int}(li[1])
-            notify(hovered_cluster)
-        end
+        l_hovered_cluster[] = Set{Int}(li[1])
+        notify(l_hovered_cluster)
+
+        r_hovered_cluster[] = Set{Int}(ri[1])
+        notify(r_hovered_cluster)
 
         return li, ri
     end
@@ -127,8 +138,11 @@ function build_selection_window(fig_size,
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
-        hovered_cluster[] = Set{Int}(1)
-        notify(hovered_cluster)
+        l_hovered_cluster[] = Set{Int}(1)
+        notify(l_hovered_cluster)
+
+        r_hovered_cluster[] = Set{Int}(1)
+        notify(r_hovered_cluster)
 
         h_cutoff[] = parse(Float64, s)
         notify(h_cutoff)
@@ -180,33 +194,40 @@ function build_selection_window(fig_size,
         end
     end
 
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    last_bBox = nothing
-    @lift begin
+    function calc_cluster_bounding_box(hc, cg, rm, last_bBox)
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
-        if length($hovered_cluster) > 0
-            ts_idx = reduce(vcat, map(x -> $cluster_groups[x], collect($hovered_cluster)))
-            idx_to_mtx = $reordered_matrix[2]
+
+        if length(hc) > 0
+            ts_idx = reduce(vcat, map(x -> cg[x], collect(hc)))
+            idx_to_mtx = rm
 
             m_idx = map(x -> idx_to_mtx[x], ts_idx)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            last_bBox = draw_bbox_pixel_space!(hm_ax.scene, lo, hi)
+            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi)
         end
+    end
+
+    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
+    l_last_bBox = nothing
+    r_last_bBox = nothing
+    @lift begin
+        l_last_bBox = calc_cluster_bounding_box($l_hovered_cluster, $cluster_groups, $reordered_matrix[2], l_last_bBox)
+        r_last_bBox = calc_cluster_bounding_box($r_hovered_cluster, $cluster_groups, $reordered_matrix[2], r_last_bBox)
     end
 
     function on_dendrogram_hover(c)
-        if !isempty(c)
+        #=if !isempty(c)
             hovered_cluster[] = c
             notify(hovered_cluster)
-        end
+        end=#
     end
 
-    dendrogram!(graph_ax, clustering, h_cutoff, h_range; hover_callbackfn=on_dendrogram_hover, colormap=cluster_colors, hovered_index=hovered_cluster)
+    dendrogram!(graph_ax, clustering, h_cutoff, h_range; hover_callbackfn=on_dendrogram_hover, colormap=cluster_colors)
     linkxaxes!(graph_ax, hm_ax)
 
     settings_btn = Button(window, label="Settings")
