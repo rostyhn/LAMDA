@@ -299,9 +299,14 @@ function setup_transition_view!(
                     tellwidth=false)
                 il, is = render_views[selection](rootScene, inspector, t)
                 return il, [gg]
-            else
+            elseif selection == "Atom"
                 gg, time, scalar_vals = widgets["Atom"](0.0, g)
                 render_views[selection](rootScene, t, scalar_vals, time)
+                return [], [gg]
+            else
+                gg = GridLayout(g[end+1, :])
+                time, slider = widgets["Movement"](0.0, gg)
+                render_views[selection](rootScene, t, time)
                 return [], [gg]
             end
         end

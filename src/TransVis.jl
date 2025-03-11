@@ -42,7 +42,7 @@ export go
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
-    window = build_reduction_window(active_trajectory, main_window)
+    window = build_reduction_window(active_trajectory, main_window; kwargs...)
 
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
@@ -50,7 +50,7 @@ function go(trajectory_name::String; kwargs...)
     display(screen, window)
 end
 
-function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing, distance_matrix=nothing)
+function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
     # GLMakie.closeall() # close reduction window 
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
@@ -410,6 +410,35 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
+    function render_movement_view(scene, transition, time)
+        t_ap = create_position_alignment_observer(transition)
+        bondVals = lift(x -> scalars["absAvgBonds"][x], transition)
+
+        simple_atom_view!(scene, t_ap, bondVals, (0.5, 2.0), atom_cmap, time)
+
+        l = @lift begin
+            # calculate 10 interpolated positions for each moving atom
+            idx = findall(x -> x > 0.5, $bondVals)
+
+            init_lines = $t_ap[1][idx, :]
+            final_lines = $t_ap[2][idx, :]
+            # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
+
+            lines = []
+            interpolated_range = collect(0.0:0.1:1.0)
+            for (init, final) in zip(eachrow(init_lines), eachrow(final_lines))
+                diff = final - init
+                push!(lines, map(x -> Point3f(init + (diff .* x)), interpolated_range)...)
+                push!(lines, Point3f(NaN))
+            end
+            return lines
+        end
+
+        lines!(scene, l, overdraw=true)
+
+        return [], []
+    end
+
     function render_superquadrics_view(scene, inspector, transition)
         t_ap = create_position_alignment_observer(transition)
 
@@ -420,17 +449,21 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return superquadrics_view!(scene, points, spa, invariant, volume_cmap, invariantRange, inspector)
     end
 
+    function time_slider(init_time, grid)
+        time = Observable(init_time)
+        t_slider = Slider(grid[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
+        on(t_slider.value) do x
+            time[] = x
+        end
+
+        return time, t_slider
+    end
+
     function atom_widgets(init_time, grid)
         gg = GridLayout(grid[end+1, :])
 
         opts = sort(collect(keys(scalars)))
-
-        #TODO: add labels to t_slider
-        time = Observable(init_time)
-        t_slider = Slider(gg[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
-        on(t_slider.value) do x
-            time[] = x
-        end
+        time, t_slider = time_slider(init_time, grid)
 
         scalar_vals = Observable(scalars[first(opts)])
         m = Menu(gg[2, 1], options=opts, default=first(opts))
@@ -448,9 +481,11 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
     render_views["Superquadric"] = render_superquadrics_view
+    render_views["Movement"] = render_movement_view
 
     widgets = Dict()
     widgets["Atom"] = atom_widgets
+    widgets["Movement"] = time_slider
 
     function on_click(t, on_window_hover)
         t_idx = t_to_idx[t]

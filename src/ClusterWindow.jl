@@ -262,8 +262,10 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
         elseif selection == "Atom"
             render_views[selection](rootScene, t, lift(x -> scalars[x], scalar_selection), time)
             return [], []
-        else
+        elseif selection == "Superquadric"
             return render_views[selection](rootScene, inspector, t)
+        else
+            return render_views[selection](rootScene, t, time)
         end
     end
 

@@ -1,5 +1,6 @@
-function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, kwargs...)
+function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
     window = Figure(size=(400, 400))
+    @show distance_matrix
     # only need transitions and distance matrix
     dms = active_trajectory["dms"]
     transitionSequence = active_trajectory["transitions"]
@@ -12,7 +13,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-    init_dist_mat = first(keys(dms))
+    init_dist_mat = (isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix
     selected_dm = Observable(init_dist_mat)
     clustering = @lift begin
         println("Clustering $($selected_dm)...")

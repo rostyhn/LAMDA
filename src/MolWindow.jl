@@ -41,9 +41,14 @@ function setup_state_view!(fig, loc, startState, transition, t_idx, render_views
         elseif selection == "Superquadric"
             il, is = render_views[selection](rootScene, inspector, t_obs)
             return il, []
-        else
+        elseif selection == "Atom"
             gg, time, scalar_vals = widgets["Atom"](0.0, g)
             render_views[selection](rootScene, t_obs, scalar_vals, time)
+            return [], [gg]
+        else
+            gg = GridLayout(g[end+1, :])
+            time, slider = widgets["Movement"](0.0, gg)
+            render_views[selection](rootScene, t_obs, time)
             return [], [gg]
         end
     end
