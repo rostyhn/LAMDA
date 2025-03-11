@@ -21,7 +21,7 @@ function setup_state_view!(fig, loc, startState, transition, t_idx, render_views
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    m = Menu(fig, options=collect(keys(render_views)),
+    m = Menu(fig, options=SINGLE_TRANSITION_RENDER_OPTIONS,
         default=startState)
 
     i, j = loc

@@ -23,7 +23,7 @@ function build_selection_window(fig_size,
     render_views,
     widgets,
     invariantRange,
-    cluster_representatives
+    cluster_representatives,
 )
 
     window = Figure(size=fig_size)

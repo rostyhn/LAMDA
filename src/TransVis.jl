@@ -39,6 +39,8 @@ include("ui.jl")
 
 export go
 
+const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
+
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
@@ -383,16 +385,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     function create_position_alignment_observer(transition)
         return @lift begin
-            shift, rot, flip = $alignment_rotations[$transition]
-            s1 = (alignedPositionsMatrices[$transition][1] .- shift) * rot
-            s1 = s1 .- mean(s1, dims=1)
-            s2 = (alignedPositionsMatrices[$transition][2] .- shift) * rot
-            s2 = s2 .- mean(s2, dims=1)
-
-            init = flip ? s2 : s1
-            final = flip ? s1 : s2
-
-            return (init, final)
+            return apply_alignment($alignment_rotations[$transition], $alignedPositionsMatrices[$transition])
         end
     end
 
@@ -422,11 +415,10 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
             init_lines = $t_ap[1][idx, :]
             final_lines = $t_ap[2][idx, :]
-            # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
 
             lines = []
             interpolated_range = collect(0.0:0.1:1.0)
-            for (init, final) in zip(eachrow(init_lines), eachrow(final_lines))
+            for (i, (init, final)) in enumerate(zip(eachrow(init_lines), eachrow(final_lines)))
                 diff = final - init
                 push!(lines, map(x -> Point3f(init + (diff .* x)), interpolated_range)...)
                 push!(lines, Point3f(NaN))
@@ -434,7 +426,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             return lines
         end
 
-        lines!(scene, l, overdraw=true)
+        lin = lines!(scene, l, overdraw=true)
+        lin.inspectable = false
 
         return [], []
     end
@@ -463,7 +456,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         gg = GridLayout(grid[end+1, :])
 
         opts = sort(collect(keys(scalars)))
-        time, t_slider = time_slider(init_time, grid)
+        time, t_slider = time_slider(init_time, gg)
 
         scalar_vals = Observable(scalars[first(opts)])
         m = Menu(gg[2, 1], options=opts, default=first(opts))

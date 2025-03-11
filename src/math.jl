@@ -125,6 +125,20 @@ function superquadric(scale::Float64,
     return mesh
 end
 
+
+function apply_alignment(rot_tuple, ap_tuple)
+    shift, rot, flip = rot_tuple
+    s1 = (ap_tuple[1] .- shift) * rot
+    s1 = s1 .- mean(s1, dims=1)
+    s2 = (ap_tuple[2] .- shift) * rot
+    s2 = s2 .- mean(s2, dims=1)
+
+    init = flip ? s2 : s1
+    final = flip ? s1 : s2
+
+    return (init, final)
+end
+
 function angle(a, b)
     return acosd(clamp(a ⋅ b / (norm(a) * norm(b)), -1, 1))
 end

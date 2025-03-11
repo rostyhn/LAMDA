@@ -18,7 +18,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     title = Label(window, "Cluster $(str_limit(clusters))", fontsize=30)
 
     render_menu = Menu(window,
-        options=collect(keys(render_views)),
+        options=SINGLE_TRANSITION_RENDER_OPTIONS,
         default=scene_selector[], tellwidth=false)
 
     on(render_menu.selection) do s
