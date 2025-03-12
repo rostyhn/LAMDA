@@ -23,7 +23,9 @@ function build_selection_window(fig_size,
     widgets,
     invariantRange,
     cluster_representatives,
-    matColLabel
+    matColLabel,
+    per_t_scalars,
+    per_t_scalar_ranges
 )
 
     window = Figure(size=fig_size)
@@ -155,7 +157,7 @@ function build_selection_window(fig_size,
 
     dGrid = GridLayout()
     window[2:3, 2] = dGrid
-    colsize!(window.layout, 2, Relative(0.5))
+    colsize!(window.layout, 2, Relative(0.66))
 
     Label(dGrid[1, 1:2], matColLabel, font=:bold, fontsize=20)
     graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
@@ -184,8 +186,6 @@ function build_selection_window(fig_size,
 
     dendrogram!(graph_ax, clustering, h_cutoff, h_range; on_click=on_dendrogram_click, colormap=cluster_colors)
     heatmap!(hm_ax, lift(x -> x[1], reordered_matrix))
-
-    linkxaxes!(graph_ax, hm_ax)
 
     cluster_cmap = to_colormap(cluster_colors)
     rendered_clusters = []
@@ -248,9 +248,38 @@ function build_selection_window(fig_size,
             screen = nothing
         end
     end
-
-    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x[3], reordered_matrix))
     menu_bar[1, 3] = settings_btn
+    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x[3], reordered_matrix))
+    rowsize!(dGrid, 3, Relative(0.65))
+
+    band_sel = Observable(first(sort(collect(keys(per_t_scalars)))))
+
+    x_vals = lift(x -> eachindex(x.order), clustering)
+    colors = lift((x, z) -> map(y -> per_t_scalars[z][t_list[y]], x.order), clustering, band_sel)
+    colorrange = lift(x -> per_t_scalar_ranges[x], band_sel)
+
+    band_ax = Axis(dGrid[4, 1], backgroundcolor=:transparent, title="Per-transition scalar values")
+    band_plot = vlines!(band_ax,
+        x_vals,
+        color=colors,
+        colorrange=colorrange,
+        linewidth=3,
+        inspector_label=(plot, idx, pos) -> "$(plot.color[][idx])")
+
+    hidedecorations!(band_ax)
+    deregister_interaction!(band_ax, :rectanglezoom)
+
+    band_menu = Menu(window, options=sort(collect(keys(per_t_scalars))), default=band_sel[])
+    band_cbar = Colorbar(window, band_plot; vertical=false)
+    dGrid[5, 1:2] = hgrid!(band_menu, band_cbar)
+
+    on(band_menu.selection) do s
+        band_sel[] = s
+        notify(band_sel[])
+    end
+
+    linkxaxes!(hm_ax, graph_ax, band_ax)
+
     return window
 end
 

@@ -211,8 +211,6 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     return [sqHoverListener, cam_listener], []
 end
 
-
-
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
     bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
 
