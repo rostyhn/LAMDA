@@ -2,7 +2,8 @@ using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!, GridLayou
 
 function build_mol_window(transition, t_idx, render_views, widgets; fig_size=(400, 400))
     molWindow = Figure(size=fig_size)
-    molWindow[1, 1:2] = hgrid!(Label(molWindow, string(transition), tellwidth=false))
+    menu_bar = top_bar(molWindow, "$(transition)", 2)
+
     setup_state_view!(molWindow, (2, 1), "Volume", transition, t_idx, render_views, widgets)
     setup_state_view!(molWindow, (2, 2), "Volume", transition, t_idx, render_views, widgets)
 

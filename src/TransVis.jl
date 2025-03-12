@@ -41,16 +41,18 @@ export go
 
 const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
 
+
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
+    set_theme!(theme_latexfonts(); fontsize=18.0)
     window = build_reduction_window(active_trajectory, main_window; kwargs...)
-
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
     screen = GLMakie.Screen()
     display(screen, window)
 end
+
 
 function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
     # GLMakie.closeall() # close reduction window 
@@ -509,7 +511,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, cluster_assignments, render_views, widgets, invariantRange, cluster_representatives)
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, cluster_assignments, render_views, widgets, invariantRange, cluster_representatives, active_trajectory["selected_dm_name"])
 
     #= 
     # creating screen after the window is built prevents subtle bugs

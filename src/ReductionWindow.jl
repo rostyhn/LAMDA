@@ -1,6 +1,8 @@
 function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
     window = Figure(size=(400, 400))
-    @show distance_matrix
+
+    menu_bar = top_bar(window, "Reduction", 2)
+
     # only need transitions and distance matrix
     dms = active_trajectory["dms"]
     transitionSequence = active_trajectory["transitions"]
@@ -64,7 +66,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
     end
 
     control_grid = GridLayout()
-    window[1, 1:2] = control_grid
+    window[2, 1:2] = control_grid
 
     dm_menu = Menu(window, options=collect(keys(dms)), default=selected_dm[])
     on(dm_menu.selection) do val
@@ -87,7 +89,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
         title="Average intra-cluster distance",
         backgroundcolor=:transparent)
 
-    hm_ax = Axis(window[2, 1],
+    hm_ax = Axis(window[3, 1],
         title=lift(x -> "Original: $(size(x[1]))", reordered_matrix),
         backgroundcolor=:transparent)
     hidedecorations!(hm_ax)
@@ -160,7 +162,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
         return redmat, red_t_list # will still need to order, but this can be done later
     end
 
-    red_hm_ax = Axis(window[2, 2],
+    red_hm_ax = Axis(window[3, 2],
         title=lift(x -> "Reduced: $(size(x[1]))", reduced),
         backgroundcolor=:transparent)
 
@@ -172,10 +174,11 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
     on(go_btn.clicks) do n
         active_trajectory["selected_dm"] = Observable(reduced[][1])
         active_trajectory["reduced_transitions"] = reduced[][2]
+        active_trajectory["selected_dm_name"] = selected_dm[]
         on_click(active_trajectory; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 
-    Colorbar(window[3, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false)
+    Colorbar(window[4, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false)
 
     #linkaxes!(hm_ax, red_hm_ax)
 

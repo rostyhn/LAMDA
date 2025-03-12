@@ -24,9 +24,11 @@ function build_selection_window(fig_size,
     widgets,
     invariantRange,
     cluster_representatives,
+    matColLabel
 )
 
     window = Figure(size=fig_size)
+    menu_bar = top_bar(window, "Overview", 2)
 
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
@@ -86,15 +88,15 @@ function build_selection_window(fig_size,
     l_hovered_cluster = Observable(Set{Int}(1))
     r_hovered_cluster = Observable(Set{Int}(1))
 
-    cGrid = GridLayout()
-    window[1, 1] = cGrid
+    tGrid = GridLayout()
+    window[2:3, 1] = tGrid
 
     bins = @lift begin
         return $h_range[1]:1:($h_range[2]+1)
     end
 
     setup_cluster_view!(window,
-        cGrid,
+        tGrid,
         (1, 1),
         l_hovered_cluster,
         cluster_groups,
@@ -104,7 +106,7 @@ function build_selection_window(fig_size,
     )
 
     setup_cluster_view!(window,
-        cGrid,
+        tGrid,
         (1, 2),
         r_hovered_cluster,
         cluster_groups,
@@ -113,8 +115,6 @@ function build_selection_window(fig_size,
         bins
     )
 
-    tGrid = GridLayout()
-    window[2, 1] = tGrid
     @show length(clustering[].order)
 
     function build_info(clusters, cluster_reps, rm, clustering)
@@ -135,10 +135,10 @@ function build_selection_window(fig_size,
 
     l_info = lift((x, y, z, w) -> build_info(x, y, z, w), l_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
     r_info = lift((x, y, z, w) -> build_info(x, y, z, w), r_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
-    setup_transition_view!(window, tGrid, (1, 1), l_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
-    setup_transition_view!(window, tGrid, (1, 2), r_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    setup_transition_view!(window, tGrid, (2, 1), l_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    setup_transition_view!(window, tGrid, (2, 2), r_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
 
-    cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
+    cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
         l_hovered_cluster[] = Set{Int}(1)
@@ -152,32 +152,38 @@ function build_selection_window(fig_size,
     end
 
     dGrid = GridLayout()
-    window[1:2, 2] = dGrid
+    window[2:3, 2] = dGrid
+    colsize!(window.layout, 2, Relative(0.5))
 
-    dGrid[1, 1] = hgrid!(
-        Label(window, "Cluster cutoff value", tellwidth=false),
-        cutoff_tb)
-
+    Label(dGrid[1, 1:2], matColLabel, font=:bold, fontsize=20)
     graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
     deregister_interaction!(graph_ax, :rectanglezoom)
     hidexdecorations!(graph_ax)
 
-    hm_ax, hm = heatmap(dGrid[3, 1], lift(x -> x[1], reordered_matrix))
+    dGrid[2, 2] = vgrid!(
+        cutoff_tb,
+        Label(window, "Cutoff", tellwidth=false))
 
-    hidedecorations!(hm_ax)
+    hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
+
+    rowsize!(dGrid, 2, Relative(0.25))
     deregister_interaction!(hm_ax, :rectanglezoom)
+    hidedecorations!(hm_ax)
 
-    on(events(hm_ax).mouseposition) do mp
-        plot, _ = pick(hm_ax)
-        if is_mouseinside(hm_ax.scene)
-            if plot == hm
-                xy = mouseposition(hm_ax)
-                i, j = Int.(round.(xy))
-                # just do nothing? 
-            end
+    function on_dendrogram_click(clusters, keyboard)
+        if Keyboard.a in keyboard
+            l_hovered_cluster[] = clusters
+            notify(l_hovered_cluster)
+        elseif Keyboard.d in keyboard
+            r_hovered_cluster[] = clusters
+            notify(r_hovered_cluster)
         end
-        return Consume(false)
     end
+
+    dendrogram!(graph_ax, clustering, h_cutoff, h_range; on_click=on_dendrogram_click, colormap=cluster_colors)
+    heatmap!(hm_ax, lift(x -> x[1], reordered_matrix))
+
+    linkxaxes!(graph_ax, hm_ax)
 
     cluster_cmap = to_colormap(cluster_colors)
     rendered_clusters = []
@@ -216,7 +222,7 @@ function build_selection_window(fig_size,
                 color = cluster_cmap[mod1(first(collect(hc)), length(cluster_cmap))]
             end
 
-            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=5)
+            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=3)
         end
     end
 
@@ -228,20 +234,7 @@ function build_selection_window(fig_size,
         r_last_bBox = calc_cluster_bounding_box($r_hovered_cluster, $cluster_groups, $reordered_matrix[2], r_last_bBox)
     end
 
-    function on_dendrogram_click(clusters, keyboard)
-        if Keyboard.a in keyboard
-            l_hovered_cluster[] = clusters
-            notify(l_hovered_cluster)
-        elseif Keyboard.d in keyboard
-            r_hovered_cluster[] = clusters
-            notify(r_hovered_cluster)
-        end
-    end
-
-    dendrogram!(graph_ax, clustering, h_cutoff, h_range; on_click=on_dendrogram_click, colormap=cluster_colors)
-    linkxaxes!(graph_ax, hm_ax)
-
-    settings_btn = Button(window, label="Settings")
+    settings_btn = Button(window, label="Settings", halign=:right)
     screen = nothing
     on(settings_btn.clicks) do n
         # n has how many times the button's been clicked
@@ -254,11 +247,8 @@ function build_selection_window(fig_size,
         end
     end
 
-    dGrid[4, 1] = hgrid!(
-        Colorbar(window, limits=lift(x -> x[3], reordered_matrix), vertical=false, size=16),
-        settings_btn
-    )
-
+    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x[3], reordered_matrix))
+    menu_bar[1, 3] = settings_btn
     return window
 end
 
@@ -367,7 +357,9 @@ function setup_cluster_view!(fig,
 
     cmap = to_colormap(cluster_colors)
     cluster_grid[1, 1] = Label(fig,
-        lift(x -> "Cluster $(str_limit(x))", clusters),
+        lift(x -> "Cluster $(str_limit(x;len=25))", clusters),
+        halign=:left,
+        font=:bold,
         tellwidth=false)
 
     show_cluster_btn = Button(cluster_grid[1, 2], label="Show")
@@ -377,18 +369,15 @@ function setup_cluster_view!(fig,
     end
 
     hist_values = @lift begin
-        d = []
         ts_idx = reduce(vcat, (map(x -> cluster_groups[][x], collect($clusters))))
         mtx_idx = sort(map(x -> reordered_matrix[][2][x], ts_idx))
         mat = reordered_matrix[][1]
         vals = mat[mtx_idx, mtx_idx]
         utri = triu!(trues(size(vals)))
-        push!(d, vec(vals[utri]))
-
-        return reduce(vcat, d)
+        return vec(vals[utri])
     end
 
-    hist_ax = Axis(cluster_grid[2, 1], title="Intra-cluster distances",
+    hist_ax = Axis(cluster_grid[2, 1:2], title="Intra-cluster distances",
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
     # hide y labels because otherwise the width of each column gets adjusted

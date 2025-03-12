@@ -15,7 +15,8 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     scene_selector = Observable("Atom")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = Label(window, "Cluster $(str_limit(clusters))", fontsize=30)
+    title = "Cluster $(str_limit(clusters; len=25))"
+    menu_bar = top_bar(window, title, 3)
 
     render_menu = Menu(window,
         options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -42,7 +43,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         time[] = x
     end
 
-    window[1, 1:2] = hgrid!(title,
+    window[2, 1:2] = hgrid!(
         Label(window, "Render mode"),
         render_menu,
         scalar_menu,
@@ -74,9 +75,9 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     pg_label = Label(window, lift(x -> "Page $(x) of $(num_pages)", curr_page), tellwidth=false)
 
     tGrid = GridLayout()
-    window[2, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
+    window[3, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
 
-    hm_ax, hm = heatmap(window[2, 3], vals, colorrange=mat_range)
+    hm_ax, hm = heatmap(window[3, 3], vals, colorrange=mat_range)
     DataInspector(hm)
 
     # draw boxes around pages

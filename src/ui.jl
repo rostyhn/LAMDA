@@ -166,7 +166,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     m_lo = mesh!(
         scene,
         lo_sq,
-        color=lo_col,#aa1,
+        color=lo_col,
         highclip=:transparent,
         transparency=true,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
@@ -187,7 +187,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     )
     m_hi.inspectable[] = false
 
-    on(lo_sq) do ls
+    cam_listener = on(lo_sq) do ls
         update_cam!(parent_scene(m_lo))
     end
 
@@ -208,7 +208,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     end
 
     update_cam!(parent_scene(m_lo))
-    return [sqHoverListener], []
+    return [sqHoverListener, cam_listener], []
 end
 
 
@@ -227,3 +227,22 @@ function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
     )
     return p
 end
+
+function top_bar(window, title, num_cols)
+    g = GridLayout()
+    # https://juliagraphics.github.io/Colors.jl/stable/namedcolors/
+    Box(window[1, 1:num_cols], color=:grey95, strokevisible=false)
+
+    window[1, 1:num_cols] = g
+    g[1, 1] = Label(window, "TransVis", fontsize=30, font=:bold, halign=:left)
+    g[1, 2] = Label(window, "$(title)", fontsize=30, font=:italic, tellwidth=false, halign=:left)
+
+    gg = GridLayout()
+    g[1, 3] = gg
+
+    # useful to see exactly how much room you need 
+    # Box(g[1, 3], color=:green)
+
+    return gg
+end
+
