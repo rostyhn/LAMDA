@@ -19,7 +19,6 @@ function build_selection_window(fig_size,
     cluster_groups,
     h_range,
     settings_window,
-    cluster_assignments,
     render_views,
     widgets,
     invariantRange,
@@ -64,14 +63,17 @@ function build_selection_window(fig_size,
 
             # want to update volume data in case user messes with volume params
             # but we keep atom positions consistent with the alignment that existed at the time of creation
-            w = build_cluster_window(clusters,
+            w = build_cluster_window(
+                clusters,
                 ts,
                 collect(eachindex(ts_idx_to_mtx_idx)),
                 vals,
                 scalars,
                 t_to_idx,
                 reordered_matrix[][3],
-                render_views)
+                render_views,
+                widgets
+            )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
 
@@ -324,12 +326,13 @@ function setup_transition_view!(
                 il, is = render_views[selection](rootScene, inspector, t)
                 return il, [gg]
             elseif selection == "Atom"
-                gg, time, scalar_vals = widgets["Atom"](0.0, g)
+                gg, time, scalar_vals = widgets["Atom"](0.0, fig, g)
                 render_views[selection](rootScene, t, scalar_vals, time)
                 return [], [gg]
             else
                 gg = GridLayout(g[end+1, :])
-                time, slider = widgets["Movement"](0.0, gg)
+                time, slider = widgets["Movement"](0.0, fig)
+                gg[1, 1:2] = slider
                 render_views[selection](rootScene, cluster_idx, time)
                 return [], [gg]
             end

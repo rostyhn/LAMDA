@@ -27,13 +27,10 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
         return res
     end
 
-    # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
-    cluster_assignments = @lift begin
-        return cutree($clustering, h=$h_cutoff)
-    end
-
     cluster_groups = @lift begin
-        assignments = $cluster_assignments
+
+        # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
+        assignments = cutree($clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Int}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)

@@ -6,7 +6,7 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
-function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views; fig_size=(400, 400))
+function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
@@ -37,11 +37,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         notify(scalar_selector)
     end
 
-    time = Observable(0.0)
-    t_slider = Slider(window, range=0.0:0.05:1.0, startvalue=0.0)
-    on(t_slider.value) do x
-        time[] = x
-    end
+    time, t_slider = widgets["Movement"](0.0, window)
 
     window[2, 1:2] = hgrid!(
         Label(window, "Render mode"),

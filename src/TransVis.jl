@@ -93,12 +93,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     end
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
-    cluster_assignments = @lift begin
-        return cutree($clustering, h=$h_cutoff)
-    end
-
     cluster_groups = @lift begin
-        assignments = $cluster_assignments
+        assignments = cutree($clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Int}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
@@ -465,21 +461,26 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return il, is
     end
 
-    function time_slider(init_time, grid)
+    function time_slider(init_time, figure)
         time = Observable(init_time)
-        t_slider = Slider(grid[1, 1:2], range=0.0:0.05:1.0, startvalue=init_time)
+
+        t_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=init_time)
         on(t_slider.value) do x
             time[] = x
         end
 
-        return time, t_slider
+        sg = hgrid!(Label(figure, "t", font=:italic), t_slider, Label(figure, lift(x -> string(x), time)))
+
+        return time, sg
     end
 
-    function atom_widgets(init_time, grid)
+    function atom_widgets(init_time, figure, grid)
         gg = GridLayout(grid[end+1, :])
 
         opts = sort(collect(keys(scalars)))
-        time, t_slider = time_slider(init_time, gg)
+        time, t_slider = time_slider(init_time, figure)
+
+        gg[1, 1:2] = t_slider
 
         scalar_vals = Observable(scalars[first(opts)])
         m = Menu(gg[2, 1], options=opts, default=first(opts))
@@ -511,7 +512,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, cluster_assignments, render_views, widgets, invariantRange, cluster_representatives, active_trajectory["selected_dm_name"])
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, render_views, widgets, invariantRange, cluster_representatives, active_trajectory["selected_dm_name"])
 
     #= 
     # creating screen after the window is built prevents subtle bugs
