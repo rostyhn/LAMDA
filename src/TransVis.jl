@@ -18,7 +18,6 @@ using LinearAlgebra
 using Base.Threads
 using Statistics
 using ProgressMeter
-using Ripserer
 using Mmap
 
 

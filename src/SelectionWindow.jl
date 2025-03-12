@@ -1,7 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays
 using GLMakie: Screen
 using StatsBase
-using UMAP
 
 
 function build_selection_window(fig_size,
