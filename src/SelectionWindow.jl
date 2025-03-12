@@ -35,14 +35,16 @@ function build_selection_window(fig_size,
 
         # gets the correct idx 
         idx_to_mtx = zeros(Int, size(m)[1])
+        t_to_mtx = Dict()
         for (i, r) in enumerate($clustering.order)
             rm[i, :] .= m[r, :][$clustering.order]
             idx_to_mtx[r] = i
+            t_to_mtx[t_list[r]] = i
         end
 
         # get minimum and maximum of entire matrix for cmap
         fl = vec(m)
-        return rm, idx_to_mtx, (minimum(fl), maximum(fl))
+        return rm, idx_to_mtx, (minimum(fl), maximum(fl)), t_to_mtx
     end
     # can't get it to align left
     # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
@@ -87,13 +89,18 @@ function build_selection_window(fig_size,
     cGrid = GridLayout()
     window[1, 1] = cGrid
 
+    bins = @lift begin
+        return range(0.0, $h_cutoff, length=10)
+    end
+
     setup_cluster_view!(window,
         cGrid,
         (1, 1),
         l_hovered_cluster,
         cluster_groups,
         reordered_matrix,
-        on_show_cluster_click
+        on_show_cluster_click,
+        bins
     )
 
     setup_cluster_view!(window,
@@ -102,38 +109,34 @@ function build_selection_window(fig_size,
         r_hovered_cluster,
         cluster_groups,
         reordered_matrix,
-        on_show_cluster_click
+        on_show_cluster_click,
+        bins
     )
 
     tGrid = GridLayout()
     window[2, 1] = tGrid
+    @show length(clustering[].order)
 
-    # contains actual matrix index, the transition idx, the tuple itself and the cluster assignment
-    hovered_transitions = Observable((1, 1))
-    hovered_info = @lift begin
-        l, r = $hovered_transitions
-        function build_info(idx)
-            t_idx = $clustering.order[idx]
-            cluster = $cluster_assignments[t_idx]
-            rep = $cluster_representatives[cluster]
-            return (cluster, t_to_idx[rep], rep, t_idx)
-        end
+    function build_info(clusters, cluster_reps, rm, clustering)
+        # find centroid between all clusters 
+        dm = rm[1]
+        t_to_mtx = rm[4]
+        cluster_list = collect(clusters)
 
-        li = build_info(l)
-        ri = build_info(r)
+        reps = map(x -> cluster_reps[x], cluster_list)
+        mtx_idx = map(x -> t_to_mtx[x], reps)
 
-        l_hovered_cluster[] = Set{Int}(li[1])
-        notify(l_hovered_cluster)
+        dist_sum = map(x -> sum(dm[x, :][mtx_idx]), mtx_idx)
+        ref_t_idx = mtx_idx[argmin(dist_sum)]
 
-        r_hovered_cluster[] = Set{Int}(ri[1])
-        notify(r_hovered_cluster)
-
-        return li, ri
+        f_rep = t_list[clustering.order[ref_t_idx]]
+        return (clusters, t_to_idx[f_rep], f_rep)
     end
 
-    setup_transition_view!(window, tGrid, (1, 1), lift(x -> x[1], hovered_info), vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
-
-    setup_transition_view!(window, tGrid, (1, 2), lift(x -> x[2], hovered_info), vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    l_info = lift((x, y, z, w) -> build_info(x, y, z, w), l_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
+    r_info = lift((x, y, z, w) -> build_info(x, y, z, w), r_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
+    setup_transition_view!(window, tGrid, (1, 1), l_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    setup_transition_view!(window, tGrid, (1, 2), r_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]), tellwidth=false)
     on(cutoff_tb.stored_string) do s
@@ -170,8 +173,7 @@ function build_selection_window(fig_size,
             if plot == hm
                 xy = mouseposition(hm_ax)
                 i, j = Int.(round.(xy))
-                hovered_transitions[] = (i, j)
-                notify(hovered_info)
+                # just do nothing? 
             end
         end
         return Consume(false)
@@ -295,7 +297,7 @@ function setup_transition_view!(
         on_click(t[], () -> ())
     end
 
-    l = Label(fig, lift((x, y) -> string("Cluster $(y) - $(x)"), t, cluster_idx), tellwidth=false)
+    l = Label(fig, lift(x -> string("$(x)"), t), tellwidth=false)
 
     i, j = loc
     g = vgrid!(rootScene, hgrid!(l, m, btn))
@@ -348,7 +350,8 @@ function setup_cluster_view!(fig,
     clusters,
     cluster_groups,
     reordered_matrix,
-    on_cluster_button_click
+    on_cluster_button_click,
+    bins,
 )
     i, j = loc
     cluster_grid = GridLayout()
@@ -369,7 +372,7 @@ function setup_cluster_view!(fig,
         d = []
         for c_idx in collect($clusters)
             ts_idx = cluster_groups[][c_idx]
-            mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+            mtx_idx = sort(map(x -> reordered_matrix[][2][x], ts_idx))
             mat = reordered_matrix[][1]
             vals = mat[mtx_idx, mtx_idx]
             utri = triu!(trues(size(vals)))
@@ -379,7 +382,7 @@ function setup_cluster_view!(fig,
         return reduce(vcat, d)
     end
 
-    hist_ax = Axis(cluster_grid[2, 1:2], title="Intra-cluster distances",
+    hist_ax = Axis(cluster_grid[2, 1], title="Intra-cluster distances",
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
     # hide y labels because otherwise the width of each column gets adjusted
@@ -402,7 +405,8 @@ function setup_cluster_view!(fig,
         normalization=:density,
         strokewidth=1,
         strokecolor=:black,
-        color=color
+        color=color,
+        bins=bins
     )
 
     on(hist_values) do hv

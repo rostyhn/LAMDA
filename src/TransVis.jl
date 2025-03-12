@@ -403,10 +403,10 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_movement_view(scene, cluster_idx, time)
+    function render_movement_view(scene, clusters, time)
         # first attempt, this is really dependent on the quality of the alignment
         t_ap = @lift begin
-            g = $cluster_groups[$cluster_idx]
+            g = reduce(vcat, map(x -> $cluster_groups[x], collect($clusters)))
             ts = map(x -> transitionSequence[x], g)
             bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
             posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
