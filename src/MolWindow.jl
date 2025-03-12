@@ -1,117 +1,11 @@
 using Makie: clear_temporary_plots!, Orthographic, GridLayout, clear!, GridLayoutBase
 
-function build_mol_window(transition, atomPositions, volumeData, volumeRange, superquadrics, lineSets, transitionKDTree, sampleRanges, vol_cmap, on_window_hover, lsExtrema, filterVal, ls_cmap, scalars, fig_size=(400, 400))
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/ray_casting.jl, delete_from_parent!, delete_from_parent!, GridLayoutBase
-    ap1, ap2 = atomPositions
-
-    # atom positions should be a tuple of both states involved
-    aa1 = lift(y -> map(x -> y[x[1]], enumerate(eachrow(ap1))), volumeData)
-
-    # pass down selected from main range filter
-    selected = @lift begin
-        selected = Vector{Int}()
-        for (i, v) in enumerate($aa1)
-            # inverse filter, blue area will be removed!
-            if v < $filterVal[1] || v > $filterVal[2]
-                push!(selected, i)
-            end
-        end
-        return selected
-    end
-
-    # need to filter out linesets
-    selectedLineSets = lift(selected) do kept
-        selectedLineSets = Vector{Int}()
-        for (i, e) in enumerate(lineSets[3])
-            if e[1] in kept && e[2] in kept
-                push!(selectedLineSets, i)
-            end
-        end
-        return selectedLineSets
-    end
-
-    # these functions must return:
-    # a list of plots, listeners, and ui elements (gridLayout, [elements]) they created
-    bp = function (scene, inspector, g)
-        return setup_atom_view!(scene, g, ap1, transition, 1, scalars)
-    end
-
-    afp = function (scene, inspector, g)
-        return setup_atom_view!(scene, g, ap2, transition, 2, scalars)
-    end
-
-    sq = function (scene, inspector, g)
-        ls = linesegments!(scene,
-            lift(x -> lineSets[1][x], selectedLineSets),
-            color=lift(x -> lineSets[2][x], selectedLineSets),
-            colorrange=lsExtrema,
-            colormap=ls_cmap)
-        ls.inspectable[] = false
-
-        m = mesh!(
-            scene,
-            lift(x -> superquadrics[x], selected),
-            color=lift((x, y) -> y[x], selected, aa1),
-            colorrange=volumeRange,
-            colormap=vol_cmap,
-            fxaa=false,
-        )
-        m.inspectable[] = false
-
-        sqHoverListener = on(events(scene).mouseposition) do mp
-            if is_mouseinside(scene)
-                plot, idx = pick(scene)
-                if plot == ls
-                    inspector.plot.text[] = string("Weight ", ls.color[][idx])
-                    inspector.plot.visible[] = true
-                    inspector.plot.position = mp
-                    return Consume(true)
-                elseif plot != Nothing
-                    pos = position_on_plot(plot, idx)
-                    idx, d = NearestNeighbors.nn(transitionKDTree, pos)
-                    if !isnan(pos)
-                        inspector.plot.text[] = string("Atom ", idx)
-                        inspector.plot.visible[] = true
-                        inspector.plot.position = mp
-                        return Consume(true)
-                    end
-                else
-                    return Consume(true)
-                end
-            end
-            return Consume(false)
-        end
-        return [sqHoverListener], []
-    end
-
-    vol = function (scene, inspector, g)
-        v = volume!(scene,
-            lift(x -> extrema(x[1]), sampleRanges),
-            lift(x -> extrema(x[2]), sampleRanges),
-            lift(x -> extrema(x[3]), sampleRanges),
-            volumeData;
-            colormap=vol_cmap,
-            algorithm=:absorption,
-            fxaa=false,
-            transparency=true,
-            shading=NoShading,
-            colorrange=volumeRange,
-            visible=true)
-        v.inspectable[] = false
-
-        return [], []
-    end
-
-    render_funcs = Dict()
-    render_funcs["State $(transition[1])"] = bp
-    render_funcs["State $(transition[2])"] = afp
-    render_funcs["Superquadrics"] = sq
-    render_funcs["Volume"] = vol
-
+function build_mol_window(transition, t_idx, render_views, widgets; fig_size=(400, 400))
     molWindow = Figure(size=fig_size)
-    molWindow[1, 1:2] = hgrid!(Label(molWindow, string(transition), tellwidth=false))
-    setup_state_view!(molWindow, (2, 1), "Volume", render_funcs)
-    setup_state_view!(molWindow, (2, 2), "Volume", render_funcs)
+    menu_bar = top_bar(molWindow, "$(transition)", 2)
+
+    setup_state_view!(molWindow, (2, 1), "Volume", transition, t_idx, render_views, widgets)
+    setup_state_view!(molWindow, (2, 2), "Volume", transition, t_idx, render_views, widgets)
 
     screen = GLMakie.Screen(title="TransVis - $transition")
     display(screen, molWindow)
@@ -121,104 +15,45 @@ function build_mol_window(transition, atomPositions, volumeData, volumeRange, su
     #end
 end
 
-function setup_atom_view!(scene, g, ap, t, order, scalars)
-    opts = sort(collect(keys(scalars)))
-
-    gg = GridLayout(g[end+1, :])
-    m = Menu(gg[1, 1], options=opts, default=first(opts))
-
-    colorInfo = @lift begin # might be leaking memory
-        opt = $(m.selection)
-
-        vals = scalars[opt][t]
-        extremaVals = extrema(vals)
-        minVal, maxVal = extremaVals
-        labelfn = (self, i, p) -> "Atom $(i); weight: $(self.color[][i])"
-
-        cmap = resample_cmap(:reds, 147, alpha=range(; start=0.01, stop=1.0, length=147)) #seq ascending
-        if abs(minVal) > abs(maxVal)
-            reverse!(cmap)
-        end
-        empty!(scene)
-
-        # complicated because scatter! sets the shader for the scene the first time, changes it when type of color changes
-        scatter!(scene, ap, color=vals, colorrange=extremaVals, colormap=cmap,
-            inspector_label=labelfn, markersize=30)
-        return extremaVals, cmap
-    end
-    cbar = Colorbar(gg[1, 2], colorrange=lift(x -> x[1], colorInfo), vertical=false, colormap=lift(x -> x[2], colorInfo), tellwidth=false)
-
-    return [], [(gg, [m, cbar])]
-end
-
-function setup_state_view!(fig, loc, startState, render_funcs)
+function setup_state_view!(fig, loc, startState, transition, t_idx, render_views, widgets)
     rootScene = LScene(
         fig,
         show_axis=false,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    m = Menu(fig, options=keys(render_funcs),
+    m = Menu(fig, options=SINGLE_TRANSITION_RENDER_OPTIONS,
         default=startState)
 
     i, j = loc
     g = vgrid!(m, rootScene)
     fig[i, j] = g
-    # g is a reference to the underlying gridlayout for the state, can mutate it to create UI elements
 
     inspector = DataInspector(rootScene)
 
-    initial_render_func = render_funcs[startState]
-    il, is = initial_render_func(rootScene, inspector, g)
+    t_obs = Observable(transition)
+    t_idx_obs = Observable(t_idx)
 
-    # need to do this because otherwise julia assumes the type of the output vector
-    # then tries to convert plots to different types
-    scene_listeners = Vector{Any}()
-    ui_elements = Vector{Any}()
-
-    for l in il
-        push!(scene_listeners, l)
+    # render_views expect Observables as input
+    function choose_scene(selection)
+        if selection == "Volume"
+            render_views[selection](rootScene, t_idx_obs, t_obs)
+            return [], []
+        elseif selection == "Superquadric"
+            il, is = render_views[selection](rootScene, inspector, t_obs)
+            return il, []
+        elseif selection == "Atom"
+            gg, time, scalar_vals = widgets["Atom"](0.0, fig, g)
+            render_views[selection](rootScene, t_obs, scalar_vals, time)
+            return [], [gg]
+        else
+            gg = GridLayout(g[end+1, :])
+            time, slider = widgets["Movement"](0.0, fig)
+            gg[1, 1:2] = slider
+            render_views[selection](rootScene, t_obs, time)
+            return [], [gg]
+        end
     end
 
-    for s in is
-        push!(ui_elements, s)
-    end
-
-    on(m.selection) do cw
-        cam = camera(rootScene)
-        empty!(rootScene)
-
-        for listener in scene_listeners
-            off(listener)
-            listener = Nothing
-        end
-        empty!(scene_listeners)
-
-        # clear UI elements
-        for c in ui_elements
-            gg, elements = c
-            for e in elements
-                empty!(e.blockscene)
-                delete!(e)
-            end
-            if !isnothing(gg)
-                Makie.trim!(gg)
-                # only way to delete a gridlayout
-                GridLayoutBase.remove_from_gridlayout!(gg.layoutobservables.gridcontent[])
-            end
-        end
-        Makie.trim!(g)
-
-        rf = render_funcs[cw]
-        listeners, scenes = rf(rootScene, inspector, g)
-
-        for l in listeners
-            push!(scene_listeners, l)
-        end
-
-        for s in scenes
-            push!(ui_elements, s)
-        end
-        update_cam!(rootScene.scene)
-    end
+    scene_switcher(rootScene, g, m.selection, choose_scene)
 end

@@ -56,5 +56,10 @@ function normalize_matrices(data)
 
     return norm, min_val, max_val
 end
+
 splitobs(o::Observable{Tuple{}}) = ()
 splitobs(o::Observable{<:Tuple}) = (lift(first, o), splitobs(lift(Base.tail, o))...)
+
+function str_limit(s; len=40)
+    return "$(string(s)[1:min(end, len)])$(length(string(s)) > len ? "..." : "")"
+end

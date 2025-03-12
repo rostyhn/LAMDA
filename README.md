@@ -23,13 +23,15 @@ trajectory_name/ # used as input to go()
         - some_distance_metric/
             - dm.pickle # distance matrix defined for all transitions; Matrix{Float}
     alignment/
-        - some_features.pickle # alignment features; Dict{Tuple{Int, Int}, Matrix{Float}}
+        - some_features.pickle # alignment features; Dict{Tuple{Int, Int}, Tuple{Matrix{Float}, Matrix{Float}}
     scalars/ # optional
         - some_scalar.pickle # per-atom scalar values; Dict{Tuple{Int,Int}, Tuple{Vector{Float},Vector{Float}}}
+    per_t_scalars/ # optional
+        - some_scalar.pickle # per-transition scalar values; Dict{Tuple{Int,Int}, Float}}
 
 ```
 You also need a folder called `dms`, with subfolders corresponding to distance matrices you're interested in. You need at least one for the program to start. Each distance matrix directory requires a file called `dm.pickle` containing a matrix / 2d array. **It is assumed that the rows of the distance matrix correspond to the transitions in the order presented by `transition.pickle`.**
 
-You will also need an `alignment` folder containing pickles with dictionaries of tuples to matrices that will be used to perform intra-cluster alignments with a variant of the [Kabsch algorithm](https://en.wikipedia.org/wiki/Kabsch_algorithm). Each matrix should be \[num_atoms * num_features\]. TransVis will calculate the center of mass for each feature and then align each transition using these centers of mass. We found the [bispectrum descriptor](https://www.nature.com/articles/s41524-022-00847-y) to be effective in aligning transitions, but in principle any descriptor can be used provided it returns the per-atom features in order.
+You will also need an `alignment` folder containing pickles with dictionaries of tuples to tuples of matrices that will be used to perform intra-cluster alignments with a variant of the [Kabsch algorithm](https://en.wikipedia.org/wiki/Kabsch_algorithm). Since each matrix should have signs, the initial state should have positive values & the final negative. Each matrix should be \[num_atoms * num_features\]. TransVis will calculate the center of charge for each feature and then align each transition using these centers of charge. We found the [bispectrum descriptor](https://www.nature.com/articles/s41524-022-00847-y) to be effective in aligning transitions, but in principle any descriptor can be used provided it returns the per-atom features in order.
 
-You can optionally visualize per-atom scalars by placing dictionaries in the `scalars` folder. They must be dictionaries keyed by transition ids (i.e. (state1, state2)); the values of the dictionary 1D arrays corresponding to each atom (Vector{Float}).
+You can optionally visualize per-atom scalars by placing dictionaries in the `scalars` folder and per-transition scalars in the `per_t_scalars`. The per-atom scalars must be dictionaries keyed by transition ids (i.e. (state1, state2)); the values of the dictionary are 1D arrays corresponding to each atom (Vector{Float}). `per_t_scalars` is accessed the same way, but contains per transition values.

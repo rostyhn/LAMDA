@@ -31,11 +31,13 @@ function qx(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
 
 end
 
-function superquadric(scale::Float64, position::Point3f, principalStretches::Vector{GeometryBasics.Vec{3,Float32}}, K1::Float32, sharpness::Float64, resolution=0.2)
-    points = Vector{Point3f}()
+function superquadric(scale::Float64,
+    position::Point3f,
+    principalStretches::Vector{GeometryBasics.Vec{3,Float32}},
+    sharpness::Float64,
+    resolution=0.2)::GeometryBasics.Mesh
 
-    #K2 is the volume perserving fractionalAnisotropy
-    #K3 is the mode defining the type of anisotropy: -1 planar to 1 linear
+    points = Vector{Point3f}()
 
     stretchRatio1 = norm(principalStretches[3])
     stretchRatio2 = norm(principalStretches[2])
@@ -52,7 +54,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
     phiRange = [0:resolution:pi;]  #vertical: south -> north
     push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
     thetaRange = [0:resolution:2*pi;] #horizontal: west -> east
-
 
     if cl >= cp
         alpha = signPow((1 - cp), sharpness)
@@ -73,7 +74,6 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
             end
         end
     end
-
 
     scaleMatrix = zeros(3, 3)
     scaleMatrix[1, 1] = stretchRatio1
@@ -123,6 +123,20 @@ function superquadric(scale::Float64, position::Point3f, principalStretches::Vec
     mesh = GeometryBasics.Mesh(points, triFaces)
 
     return mesh
+end
+
+
+function apply_alignment(rot_tuple, ap_tuple)
+    shift, rot, flip = rot_tuple
+    s1 = (ap_tuple[1] .- shift) * rot
+    s1 = s1 .- mean(s1, dims=1)
+    s2 = (ap_tuple[2] .- shift) * rot
+    s2 = s2 .- mean(s2, dims=1)
+
+    init = flip ? s2 : s1
+    final = flip ? s1 : s2
+
+    return (init, final)
 end
 
 function angle(a, b)
