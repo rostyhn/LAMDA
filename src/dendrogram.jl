@@ -98,7 +98,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         hover_callbackfn(cl)
         hovered[] = cl
         notify(hovered)
-        return string(cl)
+        return str_limit(cl)
     end
 
     ls = linesegments!(ax,
