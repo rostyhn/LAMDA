@@ -95,6 +95,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         if div(idx, 2) < length(dendrogram[][6])
             cl = dendrogram[][5](idx)
         end
+        hover_callbackfn(cl)
         hovered[] = cl
         notify(hovered)
         return string(cl)

@@ -450,7 +450,17 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
         spa = lift(x -> stretchedPrincipalAxes[x], transition)
 
-        return superquadrics_view!(scene, points, spa, invariant, volume_cmap, invariantRange, inspector)
+        colors = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, invariant)
+        sq = Observable(superquadric.(1.0, points[], spa[], 3.0, 0.1)[:]
+        )
+        calc_sq = on(spa, update=true, weak=true) do s
+            sq[] = superquadric.(1.0, points[], s, 3.0, 0.1)[:]
+        end
+
+        il, is = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
+
+        push!(il, calc_sq)
+        return il, is
     end
 
     function time_slider(init_time, grid)

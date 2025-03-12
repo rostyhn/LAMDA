@@ -140,34 +140,26 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
 end
 
 
-function superquadrics_view!(scene, points, stretchedPrincipalAxes, invariant, vol_cmap, invariantRange, inspector)
-    aa1 = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, invariant)
-    sq = Observable(superquadric.(1.0, points[], stretchedPrincipalAxes[], 3.0, 0.1)[:])
-
-    calc_sq = on(stretchedPrincipalAxes; update=true) do spa
-        sq[] = superquadric.(1.0, points[], spa, 3.0, 0.1)[:]
-        notify(sq)
-    end
-
+function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange, inspector)
     # try to only render visible points, helps with point picking when hovering 
-    v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), aa1, points)
-    v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), aa1, points)
+    v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
+    v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
 
     lo_sq = Observable(sq[][v_lo[]])
-    lo_col = Observable(aa1[][v_lo[]])
+    lo_col = Observable(colors[][v_lo[]])
 
     hi_sq = Observable(sq[][v_hi[]])
-    hi_col = Observable(aa1[][v_hi[]])
+    hi_col = Observable(colors[][v_hi[]])
 
     on(v_lo) do idx
         lo_sq.val = sq[][idx]
-        lo_col[] = aa1[][idx]
+        lo_col[] = colors[][idx]
         notify(lo_sq)
     end
 
     on(v_hi) do idx
         hi_sq.val = sq[][idx]
-        hi_col[] = aa1[][idx]
+        hi_col[] = colors[][idx]
         notify(hi_sq)
     end
 
@@ -216,7 +208,7 @@ function superquadrics_view!(scene, points, stretchedPrincipalAxes, invariant, v
     end
 
     update_cam!(parent_scene(m_lo))
-    return [calc_sq, sqHoverListener], []
+    return [sqHoverListener], []
 end
 
 
