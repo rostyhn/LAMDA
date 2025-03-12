@@ -90,7 +90,7 @@ function build_selection_window(fig_size,
     window[1, 1] = cGrid
 
     bins = @lift begin
-        return range(0.0, $h_cutoff, length=10)
+        return $h_range[1]:1:($h_range[2]+1)
     end
 
     setup_cluster_view!(window,
@@ -378,14 +378,12 @@ function setup_cluster_view!(fig,
 
     hist_values = @lift begin
         d = []
-        for c_idx in collect($clusters)
-            ts_idx = cluster_groups[][c_idx]
-            mtx_idx = sort(map(x -> reordered_matrix[][2][x], ts_idx))
-            mat = reordered_matrix[][1]
-            vals = mat[mtx_idx, mtx_idx]
-            utri = triu!(trues(size(vals)))
-            push!(d, vec(vals[utri]))
-        end
+        ts_idx = reduce(vcat, (map(x -> cluster_groups[][x], collect($clusters))))
+        mtx_idx = sort(map(x -> reordered_matrix[][2][x], ts_idx))
+        mat = reordered_matrix[][1]
+        vals = mat[mtx_idx, mtx_idx]
+        utri = triu!(trues(size(vals)))
+        push!(d, vec(vals[utri]))
 
         return reduce(vcat, d)
     end
