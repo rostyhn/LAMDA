@@ -179,10 +179,10 @@ function build_selection_window(fig_size,
         return Consume(false)
     end
 
+    cluster_cmap = to_colormap(cluster_colors)
     rendered_clusters = []
     @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        cmap = to_colormap(cluster_colors)
         for (c, ts_idx) in $cluster_groups
             idx_to_mtx = $reordered_matrix[2]
             m_idx = map(x -> idx_to_mtx[x], ts_idx)
@@ -190,7 +190,7 @@ function build_selection_window(fig_size,
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[mod1(c, length(cmap))])
+            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cluster_cmap[mod1(c, length(cluster_cmap))])
 
             push!(rendered_clusters, p)
         end
@@ -210,7 +210,13 @@ function build_selection_window(fig_size,
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi)
+            if length(hc) != 1
+                color = to_color(:grey)
+            else
+                color = cluster_cmap[mod1(first(collect(hc)), length(cluster_cmap))]
+            end
+
+            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=5)
         end
     end
 
@@ -279,6 +285,8 @@ function setup_transition_view!(
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
+    # prevents camera from moving around
+    Camera3D(parent_scene(rootScene); left_key=false, right_key=false)
     inspector = DataInspector(rootScene)
 
     sel = Observable("Volume")
