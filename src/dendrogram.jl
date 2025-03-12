@@ -86,7 +86,16 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters
     end
 
-    colors = lift(x -> x[2], dendrogram)
+    l_highlighted = []
+    r_highlighted = []
+
+    on(dendrogram) do d
+        empty!(l_highlighted)
+        empty!(r_highlighted)
+    end
+
+    d_colors = lift(x -> x[2], dendrogram)
+    c_dict = lift(x -> x[4], dendrogram)
 
     hovered = Observable(Set{Int}(1))
 
@@ -103,38 +112,34 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
 
     ls = linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        color=colors,
+        color=d_colors,
         inspector_label=on_hover,
     )
 
     on(events(parent_scene(ls)).mousebutton) do e
         if is_mouseinside(parent_scene(ls))
             if e.button == Mouse.left && e.action == Mouse.press
-                on_click(hovered[], events(ls).keyboardstate)
+                ks = events(ls).keyboardstate
+                on_click(hovered[], ks)
+
+                highlighted = (Keyboard.a in ks) ? l_highlighted : r_highlighted
+                for (h, ogCol) in highlighted
+                    d_colors.val[h] = ogCol
+                end
+                empty!(highlighted)
+
+                for c in collect(hovered[])
+                    idx = c_dict[][Set(c)]
+                    ogColor = d_colors.val[idx]
+                    d_colors.val[idx] = (Keyboard.a in ks) ? to_color(:green) : to_color(:red)
+                    push!(highlighted, (idx, ogColor))
+                end
+                d_colors[] = d_colors[]
+                notify(d_colors)
             end
         end
         return Consume(true)
     end
-
-
-    last_bBox = nothing
-
-    #=
-    @lift begin
-
-        # FIXME doesn't keep up with changes in dendrogram
-        c_dict = $dendrogram[6]
-        idx = c_dict[$hovered_index]
-
-        if !isnothing(last_bBox)
-            colors[][last_bBox] = $dendrogram[2][last_bBox]
-        end
-
-        colors[][idx] = to_color(:red)
-        notify(colors)
-        last_bBox = idx
-    end
-    =#
 
     # add cutoff line
     l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
