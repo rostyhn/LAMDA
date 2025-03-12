@@ -275,7 +275,7 @@ function build_selection_window(fig_size,
 
     on(band_menu.selection) do s
         band_sel[] = s
-        notify(band_sel[])
+        notify(band_sel)
     end
 
     linkxaxes!(hm_ax, graph_ax, band_ax)

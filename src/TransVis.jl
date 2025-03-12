@@ -75,11 +75,17 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     transitionSequence = active_trajectory["reduced_transitions"]
     trajectory_name = active_trajectory["name"]
 
+    per_t_scalar_ranges = active_trajectory["per_t_scalar_ranges"]
+    per_t_scalars = active_trajectory["per_t_scalars"]
+
     # absolute index for volume data
     t_to_idx = Dict()
     for (i, t) in enumerate(active_trajectory["transitions"])
         t_to_idx[t] = i
     end
+
+    per_t_scalars["t_to_idx"] = t_to_idx
+    per_t_scalar_ranges["t_to_idx"] = (1, length(active_trajectory["transitions"]))
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
