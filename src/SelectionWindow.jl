@@ -85,6 +85,12 @@ function build_selection_window(fig_size,
             display(s, w)
 
             open_cluster_windows[clusters] = s
+
+            on(events(w).window_open) do is_open
+                if !is_open
+                    delete!(open_cluster_windows, clusters)
+                end
+            end
         end
     end
 
@@ -94,8 +100,7 @@ function build_selection_window(fig_size,
     end
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    l_hovered_cluster = Observable(Set{Int}(1))
-    r_hovered_cluster = Observable(Set{Int}(1))
+    hovered_cluster = Observable(Set{Int}(1))
 
     #=setup_cluster_view!(window,
         tGrid,
@@ -143,11 +148,8 @@ function build_selection_window(fig_size,
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
-        l_hovered_cluster[] = Set{Int}(1)
-        notify(l_hovered_cluster)
-
-        r_hovered_cluster[] = Set{Int}(1)
-        notify(r_hovered_cluster)
+        hovered_cluster[] = Set{Int}(1)
+        notify(hovered_cluster)
 
         h_cutoff[] = parse(Float64, s)
         notify(h_cutoff)
@@ -172,17 +174,11 @@ function build_selection_window(fig_size,
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
 
-    function on_dendrogram_click(clusters, keyboard)
-        if Keyboard.a in keyboard
-            l_hovered_cluster[] = clusters
-            notify(l_hovered_cluster)
-        elseif Keyboard.d in keyboard
-            r_hovered_cluster[] = clusters
-            notify(r_hovered_cluster)
-        end
+    function on_dendrogram_click(clusters)
+        on_show_cluster_click(clusters)
     end
 
-    dendrogram!(graph_ax, clustering, h_cutoff, h_range; on_click=on_dendrogram_click, colormap=cluster_colors)
+    dendrogram!(graph_ax, clustering, h_cutoff, h_range, hovered_cluster; on_click=on_dendrogram_click, colormap=cluster_colors)
     heatmap!(hm_ax, lift(x -> x[1], reordered_matrix))
 
     cluster_cmap = to_colormap(cluster_colors)
@@ -227,11 +223,9 @@ function build_selection_window(fig_size,
     end
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    l_last_bBox = nothing
-    r_last_bBox = nothing
+    hm_last_bBox = nothing
     @lift begin
-        l_last_bBox = calc_cluster_bounding_box($l_hovered_cluster, $cluster_groups, $reordered_matrix[2], l_last_bBox)
-        r_last_bBox = calc_cluster_bounding_box($r_hovered_cluster, $cluster_groups, $reordered_matrix[2], r_last_bBox)
+        hm_last_bBox = calc_cluster_bounding_box($hovered_cluster, $cluster_groups, $reordered_matrix[2], hm_last_bBox)
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -285,21 +279,38 @@ function build_selection_window(fig_size,
     deregister_interaction!(umap_ax, :rectanglezoom)
     hidedecorations!(umap_ax)
 
-    umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap; on_click=on_show_cluster_click)
+    umap_sc = umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, hovered_cluster; on_click=on_show_cluster_click)
 
     return window
 end
 
-function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap; on_click=(x) -> ())
+function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, hovered=Observable(Set{Int}(1)); on_click=(x) -> ())
     umap_cluster_idx = Observable(collect(keys(cluster_representatives[])))
     umap_colors = Observable(map(x -> cluster_cmap[mod1(x, length(cluster_cmap))], umap_cluster_idx[]))
 
-    hovered = Observable(Set{Int}(1))
     function on_hover(plt, idx, pos)
         hovered[] = Set{Int}(umap_cluster_idx[][idx])
         notify(hovered)
         return string(umap_cluster_idx[][idx])
     end
+
+    highlighted = []
+    on(hovered) do hov
+        for (h, ogCol) in highlighted
+            umap_colors.val[h] = ogCol
+        end
+        empty!(highlighted)
+
+        for c in collect(hov)
+            ogColor = umap_colors.val[c]
+            umap_colors.val[c] = to_color(:red)
+            push!(highlighted, (c, ogColor))
+        end
+
+        umap_colors[] = umap_colors[]
+        notify(umap_colors)
+    end
+
 
     @time embedding = @lift begin
         println("Computing umap embedding...")
@@ -338,10 +349,10 @@ function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cl
                 on_click(hovered[])
             end
         end
-        return Consume(true)
+        return Consume(false)
     end
 
-    return umap_nodes
+    return umap_nodes, hovered
 end
 
 function setup_transition_view!(

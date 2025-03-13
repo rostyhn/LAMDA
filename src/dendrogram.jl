@@ -53,7 +53,7 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
     end
 end
 
-function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, on_click=((x, y) -> ()), kwargs...)
+function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1)); hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, on_click=((x, y) -> ()), kwargs...)
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables
@@ -86,18 +86,13 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters
     end
 
-    l_highlighted = []
-    r_highlighted = []
-
+    highlighted = []
     on(dendrogram) do d
-        empty!(l_highlighted)
-        empty!(r_highlighted)
+        empty!(highlighted)
     end
 
     d_colors = lift(x -> x[2], dendrogram)
     c_dict = lift(x -> x[4], dendrogram)
-
-    hovered = Observable(Set{Int}(1))
 
     function on_hover(plt, idx, pos)
         cl = dendrogram[][5](2)
@@ -105,9 +100,27 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
             cl = dendrogram[][5](idx)
         end
         hover_callbackfn(cl)
+
         hovered[] = cl
         notify(hovered)
+
         return str_limit(cl)
+    end
+
+    on(hovered) do hov
+        for (h, ogCol) in highlighted
+            d_colors.val[h] = ogCol
+        end
+        empty!(highlighted)
+
+        for c in collect(hov)
+            idx = c_dict[][Set(c)]
+            ogColor = d_colors.val[idx]
+            d_colors.val[idx] = to_color(:red)
+            push!(highlighted, (idx, ogColor))
+        end
+        d_colors[] = d_colors[]
+        notify(d_colors)
     end
 
     ls = linesegments!(ax,
@@ -118,29 +131,14 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
 
     DataInspector(ls)
 
-    on(events(parent_scene(ls)).mousebutton) do e
-        if is_mouseinside(parent_scene(ls))
+    on(events(ax).mousebutton, priority=1) do e
+        if is_mouseinside(ax)
             if e.button == Mouse.left && e.action == Mouse.press
                 ks = events(ls).keyboardstate
                 on_click(hovered[], ks)
-
-                highlighted = (Keyboard.a in ks) ? l_highlighted : r_highlighted
-                for (h, ogCol) in highlighted
-                    d_colors.val[h] = ogCol
-                end
-                empty!(highlighted)
-
-                for c in collect(hovered[])
-                    idx = c_dict[][Set(c)]
-                    ogColor = d_colors.val[idx]
-                    d_colors.val[idx] = (Keyboard.a in ks) ? to_color(:green) : to_color(:red)
-                    push!(highlighted, (idx, ogColor))
-                end
-                d_colors[] = d_colors[]
-                notify(d_colors)
             end
         end
-        return Consume(true)
+        return Consume(false)
     end
 
     # add cutoff line
