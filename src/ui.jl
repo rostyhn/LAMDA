@@ -1,0 +1,246 @@
+# switches what is being rendered inside a scene cleanly.
+# pass a select_fn with selector as a parameter and then basically do whatever you want
+# can modify the grid the scene belongs to and it will get cleared up here
+using Makie
+
+function clear_layout(layout::GridLayout)
+    # Begin by removing the blocks from the recursive GridLayout structure
+    items_to_remove = []
+    for block in Makie.contents(layout)
+        if typeof(block) == GridLayout
+            clear_layout(block)
+        else
+            push!(items_to_remove, block)
+        end
+    end
+
+    for i in items_to_remove
+        empty!(i.blockscene)
+        delete!(i)
+    end
+
+    Makie.trim!(layout)
+    GridLayoutBase.remove_from_gridlayout!(layout.layoutobservables.gridcontent[])
+end
+
+
+function scene_switcher(scene, grid, selector, select_fn)
+    scene_listeners = Vector{Any}()
+    ui_elements = Vector{Any}()
+    @lift begin
+        # cleanup
+        empty!(scene)
+
+        for listener in scene_listeners
+            off(listener)
+            listener = nothing
+        end
+        empty!(scene_listeners)
+
+        # clear UI elements
+        for g in ui_elements
+            clear_layout(g)
+        end
+        Makie.trim!(grid)
+
+        il, is = select_fn($selector)
+
+        for l in il
+            push!(scene_listeners, l)
+        end
+
+        for s in is
+            push!(ui_elements, s)
+        end
+    end
+end
+
+function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
+    int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
+
+    # makes it so the atom view can handle points changing
+    colors = Observable(scalars[])
+    points = Observable(Point3f.(eachrow(int_pos[])))
+    on(int_pos) do ip
+        points.val = Point3f.(eachrow(ip))
+        colors[] = scalars[]
+        points[] = points[]
+    end
+
+    s = scatter!(scene, points;
+        color=colors,
+        colorrange=scalar_range,
+        lowclip=:transparent,
+        colormap=cmap,
+        depthsorting=true,
+        inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
+        markersize=30)
+
+    update_cam!(parent_scene(s))
+
+    return s
+end
+
+function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; update=false)
+
+    t = Observable(Transformation())
+
+    v_lo = volume!(scene,
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
+        vd;
+        colormap=lift(x -> x[1:49], vol_cmap),
+        highclip=:transparent,
+        lowclip=:transparent,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        transformation=t,
+        shading=NoShading,
+        colorrange=lift(x -> (x[1], 0.0), volumeRange))
+
+    v_hi = volume!(scene,
+        lift(x -> extrema(x[1]), sampleRanges),
+        lift(x -> extrema(x[2]), sampleRanges),
+        lift(x -> extrema(x[3]), sampleRanges),
+        vd;
+        colormap=lift(x -> x[50:100], vol_cmap),
+        highclip=:transparent,
+        lowclip=:transparent,
+        algorithm=:absorption,
+        fxaa=false,
+        transparency=true,
+        shading=NoShading,
+        transformation=t,
+        colorrange=lift(x -> (0.0, x[2]), volumeRange))
+
+    # FIXME sometimes the volume will get rotated so hard it disappears
+    # could be a floating point precision issue?
+    # if called before screen is rendered it crashes
+    #=on(rotation, update=update) do rot
+        shift, R, flip, ref_t = rot
+        rr = hcat(R, [0, 0, 0])
+        fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+
+        # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
+        t[].origin[] = Float64.(shift)
+        t[].model[] = Float64.(fr)
+
+        notify(t)
+        update_cam!(parent_scene(v_lo))
+    end=#
+
+    v_hi.inspectable[] = false
+    v_lo.inspectable[] = false
+
+    update_cam!(parent_scene(v_lo))
+
+    return v_lo, v_hi
+end
+
+
+function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange, inspector)
+    # try to only render visible points, helps with point picking when hovering 
+    v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
+    v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
+
+    lo_sq = Observable(sq[][v_lo[]])
+    lo_col = Observable(colors[][v_lo[]])
+
+    hi_sq = Observable(sq[][v_hi[]])
+    hi_col = Observable(colors[][v_hi[]])
+
+    on(v_lo) do idx
+        lo_sq.val = sq[][idx]
+        lo_col[] = colors[][idx]
+        notify(lo_sq)
+    end
+
+    on(v_hi) do idx
+        hi_sq.val = sq[][idx]
+        hi_col[] = colors[][idx]
+        notify(hi_sq)
+    end
+
+    m_lo = mesh!(
+        scene,
+        lo_sq,
+        color=lo_col,
+        highclip=:transparent,
+        transparency=true,
+        colorrange=lift(x -> (x[1], 0.0), invariantRange),
+        colormap=lift(x -> x[1:49], vol_cmap),
+        fxaa=false,
+    )
+    m_lo.inspectable[] = false
+
+    m_hi = mesh!(
+        scene,
+        hi_sq,
+        color=hi_col,
+        lowclip=:transparent,
+        transparency=true,
+        colorrange=lift(x -> (0.0, x[2]), invariantRange),
+        colormap=lift(x -> x[50:100], vol_cmap),
+        fxaa=false,
+    )
+    m_hi.inspectable[] = false
+
+    cam_listener = on(lo_sq) do ls
+        update_cam!(parent_scene(m_lo))
+    end
+
+    sqHoverListener = on(events(scene).mouseposition) do mp
+        if is_mouseinside(scene)
+            plot, idx = pick(scene)
+            if plot != Nothing
+                pos = position_on_plot(plot, idx)
+                if !isnan(pos)
+                    inspector.plot.text[] = string(plot.color[][idx])
+                    inspector.plot.visible[] = true
+                    inspector.plot.position = mp
+                end
+            end
+            return Consume(true)
+        end
+        return Consume(false)
+    end
+
+    update_cam!(parent_scene(m_lo))
+    return [sqHoverListener, cam_listener], []
+end
+
+function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
+    bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
+
+    p = wireframe!(
+        scene,
+        bbox,
+        color=color,
+        visible=true,
+        inspectable=false,
+        depth_shift=-1.0f-3,
+        linewidth=width
+    )
+    return p
+end
+
+function top_bar(window, title, num_cols)
+    g = GridLayout()
+    # https://juliagraphics.github.io/Colors.jl/stable/namedcolors/
+    Box(window[1, 1:num_cols], color=:grey95, strokevisible=false)
+
+    window[1, 1:num_cols] = g
+    g[1, 1] = Label(window, "TransVis", fontsize=30, font=:bold, halign=:left)
+    g[1, 2] = Label(window, "$(title)", fontsize=30, font=:italic, tellwidth=false, halign=:left)
+
+    gg = GridLayout()
+    g[1, 3] = gg
+
+    # useful to see exactly how much room you need 
+    # Box(g[1, 3], color=:green)
+
+    return gg
+end
+

@@ -53,7 +53,7 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
     end
 end
 
-function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, kwargs...)
+function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, on_click=((x, y) -> ()), kwargs...)
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables
@@ -64,7 +64,7 @@ function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20,
         for c in clusters
             if length(c) == 1
                 clusterIdx = first(collect(c))
-                color = cmap[(clusterIdx%length(cmap))+1]
+                color = cmap[mod1(clusterIdx, length(cmap))]
             else
                 color = rootcolor
             end
@@ -72,31 +72,86 @@ function dendrogram!(ax, h, cutoff; hover_callbackfn=(x -> ()), colormap=:tab20,
         end
 
         # to get label idx just divide by 2
-        labelfn = (plt, idx, pos) -> "$(string(clusters[div(idx,2)])[1:min(end, 40)])$(length(string(clusters[div(idx, 2)])) > 40 ? "..." : "")"
-
-        function on_hover(inspector, plot, idx)
-            status = show_data(inspector, plot, idx)
-            if status && length(clusters[div(idx, 2)]) > 0
-                hover_callbackfn(clusters[div(idx, 2)])
-            end
-            return status
+        function get_cluster(i)
+            return clusters[div(i, 2)]
         end
 
         cutoff_line = ([0, length(h[].order)], [$cutoff, $cutoff])
 
-        return lines, colors, labelfn, on_hover, cutoff_line
+        cl_to_idx = Dict{Set{Int},Int}()
+        for (i, c) in enumerate(clusters)
+            cl_to_idx[c] = i
+        end
+
+        return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters
     end
 
-    linesegments!(ax,
+    l_highlighted = []
+    r_highlighted = []
+
+    on(dendrogram) do d
+        empty!(l_highlighted)
+        empty!(r_highlighted)
+    end
+
+    d_colors = lift(x -> x[2], dendrogram)
+    c_dict = lift(x -> x[4], dendrogram)
+
+    hovered = Observable(Set{Int}(1))
+
+    function on_hover(plt, idx, pos)
+        cl = dendrogram[][5](2)
+        if div(idx, 2) < length(dendrogram[][6])
+            cl = dendrogram[][5](idx)
+        end
+        hover_callbackfn(cl)
+        hovered[] = cl
+        notify(hovered)
+        return str_limit(cl)
+    end
+
+    ls = linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        color=lift(x -> x[2], dendrogram),
-        inspector_label=lift(x -> x[3], dendrogram),
-        inspector_hover=lift(x -> x[4], dendrogram))
+        color=d_colors,
+        inspector_label=on_hover,
+    )
+
+    on(events(parent_scene(ls)).mousebutton) do e
+        if is_mouseinside(parent_scene(ls))
+            if e.button == Mouse.left && e.action == Mouse.press
+                ks = events(ls).keyboardstate
+                on_click(hovered[], ks)
+
+                highlighted = (Keyboard.a in ks) ? l_highlighted : r_highlighted
+                for (h, ogCol) in highlighted
+                    d_colors.val[h] = ogCol
+                end
+                empty!(highlighted)
+
+                for c in collect(hovered[])
+                    idx = c_dict[][Set(c)]
+                    ogColor = d_colors.val[idx]
+                    d_colors.val[idx] = (Keyboard.a in ks) ? to_color(:green) : to_color(:red)
+                    push!(highlighted, (idx, ogColor))
+                end
+                d_colors[] = d_colors[]
+                notify(d_colors)
+            end
+        end
+        return Consume(true)
+    end
 
     # add cutoff line
-    l = lines!(ax, lift(x -> x[5][1], dendrogram), lift(x -> x[5][2], dendrogram);
+    l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
         linestyle=:dash,
         color=:grey,
         visible=lift((x, y) -> x > minimum(y.heights), cutoff, h))
     l.inspectable[] = false
+
+    # add listeners to reset limits whenever something changes
+    @lift begin
+        lo, hi = $h_range
+        ylims!(ax, (lo - 0.1, hi + 0.1))
+        reset_limits!(ax, yauto=false)
+    end
 end

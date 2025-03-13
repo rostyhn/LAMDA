@@ -152,6 +152,7 @@ function get_data_alt(trajectory_name)
             trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
             trajectory_data["alignedPositions"] = alignedPositions
             trajectory_data["kdTrees"] = kdTrees
+            trajectory_data["name"] = trajectory_name
 
             # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")
@@ -170,7 +171,7 @@ function get_data_alt(trajectory_name)
             globalMin = floatmax(Float32)
             globalMax = floatmin(Float32)
             if isdir(scalarf)
-                println("Loading scalars...")
+                println("Loading per-atom scalars...")
                 for sf in readdir(scalarf, join=true)
                     fname, ext = splitext(sf)
                     if isfile(sf) && ext == ".pickle"
@@ -187,15 +188,34 @@ function get_data_alt(trajectory_name)
                 println("No scalars folder found, ignoring.")
             end
 
+            per_t_scalars = Dict()
+            per_t_scalar_ranges = Dict()
+            # load in scalars if present
+            tscalarf = joinpath(t, "per_t_scalars")
+            if isdir(tscalarf)
+                println("Loading per-transition scalars...")
+                for sf in readdir(tscalarf, join=true)
+                    fname, ext = splitext(sf)
+                    if isfile(sf) && ext == ".pickle"
+                        d = Dict{Tuple{Int16,Int16},Float32}(Pickle.npyload(sf))
+                        per_t_scalars[basename(fname)] = d
+                        per_t_scalar_ranges[basename(fname)] = extrema(collect(values(d)))
+                    end
+                end
+            else
+                println("No scalars folder found, ignoring.")
+            end
+
             # load in alignment features
             alignmentf = joinpath(t, "alignment")
             alignments = Dict()
 
             if isdir(alignmentf)
                 for af in readdir(alignmentf, join=true)
-                    if isfile(af)
-                        alignment_name = basename(af)
-                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Matrix{Float32}}(Pickle.npyload(af))
+                    fname, ext = splitext(af)
+                    if isfile(af) && ext == ".pickle"
+                        alignment_name = basename(fname)
+                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(af))
                     end
                 end
             else
@@ -206,6 +226,8 @@ function get_data_alt(trajectory_name)
             trajectory_data["alignments"] = alignments
             trajectory_data["scalars"] = scalars
             trajectory_data["scalar_range"] = (globalMin, globalMax)
+            trajectory_data["per_t_scalars"] = per_t_scalars
+            trajectory_data["per_t_scalar_ranges"] = per_t_scalar_ranges
             trajectory_data["dms"] = dms
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")

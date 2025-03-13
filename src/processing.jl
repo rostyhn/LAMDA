@@ -10,6 +10,10 @@ function buildBonds(positions, bondDelta, connectivity)
     return (points, weights, indices)
 end
 
+function calc_bonds(connectivity)
+    return Tuple.(findall(isone, connectivity))
+end
+
 
 # Moment feature map
 function moment_map(diagram, max_level, H::Int64)
