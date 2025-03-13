@@ -116,6 +116,8 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         inspector_label=on_hover,
     )
 
+    DataInspector(ls)
+
     on(events(parent_scene(ls)).mousebutton) do e
         if is_mouseinside(parent_scene(ls))
             if e.button == Mouse.left && e.action == Mouse.press

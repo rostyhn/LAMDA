@@ -97,11 +97,7 @@ function build_selection_window(fig_size,
     l_hovered_cluster = Observable(Set{Int}(1))
     r_hovered_cluster = Observable(Set{Int}(1))
 
-    tGrid = GridLayout()
-    window[2:3, 1] = tGrid
-
-
-    setup_cluster_view!(window,
+    #=setup_cluster_view!(window,
         tGrid,
         (1, 1),
         l_hovered_cluster,
@@ -119,9 +115,7 @@ function build_selection_window(fig_size,
         reordered_matrix,
         on_show_cluster_click,
         bins
-    )
-
-    @show length(clustering[].order)
+    )=#
 
     function build_info(clusters, cluster_reps, rm, clustering)
         # find centroid between all clusters 
@@ -139,10 +133,12 @@ function build_selection_window(fig_size,
         return (clusters, t_to_idx[f_rep], f_rep)
     end
 
+    #=
     l_info = lift((x, y, z, w) -> build_info(x, y, z, w), l_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
     r_info = lift((x, y, z, w) -> build_info(x, y, z, w), r_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
     setup_transition_view!(window, tGrid, (2, 1), l_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
     setup_transition_view!(window, tGrid, (2, 2), r_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    =#
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
@@ -158,8 +154,8 @@ function build_selection_window(fig_size,
     end
 
     dGrid = GridLayout()
-    window[2:3, 2] = dGrid
-    colsize!(window.layout, 2, Relative(0.66))
+    window[2:3, 1] = dGrid
+    #colsize!(window.layout, 2, Relative(0.66))
 
     Label(dGrid[1, 1:2], matColLabel, font=:bold, fontsize=20)
     graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
@@ -282,7 +278,70 @@ function build_selection_window(fig_size,
 
     linkxaxes!(hm_ax, graph_ax, band_ax)
 
+    tGrid = GridLayout()
+    window[2:3, 2] = tGrid
+
+    umap_ax = Axis(tGrid[1, 1], backgroundcolor=:transparent)
+    deregister_interaction!(umap_ax, :rectanglezoom)
+    hidedecorations!(umap_ax)
+
+    umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap; on_click=on_show_cluster_click)
+
     return window
+end
+
+function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap; on_click=(x) -> ())
+    umap_cluster_idx = Observable(collect(keys(cluster_representatives[])))
+    umap_colors = Observable(map(x -> cluster_cmap[mod1(x, length(cluster_cmap))], umap_cluster_idx[]))
+
+    hovered = Observable(Set{Int}(1))
+    function on_hover(plt, idx, pos)
+        hovered[] = Set{Int}(umap_cluster_idx[][idx])
+        notify(hovered)
+        return string(umap_cluster_idx[][idx])
+    end
+
+    @time embedding = @lift begin
+        println("Computing umap embedding...")
+
+        dm = $reordered_matrix[1]
+        t_to_mtx = $reordered_matrix[4]
+
+        reps = collect(values($cluster_representatives))
+        mtx_idx = map(x -> t_to_mtx[x], reps)
+        rep_mat = reduce(hcat, map(x -> dm[x, :][mtx_idx], mtx_idx))
+
+        em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed))
+
+        new_cluster_idx = collect(keys($cluster_representatives))
+        umap_cluster_idx.val = new_cluster_idx
+        umap_colors.val = map(x -> cluster_cmap[mod1(x, length(cluster_cmap))], new_cluster_idx)
+
+        return map(x -> Point2f(x), eachrow(em))
+    end
+
+    umap_nodes = scatter!(umap_ax, embedding; color=umap_colors, inspector_label=on_hover)
+
+    DataInspector(umap_nodes)
+
+    on(embedding, update=true) do e
+        umap_colors[] = umap_colors[]
+        umap_cluster_idx[] = umap_cluster_idx[]
+        notify(umap_cluster_idx)
+        notify(umap_colors)
+        reset_limits!(umap_ax)
+    end
+
+    on(events(umap_ax).mousebutton, priority=1) do event
+        if is_mouseinside(umap_ax)
+            if event.button == Mouse.left && event.action == Mouse.press
+                on_click(hovered[])
+            end
+        end
+        return Consume(true)
+    end
+
+    return umap_nodes
 end
 
 function setup_transition_view!(
