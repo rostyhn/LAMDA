@@ -6,7 +6,7 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
-function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets; fig_size=(400, 400))
+function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets, bins; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
@@ -73,8 +73,38 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     tGrid = GridLayout()
     window[3, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
 
-    hm_ax, hm = heatmap(window[3, 3], vals, colorrange=mat_range)
+    mat_grid = GridLayout()
+    window[2:3, 3] = mat_grid
+
+    utri = triu!(trues(size(vals)))
+    hist_vals = vec(vals[utri])
+
+    cluster_cmap = to_colormap(cluster_colors)
+    cluster_color = to_color(:grey)
+    cl = collect(clusters)
+    if length(cl) == 1
+        cluster_color = cluster_cmap[mod1(first(cl), length(cluster_cmap))]
+    end
+
+    hist_ax = Axis(mat_grid[1, 1], title="Intra-cluster distances",
+        backgroundcolor=:transparent, tellwidth=false, tellheight=false)
+
+    deregister_interaction!(hist_ax, :rectanglezoom)
+    hideydecorations!(hist_ax)
+
+    hist!(hist_ax,
+        hist_vals,
+        normalization=:density,
+        strokewidth=1,
+        strokecolor=:black,
+        color=cluster_color,
+        bins=bins
+    )
+
+    hm_ax, hm = heatmap(mat_grid[2, 1], vals, colorrange=mat_range)
     DataInspector(hm)
+
+    rowsize!(mat_grid, 2, Relative(0.75))
 
     # draw boxes around pages
     page_boxes = []
@@ -112,6 +142,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         notify(mat_hovered)
         return Consume(false)
     end
+
     scenes = []
     scene_info = []
     for i in 1:GRID_X

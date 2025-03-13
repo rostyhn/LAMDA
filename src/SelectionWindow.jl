@@ -52,6 +52,10 @@ function build_selection_window(fig_size,
     # can't get it to align left
     # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
 
+    bins = @lift begin
+        return $h_range[1]:1:($h_range[2]+1)
+    end
+
     open_cluster_windows = Dict{Set{Int},Screen}()
     function on_show_cluster_click(clusters)
         if !(clusters in keys(open_cluster_windows))
@@ -74,7 +78,8 @@ function build_selection_window(fig_size,
                 t_to_idx,
                 reordered_matrix[][3],
                 render_views,
-                widgets
+                widgets,
+                bins
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
@@ -95,9 +100,6 @@ function build_selection_window(fig_size,
     tGrid = GridLayout()
     window[2:3, 1] = tGrid
 
-    bins = @lift begin
-        return $h_range[1]:1:($h_range[2]+1)
-    end
 
     setup_cluster_view!(window,
         tGrid,
