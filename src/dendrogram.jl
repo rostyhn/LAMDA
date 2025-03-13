@@ -66,9 +66,9 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1)); ho
                 clusterIdx = first(collect(c))
                 color = cmap[mod1(clusterIdx, length(cmap))]
             else
-                color = rootcolor
+                color = to_color(rootcolor)
             end
-            push!(colors, color)
+            push!(colors, set_color_alpha(color, 0.2))
         end
 
         # to get label idx just divide by 2
@@ -116,7 +116,7 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1)); ho
         for c in collect(hov)
             idx = c_dict[][Set(c)]
             ogColor = d_colors.val[idx]
-            d_colors.val[idx] = to_color(:red)
+            d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
             push!(highlighted, (idx, ogColor))
         end
         d_colors[] = d_colors[]

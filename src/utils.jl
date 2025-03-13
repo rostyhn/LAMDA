@@ -63,3 +63,7 @@ splitobs(o::Observable{<:Tuple}) = (lift(first, o), splitobs(lift(Base.tail, o))
 function str_limit(s; len=40)
     return "$(string(s)[1:min(end, len)])$(length(string(s)) > len ? "..." : "")"
 end
+
+function set_color_alpha(c, a)
+    return RGBAf(c.r, c.g, c.b, a)
+end

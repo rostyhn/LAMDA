@@ -275,6 +275,7 @@ function build_selection_window(fig_size,
     tGrid = GridLayout()
     window[2:3, 2] = tGrid
 
+    Box(tGrid[1, 1], color=:black)
     umap_ax = Axis(tGrid[1, 1], backgroundcolor=:transparent)
     deregister_interaction!(umap_ax, :rectanglezoom)
     hidedecorations!(umap_ax)
@@ -285,7 +286,7 @@ function build_selection_window(fig_size,
 end
 
 function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, hovered=Observable(Set{Int}(1)); on_click=(x) -> ())
-    umap_cluster_idx = Observable(collect(keys(cluster_representatives[])))
+    umap_cluster_idx = Observable(sort(collect(keys(cluster_representatives[]))))
     umap_colors = Observable(map(x -> cluster_cmap[mod1(x, length(cluster_cmap))], umap_cluster_idx[]))
 
     function on_hover(plt, idx, pos)
@@ -303,7 +304,7 @@ function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cl
 
         for c in collect(hov)
             ogColor = umap_colors.val[c]
-            umap_colors.val[c] = to_color(:red)
+            umap_colors.val[c] = set_color_alpha(ogColor, 1.0)
             push!(highlighted, (c, ogColor))
         end
 
@@ -318,15 +319,16 @@ function umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cl
         dm = $reordered_matrix[1]
         t_to_mtx = $reordered_matrix[4]
 
-        reps = collect(values($cluster_representatives))
+        new_cluster_idx = sort(collect(keys($cluster_representatives)))
+        umap_cluster_idx.val = new_cluster_idx
+
+        reps = map(x -> $cluster_representatives[x], new_cluster_idx)
         mtx_idx = map(x -> t_to_mtx[x], reps)
         rep_mat = reduce(hcat, map(x -> dm[x, :][mtx_idx], mtx_idx))
 
         em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed))
 
-        new_cluster_idx = collect(keys($cluster_representatives))
-        umap_cluster_idx.val = new_cluster_idx
-        umap_colors.val = map(x -> cluster_cmap[mod1(x, length(cluster_cmap))], new_cluster_idx)
+        umap_colors.val = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.2), new_cluster_idx)
 
         return map(x -> Point2f(x), eachrow(em))
     end
