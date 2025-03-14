@@ -281,14 +281,12 @@ function build_selection_window(fig_size,
     deregister_interaction!(umap_ax, :rectanglezoom)
     hidedecorations!(umap_ax)
 
-    umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
+    umap_sc = umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
     return window
 end
 
-function umap_graph_view!(
-    window,
-    umap_ax,
+function umap_graph_view!(umap_ax,
     reordered_matrix,
     cluster_representatives,
     cluster_cmap,
@@ -296,9 +294,9 @@ function umap_graph_view!(
     render_views,
     hovered=Observable(Set{Int}(1));
     on_click=(x) -> (),
-    max_num_3d_views=32,
+    max_num_3d_views=16,
 )
-    campix = campixel!(umap_ax.scene)
+    campixel!(umap_ax.scene)
 
     selected_render = Observable("Volume")
 
@@ -343,7 +341,7 @@ function umap_graph_view!(
 
         em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed))
 
-        umap_colors.val = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.2), new_cluster_idx)
+        umap_colors.val = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.6), new_cluster_idx)
 
         return map(x -> Point2f(x), eachrow(em))
     end
@@ -358,7 +356,9 @@ function umap_graph_view!(
 
         bBoxColor = lift((x, y) -> y[x], bound_cluster, umap_colors)
 
-        ax3d = LScene(umap_ax.scene, show_axis=false, bbox=bBox, scenekw=(backgroundcolor=:black, clear=true, size=(100, 100)))
+        size = Observable((50, 50))
+
+        ax3d = LScene(umap_ax.scene, show_axis=false, bbox=bBox, scenekw=(backgroundcolor=:black, clear=true, size=size))
         ax3d.scene.visible[] = false
 
         wireframe!(
@@ -406,8 +406,11 @@ function umap_graph_view!(
             end
         end
 
-        push!(views, (bBox, ax3d, bound_cluster))
+        push!(views, (bBox, ax3d, bound_cluster, size))
     end
+
+    og_xlim = Observable(umap_ax.xaxis.attributes.limits[])
+    og_ylim = Observable(umap_ax.yaxis.attributes.limits[])
 
     on(embedding, update=true) do e
         for (bBox, ax3d, bound_cluster) in views
@@ -423,6 +426,8 @@ function umap_graph_view!(
 
         umap_nodes.visible[] = true
         reset_limits!(umap_ax)
+        og_xlim[] = umap_ax.xaxis.attributes.limits[]
+        og_ylim[] = umap_ax.yaxis.attributes.limits[]
     end
 
     function is_in(xlim, ylim, p::Point2f)
@@ -433,22 +438,51 @@ function umap_graph_view!(
         return x > xlo && x < xhi && y > ylo && y < yhi
     end
 
+    MIN_SIZE = 10.0
+    MAX_SIZE = 100.0
+
+    function calc_size(xlim, ylim, res)
+        og_x_extent = (og_xlim[][2] - og_xlim[][1])
+        og_y_extent = (og_ylim[][2] - og_ylim[][1])
+
+        x_extent = (xlim[2] - xlim[1])
+        y_extent = (ylim[2] - ylim[1])
+
+        res_x, res_y = res
+
+        x_size = MIN_SIZE * (1.0 / (x_extent / og_x_extent))
+        y_size = MIN_SIZE * (1.0 / (y_extent / og_y_extent))
+
+        return (round(min(max(MIN_SIZE, x_size), MAX_SIZE)), round(min(max(MIN_SIZE, y_size), MAX_SIZE)))
+    end
+
+    first = true
     onany(umap_ax.xaxis.attributes.limits, umap_ax.yaxis.attributes.limits) do xlim, ylim
-        for (bBox, ax, bound_cluster) in views
+        for (bBox, ax, bound_cluster, size) in views
             ax.scene.visible[] = false
         end
 
         indexes = map(x -> x[1], filter(x -> is_in(xlim, ylim, x[2]), collect(enumerate(embedding[]))))
-        if length(indexes) <= max_num_3d_views
-            view_index = 1
-            for i in indexes
-                bBox, ax, bound_cluster = views[view_index]
+        if first
+            og_xlim[] = xlim
+            og_ylim[] = ylim
+            notify(og_xlim)
+            notify(og_ylim)
+            first = false
+        end
+        view_index = 1
+        for i in indexes
+            if view_index <= max_num_3d_views
+                bBox, ax, bound_cluster, size = views[view_index]
                 # data coords
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)
                 # x, y is in global pixel coords
                 x, y = shift_project(umap_ax.scene, apply_transform_and_model(umap_nodes, pos))
 
-                bBox[] = BBox(x - 50, x + 50, y - 50, y + 50)
+                size_x, size_y = calc_size(xlim, ylim, umap_ax.scene.camera.resolution[])
+                bBox[] = BBox(x - round((size_x / 2)), x + round((size_x / 2)), y - round((size_y / 2)), y + round((size_y / 2)))
+                size[] = (size_x, size_y)
+                notify(size)
                 notify(bBox)
 
                 if bound_cluster[] != i
@@ -458,12 +492,7 @@ function umap_graph_view!(
                 ax.scene.visible[] = true
                 view_index += 1
             end
-            umap_nodes.visible[] = false
-        else
-            umap_nodes.visible[] = true
         end
-
-
     end
 
     return umap_nodes
