@@ -323,7 +323,8 @@ function umap_graph_view!(window, umap_ax,
         rep_mat = reduce(hcat, map(x -> dm[x, :][mtx_idx], mtx_idx))
 
         em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed, n_neighbors=min(15, length(reps) - 1)))
-        umap_colors.val = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.6), new_cluster_idx)
+        new_colors = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.6), new_cluster_idx)
+        umap_colors.val = new_colors
 
         render_ax.scene.visible[] = true
         println("Rendering representatives...")
@@ -334,13 +335,28 @@ function umap_graph_view!(window, umap_ax,
             idx = t_to_idx[t]
             buf = IOBuffer()
             cam3d!(render_ax.scene)
+
             if selected_render[] == "Volume"
                 # still a memory leak somewhere
                 render_views["Volume_no_obs"](render_ax, idx, t)
                 center!(render_ax.scene)
-                show(buf, MIME"image/png"(), render_ax.scene, update=false)
-                push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(buf)))
             end
+
+            # band-aid for now, won't hover correctly of course
+            wireframe!(
+                render_ax,
+                Rect2f(-1, -1, 2, 2),
+                transformation=(:xy, 0),
+                color=new_colors[c_idx],
+                overdraw=true,
+                linewidth=10,
+                space=:clip,
+                depth_shift=1.0e-3,
+                inspectable=false
+            )
+
+            show(buf, MIME"image/png"(), render_ax.scene, update=false)
+            push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(buf)))
             empty!(render_ax.scene)
             close(buf)
         end
@@ -371,12 +387,10 @@ function umap_graph_view!(window, umap_ax,
         reset_limits!(umap_ax)
         og_xlim[] = umap_ax.xaxis.attributes.limits[]
         og_ylim[] = umap_ax.yaxis.attributes.limits[]
-        #render_ax.scene.visible[] = false
 
         marker_size[] = MIN_SIZE
         notify(marker_size)
     end
-
 
     on(events(umap_ax.scene).mousebutton) do event
         if is_mouseinside(umap_ax.scene)
@@ -385,30 +399,6 @@ function umap_graph_view!(window, umap_ax,
             end
         end
     end
-
-    #=wireframe!(
-        ax3d,
-        Rect2f(-1, -1, 2, 2),
-        transformation=(:xy, 0),
-        color=bBoxColor,
-        overdraw=true,
-        linewidth=10,
-        space=:clip,
-        depth_shift=1.0e-3,
-        inspectable=false
-    )=#
-
-
-
-
-    function is_in(xlim, ylim, p::Point2f)
-        x, y = p
-        xlo, xhi = xlim
-        ylo, yhi = ylim
-
-        return x > xlo && x < xhi && y > ylo && y < yhi
-    end
-
 
     function calc_size(xlim, ylim)
         og_x_extent = (og_xlim[][2] - og_xlim[][1])
