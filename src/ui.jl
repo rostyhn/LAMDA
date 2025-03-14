@@ -82,7 +82,6 @@ function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
 end
 
 function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; update=false)
-
     t = Observable(Transformation())
 
     v_lo = volume!(scene,

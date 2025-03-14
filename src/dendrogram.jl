@@ -134,8 +134,7 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1)); ho
     on(events(ax).mousebutton, priority=1) do e
         if is_mouseinside(ax)
             if e.button == Mouse.left && e.action == Mouse.press
-                ks = events(ls).keyboardstate
-                on_click(hovered[], ks)
+                on_click(hovered[])
             end
         end
         return Consume(false)

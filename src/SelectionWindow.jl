@@ -3,6 +3,9 @@ using GLMakie: Screen
 using StatsBase
 using UMAP
 const cluster_colors = :tab20
+using FileIO
+using ColorTypes
+using FixedPointNumbers
 
 function build_selection_window(fig_size,
     t_list,
@@ -281,12 +284,12 @@ function build_selection_window(fig_size,
     deregister_interaction!(umap_ax, :rectanglezoom)
     hidedecorations!(umap_ax)
 
-    umap_sc = umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
+    umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
     return window
 end
 
-function umap_graph_view!(umap_ax,
+function umap_graph_view!(window, umap_ax,
     reordered_matrix,
     cluster_representatives,
     cluster_cmap,
@@ -294,7 +297,6 @@ function umap_graph_view!(umap_ax,
     render_views,
     hovered=Observable(Set{Int}(1));
     on_click=(x) -> (),
-    max_num_3d_views=16,
 )
     campixel!(umap_ax.scene)
 
@@ -346,89 +348,85 @@ function umap_graph_view!(umap_ax,
         return map(x -> Point2f(x), eachrow(em))
     end
 
-    umap_nodes = scatter!(umap_ax, embedding; color=umap_colors, inspector_label=on_hover)
-    ins = DataInspector(umap_nodes)
 
-    views = []
-    for i in range(1, max_num_3d_views)
-        bBox = Observable(BBox(0, 0, 0, 0))
-        bound_cluster = Observable(1)
+    imgs = Observable(map(x -> Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}(undef, 100, 100), sort(collect(keys(cluster_representatives[])))))
+    buf = IOBuffer()
+    render_ax = LScene(umap_ax.scene,
+        show_axis=false,
+        bbox=BBox(0, 100, 0, 100),
+        scenekw=(backgroundcolor=:black, clear=true, size=(100, 100))
+    )
 
-        bBoxColor = lift((x, y) -> y[x], bound_cluster, umap_colors)
+    # bugged, but doesn't crash. the volumes don't actually update
+    on(selected_render, update=true) do sr
+        println("Rendering representatives...")
+        new_imgs = []
+        cs = sort(collect(keys(cluster_representatives[])))
+        @time for c_idx in cs
+            t = cluster_representatives[][c_idx]
+            idx = t_to_idx[t]
 
-        size = Observable((50, 50))
-
-        ax3d = LScene(umap_ax.scene, show_axis=false, bbox=bBox, scenekw=(backgroundcolor=:black, clear=true, size=size))
-        ax3d.scene.visible[] = false
-
-        wireframe!(
-            ax3d,
-            Rect2f(-1, -1, 2, 2),
-            transformation=(:xy, 0),
-            color=bBoxColor,
-            overdraw=true,
-            linewidth=10,
-            space=:clip,
-            depth_shift=1.0e-3,
-            inspectable=false
-        )
-        translate!(ax3d.scene, 0, 0, 100)
-
-        # cluster_representatives might change suddenly, causing bound_cluster to be invalid
-        rep = lift(x -> cluster_representatives[][x], bound_cluster)
-        t_idx = lift(x -> t_to_idx[x], rep)
-
-        rendered = nothing
-        @lift begin
-            if !isnothing(rendered)
-                delete!(ax3d.scene, rendered)
-            end
-
-            if $selected_render == "Volume"
-                rendered = render_views[$selected_render](ax3d, t_idx, rep)
-                center!(ax3d.scene)
+            if sr == "Volume"
+                r = render_views[sr](render_ax, Observable(idx), Observable(t))
+                center!(render_ax.scene)
+                show(buf, MIME"image/png"(), parent_scene(render_ax))
+                push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(IOBuffer(take!(buf)))))
+                delete!(render_ax.scene, r[1])
+                delete!(render_ax.scene, r[2])
             end
         end
-
-        on(events(ax3d).mousebutton, priority=1) do event
-            if is_mouseinside(ax3d.scene)
-                if event.button == Mouse.left && event.action == Mouse.press
-                    on_click(Set(bound_cluster[]))
-                end
-            end
-        end
-
-        on(events(ax3d).mouseposition, priority=1) do event
-            if is_mouseinside(ax3d.scene)
-                show_data(ins, umap_nodes, bound_cluster[])
-                hovered[] = Set{Int}(bound_cluster[])
-                notify(hovered)
-            end
-        end
-
-        push!(views, (bBox, ax3d, bound_cluster, size))
+        imgs.val = new_imgs
+        render_ax.scene.visible[] = false
     end
-
     og_xlim = Observable(umap_ax.xaxis.attributes.limits[])
     og_ylim = Observable(umap_ax.yaxis.attributes.limits[])
 
-    on(embedding, update=true) do e
-        for (bBox, ax3d, bound_cluster) in views
-            bound_cluster[] = 1
-            notify(bound_cluster)
-            ax3d.scene.visible[] = false
-        end
+    MIN_SIZE = 30.0
+    MAX_SIZE = 200.0
 
+    marker_size = Observable(MIN_SIZE)
+
+    umap_nodes = scatter!(umap_ax, embedding; inspector_label=on_hover, marker=imgs, markersize=marker_size)
+
+    on(embedding, update=true) do e
         umap_colors[] = umap_colors[]
         umap_cluster_idx[] = umap_cluster_idx[]
+
         notify(umap_cluster_idx)
         notify(umap_colors)
 
-        umap_nodes.visible[] = true
         reset_limits!(umap_ax)
         og_xlim[] = umap_ax.xaxis.attributes.limits[]
         og_ylim[] = umap_ax.yaxis.attributes.limits[]
+
+        imgs[] = imgs[]
+        notify(imgs)
+        marker_size[] = MIN_SIZE
+        notify(marker_size)
     end
+
+    on(events(umap_ax.scene).mousebutton) do event
+        if is_mouseinside(umap_ax.scene)
+            if event.button == Mouse.left && event.action == Mouse.press
+                on_click(Set(hovered[]))
+            end
+        end
+    end
+
+    #=wireframe!(
+        ax3d,
+        Rect2f(-1, -1, 2, 2),
+        transformation=(:xy, 0),
+        color=bBoxColor,
+        overdraw=true,
+        linewidth=10,
+        space=:clip,
+        depth_shift=1.0e-3,
+        inspectable=false
+    )=#
+
+
+
 
     function is_in(xlim, ylim, p::Point2f)
         x, y = p
@@ -438,17 +436,13 @@ function umap_graph_view!(umap_ax,
         return x > xlo && x < xhi && y > ylo && y < yhi
     end
 
-    MIN_SIZE = 10.0
-    MAX_SIZE = 100.0
 
-    function calc_size(xlim, ylim, res)
+    function calc_size(xlim, ylim)
         og_x_extent = (og_xlim[][2] - og_xlim[][1])
         og_y_extent = (og_ylim[][2] - og_ylim[][1])
 
         x_extent = (xlim[2] - xlim[1])
         y_extent = (ylim[2] - ylim[1])
-
-        res_x, res_y = res
 
         x_size = MIN_SIZE * (1.0 / (x_extent / og_x_extent))
         y_size = MIN_SIZE * (1.0 / (y_extent / og_y_extent))
@@ -456,43 +450,10 @@ function umap_graph_view!(umap_ax,
         return (round(min(max(MIN_SIZE, x_size), MAX_SIZE)), round(min(max(MIN_SIZE, y_size), MAX_SIZE)))
     end
 
-    first = true
     onany(umap_ax.xaxis.attributes.limits, umap_ax.yaxis.attributes.limits) do xlim, ylim
-        for (bBox, ax, bound_cluster, size) in views
-            ax.scene.visible[] = false
-        end
-
-        indexes = map(x -> x[1], filter(x -> is_in(xlim, ylim, x[2]), collect(enumerate(embedding[]))))
-        if first
-            og_xlim[] = xlim
-            og_ylim[] = ylim
-            notify(og_xlim)
-            notify(og_ylim)
-            first = false
-        end
-        view_index = 1
-        for i in indexes
-            if view_index <= max_num_3d_views
-                bBox, ax, bound_cluster, size = views[view_index]
-                # data coords
-                pos = position_on_plot(umap_nodes, i, apply_transform=false)
-                # x, y is in global pixel coords
-                x, y = shift_project(umap_ax.scene, apply_transform_and_model(umap_nodes, pos))
-
-                size_x, size_y = calc_size(xlim, ylim, umap_ax.scene.camera.resolution[])
-                bBox[] = BBox(x - round((size_x / 2)), x + round((size_x / 2)), y - round((size_y / 2)), y + round((size_y / 2)))
-                size[] = (size_x, size_y)
-                notify(size)
-                notify(bBox)
-
-                if bound_cluster[] != i
-                    bound_cluster[] = i
-                    notify(bound_cluster)
-                end
-                ax.scene.visible[] = true
-                view_index += 1
-            end
-        end
+        size_x, size_y = calc_size(xlim, ylim)
+        marker_size[] = size_x
+        notify(marker_size)
     end
 
     return umap_nodes
