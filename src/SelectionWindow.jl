@@ -355,7 +355,7 @@ function umap_graph_view!(
         bBox = Observable(BBox(0, 0, 0, 0))
         bound_cluster = Observable(1)
 
-        bBoxColor = lift(x -> umap_colors[][x], bound_cluster)
+        bBoxColor = lift((x, y) -> y[x], bound_cluster, umap_colors)
 
         ax3d = LScene(umap_ax.scene, show_axis=false, bbox=bBox, scenekw=(backgroundcolor=:black, clear=true, size=(100, 100)))
         ax3d.scene.visible[] = false
@@ -405,10 +405,18 @@ function umap_graph_view!(
     DataInspector(umap_nodes)
 
     on(embedding, update=true) do e
+        for (bBox, ax3d, bound_cluster) in views
+            bound_cluster[] = 1
+            notify(bound_cluster)
+            ax3d.scene.visible[] = false
+        end
+
         umap_colors[] = umap_colors[]
         umap_cluster_idx[] = umap_cluster_idx[]
         notify(umap_cluster_idx)
         notify(umap_colors)
+
+        umap_nodes.visible[] = true
         reset_limits!(umap_ax)
     end
 
