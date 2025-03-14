@@ -407,6 +407,15 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
+    function render_volume_view_no_obs(scene, t_idx, transition)
+        x = volumeData[]
+        y = t_idx
+        z = sampleRanges[]
+        vd = reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3])))
+
+        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, alignment_rotations[][transition])
+    end
+
     function render_movement_view(scene, clusters, time)
         # first attempt, this is really dependent on the quality of the alignment
         t_ap = @lift begin
@@ -503,6 +512,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     render_views = Dict()
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
+    render_views["Volume_no_obs"] = render_volume_view_no_obs
     render_views["Superquadric"] = render_superquadrics_view
     render_views["Movement"] = render_movement_view
 

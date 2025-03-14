@@ -106,26 +106,6 @@ function build_selection_window(fig_size,
     # will complain about being passed "nothing" as a value if something isn't inside the set
     hovered_cluster = Observable(Set{Int}(1))
 
-    #=setup_cluster_view!(window,
-        tGrid,
-        (1, 1),
-        l_hovered_cluster,
-        cluster_groups,
-        reordered_matrix,
-        on_show_cluster_click,
-        bins
-    )
-
-    setup_cluster_view!(window,
-        tGrid,
-        (1, 2),
-        r_hovered_cluster,
-        cluster_groups,
-        reordered_matrix,
-        on_show_cluster_click,
-        bins
-    )=#
-
     function build_info(clusters, cluster_reps, rm, clustering)
         # find centroid between all clusters 
         dm = rm[1]
@@ -141,13 +121,6 @@ function build_selection_window(fig_size,
         f_rep = t_list[clustering.order[ref_t_idx]]
         return (clusters, t_to_idx[f_rep], f_rep)
     end
-
-    #=
-    l_info = lift((x, y, z, w) -> build_info(x, y, z, w), l_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
-    r_info = lift((x, y, z, w) -> build_info(x, y, z, w), r_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
-    setup_transition_view!(window, tGrid, (2, 1), l_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
-    setup_transition_view!(window, tGrid, (2, 2), r_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
-    =#
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
@@ -207,7 +180,7 @@ function build_selection_window(fig_size,
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        if length(hc) > 0
+        if intersect(hc, Set(collect(keys(cluster_groups[])))) == hc && length(hc) > 0
             ts_idx = reduce(vcat, map(x -> cg[x], collect(hc)))
             idx_to_mtx = rm
 
@@ -229,7 +202,7 @@ function build_selection_window(fig_size,
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     hm_last_bBox = nothing
     @lift begin
-        hm_last_bBox = calc_cluster_bounding_box($hovered_cluster, $cluster_groups, $reordered_matrix[2], hm_last_bBox)
+        hm_last_bBox = calc_cluster_bounding_box($hovered_cluster, cluster_groups[], reordered_matrix[][2], hm_last_bBox)
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -328,6 +301,14 @@ function umap_graph_view!(window, umap_ax,
         notify(umap_colors)
     end
 
+    imgs = Observable(map(x -> Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}(undef, 100, 100), sort(collect(keys(cluster_representatives[])))))
+
+    render_ax = LScene(umap_ax.scene,
+        show_axis=false,
+        bbox=BBox(0, 100, 0, 100),
+        scenekw=(backgroundcolor=:black, clear=true, size=(100, 100))
+    )
+
     @time embedding = @lift begin
         println("Computing umap embedding...")
 
@@ -341,69 +322,61 @@ function umap_graph_view!(window, umap_ax,
         mtx_idx = map(x -> t_to_mtx[x], reps)
         rep_mat = reduce(hcat, map(x -> dm[x, :][mtx_idx], mtx_idx))
 
-        em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed))
-
+        em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed, n_neighbors=min(15, length(reps) - 1)))
         umap_colors.val = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.6), new_cluster_idx)
 
-        return map(x -> Point2f(x), eachrow(em))
-    end
-
-
-    imgs = Observable(map(x -> Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}(undef, 100, 100), sort(collect(keys(cluster_representatives[])))))
-    buf = IOBuffer()
-    render_ax = LScene(umap_ax.scene,
-        show_axis=false,
-        bbox=BBox(0, 100, 0, 100),
-        scenekw=(backgroundcolor=:black, clear=true, size=(100, 100))
-    )
-
-    # bugged, but doesn't crash. the volumes don't actually update
-    on(selected_render, update=true) do sr
+        render_ax.scene.visible[] = true
         println("Rendering representatives...")
         new_imgs = []
-        cs = sort(collect(keys(cluster_representatives[])))
+        cs = sort(collect(keys($cluster_representatives)))
         @time for c_idx in cs
-            t = cluster_representatives[][c_idx]
+            t = $cluster_representatives[c_idx]
             idx = t_to_idx[t]
-
-            if sr == "Volume"
-                r = render_views[sr](render_ax, Observable(idx), Observable(t))
+            buf = IOBuffer()
+            cam3d!(render_ax.scene)
+            if selected_render[] == "Volume"
+                # still a memory leak somewhere
+                render_views["Volume_no_obs"](render_ax, idx, t)
                 center!(render_ax.scene)
-                show(buf, MIME"image/png"(), parent_scene(render_ax))
-                push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(IOBuffer(take!(buf)))))
-                delete!(render_ax.scene, r[1])
-                delete!(render_ax.scene, r[2])
+                show(buf, MIME"image/png"(), render_ax.scene, update=false)
+                push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(buf)))
             end
+            empty!(render_ax.scene)
+            close(buf)
         end
-        imgs.val = new_imgs
+        GC.gc()
         render_ax.scene.visible[] = false
+
+        imgs.val = new_imgs
+        return map(x -> Point2f(x), eachrow(em))
     end
-    og_xlim = Observable(umap_ax.xaxis.attributes.limits[])
-    og_ylim = Observable(umap_ax.yaxis.attributes.limits[])
 
     MIN_SIZE = 30.0
     MAX_SIZE = 200.0
 
     marker_size = Observable(MIN_SIZE)
 
+    og_xlim = Observable(umap_ax.xaxis.attributes.limits[])
+    og_ylim = Observable(umap_ax.yaxis.attributes.limits[])
+
     umap_nodes = scatter!(umap_ax, embedding; inspector_label=on_hover, marker=imgs, markersize=marker_size)
-
     on(embedding, update=true) do e
-        umap_colors[] = umap_colors[]
         umap_cluster_idx[] = umap_cluster_idx[]
-
+        umap_colors[] = umap_colors[]
+        imgs[] = imgs[]
         notify(umap_cluster_idx)
         notify(umap_colors)
+        notify(imgs)
 
         reset_limits!(umap_ax)
         og_xlim[] = umap_ax.xaxis.attributes.limits[]
         og_ylim[] = umap_ax.yaxis.attributes.limits[]
+        #render_ax.scene.visible[] = false
 
-        imgs[] = imgs[]
-        notify(imgs)
         marker_size[] = MIN_SIZE
         notify(marker_size)
     end
+
 
     on(events(umap_ax.scene).mousebutton) do event
         if is_mouseinside(umap_ax.scene)
