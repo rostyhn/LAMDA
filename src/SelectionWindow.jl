@@ -397,6 +397,13 @@ function umap_graph_view!(
             end
         end
 
+        on(events(ax3d).mouseposition, priority=1) do event
+            if is_mouseinside(ax3d.scene)
+                hovered[] = Set{Int}(bound_cluster[])
+                notify(hovered)
+            end
+        end
+
         push!(views, (bBox, ax3d, bound_cluster))
     end
 
@@ -461,7 +468,7 @@ function umap_graph_view!(
 
     end
 
-    return umap_nodes, hovered
+    return umap_nodes
 end
 
 function setup_transition_view!(
