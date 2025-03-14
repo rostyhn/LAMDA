@@ -281,12 +281,14 @@ function build_selection_window(fig_size,
     deregister_interaction!(umap_ax, :rectanglezoom)
     hidedecorations!(umap_ax)
 
-    umap_sc = umap_graph_view!(umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
+    umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
     return window
 end
 
-function umap_graph_view!(umap_ax,
+function umap_graph_view!(
+    window,
+    umap_ax,
     reordered_matrix,
     cluster_representatives,
     cluster_cmap,
@@ -296,7 +298,7 @@ function umap_graph_view!(umap_ax,
     on_click=(x) -> (),
     max_num_3d_views=32,
 )
-    campixel!(umap_ax.scene)
+    campix = campixel!(umap_ax.scene)
 
     selected_render = Observable("Volume")
 
@@ -346,51 +348,56 @@ function umap_graph_view!(umap_ax,
         return map(x -> Point2f(x), eachrow(em))
     end
 
+    @show umap_ax.scene.camera
+
     views = []
     for i in range(1, max_num_3d_views)
         bBox = Observable(BBox(0, 0, 0, 0))
         bound_cluster = Observable(1)
 
-        bBoxColor = Observable(umap_colors[][bound_cluster[]])
-
-        p = wireframe!(
-            umap_ax.scene,
-            lift(x -> Rect2f(x.origin[1] - 15, x.origin[2] + 15, x.widths[1] - 15, x.widths[2] + 15), bBox),
-            color=lift(x -> set_color_alpha(x, 1.0), bBoxColor),
-            overdraw=true,
-            visible=false,
-            linewidth=10,
-            depth_shift=-1.0e-3,
-            inspectable=false
-        )
+        bBoxColor = lift(x -> umap_colors[][x], bound_cluster)
 
         ax3d = LScene(umap_ax.scene, show_axis=false, bbox=bBox, scenekw=(backgroundcolor=:black, clear=true, size=(100, 100)))
         ax3d.scene.visible[] = false
 
-        on(bound_cluster) do bc
-            rep = cluster_representatives[][bc]
-            t_idx = t_to_idx[rep]
-            function choose_scene(selector)
-                if selector == "Volume"
-                    render_views[selector](ax3d, t_idx, rep)
-                    return [], []
-                end
-            end
-            scene_switcher(ax3d, GridLayout(), selected_render, choose_scene)
+        wireframe!(
+            ax3d,
+            Rect2f(-1, -1, 2, 2),
+            transformation=(:xy, 0),
+            color=bBoxColor,
+            overdraw=true,
+            linewidth=10,
+            space=:clip,
+            depth_shift=1.0e-3,
+            inspectable=false
+        )
+        translate!(ax3d.scene, 0, 0, 100)
 
-            bBoxColor[] = umap_colors[][bc]
-            notify(bBoxColor)
+        # cluster_representatives might change suddenly, causing bound_cluster to be invalid
+        rep = lift(x -> cluster_representatives[][x], bound_cluster)
+        t_idx = lift(x -> t_to_idx[x], rep)
+
+        rendered = nothing
+        @lift begin
+            if !isnothing(rendered)
+                delete!(ax3d.scene, rendered)
+            end
+
+            if $selected_render == "Volume"
+                rendered = render_views[$selected_render](ax3d, t_idx, rep)
+                center!(ax3d.scene)
+            end
         end
 
         on(events(ax3d).mousebutton, priority=1) do event
             if is_mouseinside(ax3d.scene)
                 if event.button == Mouse.left && event.action == Mouse.press
-                    on_click(bound_cluster[])
+                    on_click(Set(bound_cluster[]))
                 end
             end
         end
 
-        push!(views, (bBox, ax3d, bound_cluster, p))
+        push!(views, (bBox, ax3d, bound_cluster))
     end
 
     umap_nodes = scatter!(umap_ax, embedding; color=umap_colors, inspector_label=on_hover)
@@ -414,31 +421,35 @@ function umap_graph_view!(umap_ax,
     end
 
     onany(umap_ax.xaxis.attributes.limits, umap_ax.yaxis.attributes.limits) do xlim, ylim
-        for (bBox, ax, bound_cluster, bBoxRender) in views
+        for (bBox, ax, bound_cluster) in views
             ax.scene.visible[] = false
-            bBoxRender.visible[] = false
         end
 
         indexes = map(x -> x[1], filter(x -> is_in(xlim, ylim, x[2]), collect(enumerate(embedding[]))))
         if length(indexes) <= max_num_3d_views
             view_index = 1
             for i in indexes
-                bBox, ax, bound_cluster, bBoxRender = views[view_index]
+                bBox, ax, bound_cluster = views[view_index]
+                # data coords
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)
+                # x, y is in global pixel coords
                 x, y = shift_project(umap_ax.scene, apply_transform_and_model(umap_nodes, pos))
+
                 bBox[] = BBox(x - 50, x + 50, y - 50, y + 50)
-                ax.scene.visible[] = true
                 notify(bBox)
+
                 if bound_cluster[] != i
                     bound_cluster[] = i
                     notify(bound_cluster)
-                    center!(ax.scene)
                 end
-                bBoxRender.visible[] = true
-                notify(bBoxRender.visible)
+                ax.scene.visible[] = true
                 view_index += 1
             end
+            umap_nodes.visible[] = false
+        else
+            umap_nodes.visible[] = true
         end
+
 
     end
 
