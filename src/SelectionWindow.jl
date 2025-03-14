@@ -253,7 +253,7 @@ function build_selection_window(fig_size,
     window[2:3, 2] = tGrid
 
     # Box(tGrid[1, 1], color=:black)
-    umap_ax = Axis(tGrid[1, 1], backgroundcolor=:transparent)
+    umap_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="UMAP embedding of reference transitions")
     deregister_interaction!(umap_ax, :rectanglezoom)
     hidedecorations!(umap_ax)
 
@@ -493,74 +493,4 @@ function setup_transition_view!(
     scene_switcher(rootScene, g, sel, choose_scene)
 
     return rootScene
-end
-
-
-function setup_cluster_view!(fig,
-    parentGrid,
-    loc,
-    clusters,
-    cluster_groups,
-    reordered_matrix,
-    on_cluster_button_click,
-    bins,
-)
-    i, j = loc
-    cluster_grid = GridLayout()
-    parentGrid[i, j] = cluster_grid
-
-    cmap = to_colormap(cluster_colors)
-    cluster_grid[1, 1] = Label(fig,
-        lift(x -> "Cluster $(str_limit(x;len=25))", clusters),
-        halign=:left,
-        font=:bold,
-        tellwidth=false)
-
-    show_cluster_btn = Button(cluster_grid[1, 2], label="Show")
-
-    on(show_cluster_btn.clicks) do n
-        on_cluster_button_click(clusters[])
-    end
-
-    hist_values = @lift begin
-        ts_idx = reduce(vcat, (map(x -> cluster_groups[][x], collect($clusters))))
-        mtx_idx = sort(map(x -> reordered_matrix[][2][x], ts_idx))
-        mat = reordered_matrix[][1]
-        vals = mat[mtx_idx, mtx_idx]
-        utri = triu!(trues(size(vals)))
-        return vec(vals[utri])
-    end
-
-    hist_ax = Axis(cluster_grid[2, 1:2], title="Intra-cluster distances",
-        backgroundcolor=:transparent, tellwidth=false, tellheight=false)
-
-    # hide y labels because otherwise the width of each column gets adjusted
-    hideydecorations!(hist_ax)
-
-    # TODO: copy over code for custom implementation 
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/stats/hist.jl 
-    # unfortunately bar_labels doesn't work
-    color = @lift begin
-        cl = collect($clusters)
-        if length(cl) != 1
-            return to_color(:grey)
-        else
-            return cmap[mod1(first(cl), length(cmap))]
-        end
-    end
-
-    hist!(hist_ax,
-        hist_values,
-        normalization=:density,
-        strokewidth=1,
-        strokecolor=:black,
-        color=color,
-        bins=bins
-    )
-
-    on(hist_values) do hv
-        reset_limits!(hist_ax)
-    end
-
-    return hist_ax
 end
