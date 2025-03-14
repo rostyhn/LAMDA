@@ -342,19 +342,6 @@ function umap_graph_view!(window, umap_ax,
                 center!(render_ax.scene)
             end
 
-            # band-aid for now, won't hover correctly of course
-            wireframe!(
-                render_ax,
-                Rect2f(-1, -1, 2, 2),
-                transformation=(:xy, 0),
-                color=new_colors[c_idx],
-                overdraw=true,
-                linewidth=10,
-                space=:clip,
-                depth_shift=1.0e-3,
-                inspectable=false
-            )
-
             show(buf, MIME"image/png"(), render_ax.scene, update=false)
             push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(buf)))
             empty!(render_ax.scene)
@@ -367,15 +354,16 @@ function umap_graph_view!(window, umap_ax,
         return map(x -> Point2f(x), eachrow(em))
     end
 
-    MIN_SIZE = 30.0
-    MAX_SIZE = 200.0
+    MIN_SIZE = 10.0
+    MAX_SIZE = 100.0
 
     marker_size = Observable(MIN_SIZE)
 
     og_xlim = Observable(umap_ax.xaxis.attributes.limits[])
     og_ylim = Observable(umap_ax.yaxis.attributes.limits[])
 
-    umap_nodes = scatter!(umap_ax, embedding; inspector_label=on_hover, marker=imgs, markersize=marker_size)
+    umap_nodes = scatter!(umap_ax, embedding; inspector_label=on_hover, marker=imgs, markersize=marker_size, strokecolor=umap_colors, strokewidth=5)
+
     on(embedding, update=true) do e
         umap_cluster_idx[] = umap_cluster_idx[]
         umap_colors[] = umap_colors[]
@@ -400,22 +388,17 @@ function umap_graph_view!(window, umap_ax,
         end
     end
 
-    function calc_size(xlim, ylim)
+    function calc_size(xlim)
         og_x_extent = (og_xlim[][2] - og_xlim[][1])
-        og_y_extent = (og_ylim[][2] - og_ylim[][1])
-
         x_extent = (xlim[2] - xlim[1])
-        y_extent = (ylim[2] - ylim[1])
-
         x_size = MIN_SIZE * (1.0 / (x_extent / og_x_extent))
-        y_size = MIN_SIZE * (1.0 / (y_extent / og_y_extent))
 
-        return (round(min(max(MIN_SIZE, x_size), MAX_SIZE)), round(min(max(MIN_SIZE, y_size), MAX_SIZE)))
+        return round(min(max(MIN_SIZE, x_size), MAX_SIZE))
     end
 
-    onany(umap_ax.xaxis.attributes.limits, umap_ax.yaxis.attributes.limits) do xlim, ylim
-        size_x, size_y = calc_size(xlim, ylim)
-        marker_size[] = size_x
+    onany(umap_ax.xaxis.attributes.limits, umap_ax.scene.camera.resolution) do xlim, res
+        size_px = calc_size(xlim)
+        marker_size[] = size_px
         notify(marker_size)
     end
 
