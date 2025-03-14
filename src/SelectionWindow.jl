@@ -348,7 +348,8 @@ function umap_graph_view!(
         return map(x -> Point2f(x), eachrow(em))
     end
 
-    @show umap_ax.scene.camera
+    umap_nodes = scatter!(umap_ax, embedding; color=umap_colors, inspector_label=on_hover)
+    ins = DataInspector(umap_nodes)
 
     views = []
     for i in range(1, max_num_3d_views)
@@ -399,6 +400,7 @@ function umap_graph_view!(
 
         on(events(ax3d).mouseposition, priority=1) do event
             if is_mouseinside(ax3d.scene)
+                show_data(ins, umap_nodes, bound_cluster[])
                 hovered[] = Set{Int}(bound_cluster[])
                 notify(hovered)
             end
@@ -406,10 +408,6 @@ function umap_graph_view!(
 
         push!(views, (bBox, ax3d, bound_cluster))
     end
-
-    umap_nodes = scatter!(umap_ax, embedding; color=umap_colors, inspector_label=on_hover)
-
-    DataInspector(umap_nodes)
 
     on(embedding, update=true) do e
         for (bBox, ax3d, bound_cluster) in views
