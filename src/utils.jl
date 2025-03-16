@@ -76,10 +76,6 @@ end
 # leaving this an example
 # to render a view to an image, you need to create a new screen for it, render to it
 # and then save its information to a buffer, which is what show() does.
-
-# contents of colorbuffer returned by show(), used for rendering scenes to images 
-const ColorMatrix = Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}} # stored as mat of ints from 0 to 255
-
 function snapshot_view(render_fn)
     fig = Figure()
     campixel!(fig.scene)

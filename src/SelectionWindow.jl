@@ -253,7 +253,7 @@ function build_selection_window(fig_size,
     deregister_interaction!(scratchpad_ax, :rectanglezoom)
     hidedecorations!(scratchpad_ax)
 
-    scratchpad!(scratchpad_ax, selected_transitions, t_to_idx, cluster_info, cluster_data, render_views)
+    scratchpad!(scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views)
 
     #umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
@@ -262,10 +262,11 @@ end
 
 function scratchpad!(ax,
     selected_transitions::Observable{Set{Tuple{Int,Int}}},
-    t_to_idx::Dict{Tuple{Int,Int},Int},
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
     render_views,
+    hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing);
+    on_click=(x) -> ()
 )
 
     campixel!(ax.scene)
@@ -288,8 +289,8 @@ function scratchpad!(ax,
     cam3d!(render_ax.scene)
 
     num_transitions = 0
-    rt_to_idx = Dict() # gets plotted index of transition
-
+    rt_to_idx = Dict{Tuple{Int,Int},Int}() # gets plotted index of transition
+    idx_to_rt = Tuple{Int,Int}[] # gets transition from plotted idx
     on(selected_transitions) do st
         if length(st) != 0
             last_rendered = collect(values(rt_to_idx))
@@ -305,6 +306,7 @@ function scratchpad!(ax,
             for t in new_transitions
                 num_transitions += 1
                 rt_to_idx[t] = num_transitions
+                push!(idx_to_rt, t)
 
                 mtx_idx = t_to_mtx[t]
 
@@ -328,7 +330,8 @@ function scratchpad!(ax,
                 close(s)
 
                 push!(new_points, Point2f(0.0, 0.0))
-                push!(new_colors, cycle_colormap(assignments[mtx_idx], cluster_cmap))
+                node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
+                push!(new_colors, set_color_alpha(node_color, 0.6))
             end
 
             all_points = vcat(points.val, new_points)
@@ -347,38 +350,71 @@ function scratchpad!(ax,
 
     # forces the plot to be created only when there are points to render 
     nodes = nothing
+    mp_listener = nothing
     on(imgs) do new_imgs
         # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
         # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
+        if !isnothing(mp_listener)
+            off(mp_listener)
+            mp_listener = nothing
+            GC.gc()
+        end
+
         if !isnothing(nodes)
             delete!(ax, nodes)
         end
 
-        nodes = scatter!(ax, points; marker=new_imgs, strokecolor=colors, strokewidth=5, markersize=lift(x -> size.(x), imgs))
+        function on_hit(plt, idx, pos)
+            hovered[] = idx_to_rt[idx]
+            notify(hovered)
+            return string(idx_to_rt[idx])
+        end
+
+        nodes = scatter!(ax, points; marker=new_imgs,
+            strokecolor=colors,
+            inspector_label=on_hit,
+            strokewidth=5,
+            markersize=lift(x -> size.(x), imgs))
     end
 
-    #=function on_hover(plt, idx, pos)
-    hovered[] = Set{Int}(umap_cluster_idx[][idx])
-    notify(hovered)
-    return string(umap_cluster_idx[][idx])
+    on(events(ax).mouseposition) do mp
+        if is_mouseinside(ax.scene)
+            plot, idx = pick(ax, mp)
+            if !isnothing(plot)
+                # empty space seems to be a Mesh plot
+                if plot isa Makie.Mesh && !isnothing(hovered[])
+                    hovered[] = nothing
+                    notify(hovered)
+                end
+            end
+        end
+    end
+
+    on(events(ax).mousebutton) do event
+        if is_mouseinside(ax.scene)
+            if event.button == Mouse.left && event.action == Mouse.press
+                on_click(hovered[])
+            end
+        end
     end
 
     highlighted = []
     on(hovered) do hov
-    for (h, ogCol) in highlighted
-        umap_colors.val[h] = ogCol
-    end
-    empty!(highlighted)
+        for (h, ogCol) in highlighted
+            colors.val[h] = ogCol
+        end
+        empty!(highlighted)
 
-    for c in collect(hov)
-        ogColor = umap_colors.val[c]
-        umap_colors.val[c] = set_color_alpha(ogColor, 1.0)
-        push!(highlighted, (c, ogColor))
-    end
+        if !isnothing(hov)
+            idx = rt_to_idx[hov]
+            ogColor = colors.val[idx]
+            colors.val[idx] = set_color_alpha(ogColor, 1.0)
+            push!(highlighted, (idx, ogColor))
+        end
 
-    umap_colors[] = umap_colors[]
-    notify(umap_colors)
-    end=#
+        colors[] = colors[]
+        notify(colors)
+    end
 end
 
 function umap_graph_view!(window, umap_ax,
