@@ -101,23 +101,6 @@ function build_selection_window(fig_size,
     # will complain about being passed "nothing" as a value if something isn't inside the set
     hovered_cluster = Observable(Set{Int}(1))
 
-    #=
-    function build_info(clusters, cluster_reps, rm, clustering)
-        # find centroid between all clusters 
-        dm = rm[1]
-        t_to_mtx = rm[4]
-        cluster_list = collect(clusters)
-
-        reps = map(x -> cluster_reps[x], cluster_list)
-        mtx_idx = map(x -> t_to_mtx[x], reps)
-
-        dist_sum = map(x -> sum(dm[x, :][mtx_idx]), mtx_idx)
-        ref_t_idx = mtx_idx[argmin(dist_sum)]
-
-        f_rep = t_list[clustering.order[ref_t_idx]]
-        return (clusters, t_to_idx[f_rep], f_rep)
-    end=#
-
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
@@ -143,6 +126,7 @@ function build_selection_window(fig_size,
 
     hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
 
+
     rowsize!(dGrid, 2, Relative(0.25))
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
@@ -158,7 +142,30 @@ function build_selection_window(fig_size,
         hovered_cluster;
         on_click=on_dendrogram_click,
         colormap=CLUSTER_COLORS)
-    heatmap!(hm_ax, lift(x -> x.matrix, cluster_data))
+    hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data))
+    hm_m_events = addmouseevents!(hm_ax.scene)
+
+    on(hm_m_events.obs) do e
+        if e.type === MouseEventTypes.leftdown
+            plot, _ = pick(hm_ax)
+            if !isnothing(plot)
+                ord = cluster_data[].clustering.order
+                xy = mouseposition(hm_ax)
+                i, j = Int.(round.(xy))
+                t_idx1 = ord[i]
+                t_idx2 = ord[j]
+                t1 = t_list[t_idx1]
+                push!(selected_transitions[], t1)
+
+                if t_idx1 != t_idx2
+                    t2 = t_list[t_idx2]
+                    push!(selected_transitions[], t2)
+                end
+
+                notify(selected_transitions)
+            end
+        end
+    end
 
     cluster_cmap = to_colormap(CLUSTER_COLORS)
     rendered_clusters = []
@@ -382,42 +389,29 @@ function scratchpad!(ax,
             markersize=lift(x -> size.(x), imgs))
     end
 
-    dragging = false
-    selected_point = 0
-
-    on(events(ax).mouseposition, priority=2) do mp
-        if is_mouseinside(ax.scene)
-            plot, idx = pick(ax, mp)
-            if !isnothing(plot)
-                if !dragging
-                    # empty space seems to be a Mesh plot
-                    if plot isa Makie.Mesh && !isnothing(hovered[])
-                        hovered[] = nothing
-                        notify(hovered)
-                    end
-                else
-                    points[][selected_point] = mouseposition(ax)
-                    notify(points)
-                    return Consume(true)
-                end
+    selected_point = Ref(0)
+    m_events = addmouseevents!(ax.scene)
+    on(m_events.obs) do e
+        if e.type === MouseEventTypes.leftdragstart
+            plt, idx = pick(ax.scene)
+            if plt == nodes
+                selected_point[] = idx
+            else
+                selected_point[] = 0
             end
-        end
-        return Consume(false)
-    end
-
-    on(events(ax).mousebutton, priority=1) do event
-        if is_mouseinside(ax.scene)
-            if event.button == Mouse.left
-                if event.action == Mouse.press
-                    plt, idx = pick(ax)
-                    if !isnothing(plt) && !(plot isa Makie.Mesh)
-                        dragging = true
-                        selected_point = idx
-                    end
-                elseif event.action == Mouse.release
-                    dragging = false
-                end
-                return Consume(dragging)
+        elseif e.type == MouseEventTypes.leftdrag
+            # will not prevent dragging off the scene 
+            if selected_point[] != 0
+                points[][selected_point[]] = mouseposition(ax)
+                notify(points)
+            end
+        elseif e.type == MouseEventTypes.leftdragstop
+            selected_point[] = 0
+        elseif e.type == MouseEventTypes.over
+            plt, idx = pick(ax.scene)
+            if plt isa Makie.Mesh && !isnothing(hovered[])
+                hovered[] = nothing
+                notify(hovered)
             end
         end
     end
