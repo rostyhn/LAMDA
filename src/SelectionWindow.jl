@@ -3,6 +3,8 @@ using GLMakie: Screen
 using StatsBase
 using UMAP
 using ImageIO
+using NetworkLayout
+
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
@@ -272,8 +274,6 @@ function scratchpad!(ax,
     imgs = Observable{Vector{ColorMatrix}}(ColorMatrix[])
     colors = Observable{Vector{RGBAf}}(RGBAf[])
     points = Observable{Vector{Point2f}}(Point2f[])
-    marker_size = Observable(100)
-    has_points = Observable(false)
     # run once on creation to bind axis
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
@@ -292,14 +292,13 @@ function scratchpad!(ax,
 
     on(selected_transitions) do st
         if length(st) != 0
+            last_rendered = collect(values(rt_to_idx))
+
             new_points = Point2f[]
             new_colors = RGBAf[]
             new_imgs = ColorMatrix[]
 
-            @show st, keys(rt_to_idx)
-            new_transitions = collect(setdiff(st, Set{Tuple{Int,Int}}(collect(keys(rt_to_idx)))))
-            filter!(x -> !(x in keys(rt_to_idx)), new_transitions)
-
+            new_transitions = filter(x -> !(x in keys(rt_to_idx)), collect(st))
             t_to_mtx = cluster_data[].t_to_mtx
             assignments = cluster_info[].assignments
 
@@ -328,31 +327,34 @@ function scratchpad!(ax,
                 close(buf)
                 close(s)
 
-                push!(new_points, Point2f(num_transitions * 10, 0.0))
+                push!(new_points, Point2f(0.0, 0.0))
                 push!(new_colors, cycle_colormap(assignments[mtx_idx], cluster_cmap))
             end
-            points.val = vcat(points.val, new_points)
+
+            all_points = vcat(points.val, new_points)
+
+            # new transitions need to get laid out by the layout algorithm
+            new_t_idx = (x -> rt_to_idx[x], new_transitions)
+
+            # do this so they don't overlap
+            points.val = spring(zeros(length(st), length(st)); C=1.0, pin=Dict(last_rendered .=> true), initialpos=all_points)
             colors.val = vcat(colors.val, new_colors)
             imgs.val = vcat(imgs.val, new_imgs)
 
             imgs[] = imgs[]
-            if !isempty(new_points) && !has_points[]
-                println("flip flag")
-                has_points[] = true
-                notify(has_points)
-            end
         end
     end
 
-
+    # forces the plot to be created only when there are points to render 
     nodes = nothing
     on(imgs) do new_imgs
         # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
+        # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
         if !isnothing(nodes)
             delete!(ax, nodes)
         end
+
         nodes = scatter!(ax, points; marker=new_imgs, strokecolor=colors, strokewidth=5, markersize=lift(x -> size.(x), imgs))
-        reset_limits!(ax)
     end
 
     #=function on_hover(plt, idx, pos)
