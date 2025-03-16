@@ -6,7 +6,8 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
-function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets, bins; fig_size=(400, 400))
+function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets, bins,
+    on_transition_select; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
@@ -79,7 +80,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     utri = triu!(trues(size(vals)))
     hist_vals = vec(vals[utri])
 
-    cluster_cmap = to_colormap(cluster_colors)
+    cluster_cmap = to_colormap(CLUSTER_COLORS)
     cluster_color = to_color(:grey)
     cl = collect(clusters)
     if length(cl) == 1
@@ -184,12 +185,13 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
             linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, scalars, t_to_idx, time, is_visible, render_views)
 
             push!(scenes, rootScene.scene)
-            push!(scene_info, mtx_idx)
+            push!(scene_info, (t, mtx_idx))
         end
     end
 
     # draws rectangle on matrix whenever a transition is hovered over
     # not elegant, but it works and is relatively efficient
+    hovered = Observable{Union{Nothing,Tuple{Int,Int}}}(nothing)
     bBox = nothing
     last_bBox = 0
     on(events(window).mouseposition) do mp
@@ -201,9 +203,13 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
                         if !isnothing(bBox)
                             delete!(parent_scene(bBox), bBox)
                         end
-                        if !isnothing(scene_info[i][])
-                            bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][], scene_info[i][])
+                        if !isnothing(scene_info[i][2][])
+                            bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][2][], scene_info[i][2][])
                             last_bBox = i
+                            if !isnothing(scene_info[i][1][])
+                                hovered[] = scene_info[i][1][]
+                                notify(hovered)
+                            end
                         end
                     end
                     found = true
@@ -222,6 +228,16 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
                 last_bBox = 0
                 delete!(parent_scene(bBox), bBox)
                 bBox = nothing
+            end
+        end
+    end
+
+    on(events(window).mousebutton, priority=1) do event
+        if is_mouseinside(window)
+            if event.button == Mouse.left && event.action == Mouse.press
+                if !isnothing(hovered[])
+                    on_transition_select(hovered[])
+                end
             end
         end
     end

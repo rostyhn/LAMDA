@@ -53,7 +53,13 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
     end
 end
 
-function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1)); hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, on_click=((x, y) -> ()), kwargs...)
+function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
+    hover_callbackfn=(x -> ()),
+    colormap=:tab20,
+    rootcolor=:black,
+    on_click=((x, y) -> ()),
+    kwargs...)
+
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables

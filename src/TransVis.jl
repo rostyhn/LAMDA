@@ -7,6 +7,10 @@ using Pickle
 using JLD2
 using CodecZlib
 using Clustering: hclust, cutree
+using FileIO
+using ColorTypes
+using FixedPointNumbers
+
 #Vis
 using GLMakie
 using Makie
@@ -22,8 +26,8 @@ using ProgressMeter
 using Ripserer
 using Mmap
 
-
 include("io.jl")
+include("data_types.jl")
 # unfortunately is used as part of the main module
 include("multiprocess.jl")
 include("processing.jl")
@@ -38,9 +42,8 @@ include("ReductionWindow.jl")
 include("ui.jl")
 
 export go
-
 const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
-
+const CLUSTER_COLORS = :tab20
 
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
@@ -52,7 +55,6 @@ function go(trajectory_name::String; kwargs...)
     screen = GLMakie.Screen()
     display(screen, window)
 end
-
 
 function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
     # GLMakie.closeall() # close reduction window 
@@ -79,7 +81,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     per_t_scalars = active_trajectory["per_t_scalars"]
 
     # absolute index for volume data
-    t_to_idx = Dict()
+    t_to_idx = Dict{Tuple{Int,Int},Int}()
     for (i, t) in enumerate(active_trajectory["transitions"])
         t_to_idx[t] = i
     end
@@ -90,17 +92,30 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-    clustering = @lift begin
-        res = hclust($dm, linkage=:ward, branchorder=:barjoseph)
+    cluster_data = @lift begin
+        clustering = hclust($dm, linkage=:ward, branchorder=:barjoseph)
 
-        h_range[] = extrema(res.heights)
+        rm = zeros(size($dm))
+        # gets the correct idx 
+        idx_to_mtx = zeros(Int, size($dm)[1])
+        t_to_mtx = Dict()
+        for (i, r) in enumerate(clustering.order)
+            rm[i, :] .= $dm[r, :][clustering.order]
+            idx_to_mtx[r] = i
+            t_to_mtx[transitionSequence[r]] = i
+        end
+
+        # get minimum and maximum of entire matrix for cmap
+        fl = vec($dm)
+        h_range[] = extrema(clustering.heights)
         notify(h_range)
-        return res
+
+        return ClusterData(clustering=clustering, matrix=rm, idx_to_mtx=idx_to_mtx, m_extrema=(extrema(fl)), t_to_mtx=t_to_mtx)
     end
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
-    cluster_groups = @lift begin
-        assignments = cutree($clustering, h=$h_cutoff)
+    cluster_info = @lift begin
+        assignments = cutree($(cluster_data).clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Int}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
@@ -122,12 +137,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
         =#
 
-        return groups
-    end
-
-    cluster_representatives = @lift begin
         reps = Dict{Int,Tuple{Int,Int}}()
-        for (clusterIdx, g) in $cluster_groups
+        for (clusterIdx, g) in groups
             # find reference t
             m = $dm
             dist_sum = map(x -> sum(m[x, :][g]), g)
@@ -135,7 +146,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
             reps[clusterIdx] = transitionSequence[ref_t_idx]
         end
-        return reps
+
+        return ClusterInfo(groups=groups, representatives=reps, assignments=assignments)
     end
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
@@ -148,7 +160,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         features = alignments[$selected_alignment]
 
         rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool,Tuple{Int,Int}}}()
-        for (clusterIdx, g) in $cluster_groups
+        for (clusterIdx, g) in $(cluster_info).groups
             # find reference t
             m = $dm
             dist_sum = map(x -> sum(m[x, :][g]), g)
@@ -407,19 +419,19 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_volume_view_no_obs(scene, t_idx, transition)
-        x = volumeData[]
-        y = t_idx
-        z = sampleRanges[]
-        vd = reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3])))
+    function render_volume_view_no_obs(scene, transition)
+        t_idx = lift(x -> t_to_idx[x], transition)
+        vd = lift((x, y, z) ->
+                reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volumeData, t_idx, sampleRanges)
 
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, alignment_rotations[][transition])
+        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift(x -> alignment_rotations[][x], transition))
     end
+
 
     function render_movement_view(scene, clusters, time)
         # first attempt, this is really dependent on the quality of the alignment
         t_ap = @lift begin
-            g = reduce(vcat, map(x -> $cluster_groups[x], collect($clusters)))
+            g = reduce(vcat, map(x -> $(cluster_info).groups[x], collect($clusters)))
             ts = map(x -> transitionSequence[x], g)
             bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
             posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
@@ -528,7 +540,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, render_views, widgets, invariantRange, cluster_representatives, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
+    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, cluster_data, cluster_info, scalars, h_cutoff, h_range, settings_window, render_views, widgets, invariantRange, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
+
 
     #= 
     # creating screen after the window is built prevents subtle bugs

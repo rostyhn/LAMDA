@@ -2,29 +2,27 @@ using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform
 using GLMakie: Screen
 using StatsBase
 using UMAP
-const cluster_colors = :tab20
-using FileIO
-using ColorTypes
-using FixedPointNumbers
+
+const MIN_NODE_SIZE = 10.0
+const MAX_NODE_SIZE = 100.0
 
 function build_selection_window(fig_size,
     t_list,
-    t_to_idx,
+    t_to_idx::Dict{Tuple{Int,Int},Int},
     on_click,
     num_atoms,
     dm,
     volRange,
     vol_cmap,
-    clustering,
+    cluster_data::Observable{ClusterData},
+    cluster_info::Observable{ClusterInfo},
     scalars,
     h_cutoff,
-    cluster_groups,
     h_range,
     settings_window,
     render_views,
     widgets,
     invariantRange,
-    cluster_representatives,
     matColLabel,
     per_t_scalars,
     per_t_scalar_ranges
@@ -33,26 +31,16 @@ function build_selection_window(fig_size,
     window = Figure(size=fig_size)
     menu_bar = top_bar(window, "Overview", 2)
 
-    # reorders distance matrix according to clustering
-    reordered_matrix = @lift begin
-        m = $dm
-        rm = zeros(size(m))
+    init_transitions = Set{Tuple{Int,Int}}()
+    selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
 
-        # gets the correct idx 
-        idx_to_mtx = zeros(Int, size(m)[1])
-        t_to_mtx = Dict()
-        for (i, r) in enumerate($clustering.order)
-            rm[i, :] .= m[r, :][$clustering.order]
-            idx_to_mtx[r] = i
-            t_to_mtx[t_list[r]] = i
-        end
-
-        # get minimum and maximum of entire matrix for cmap
-        fl = vec(m)
-        return rm, idx_to_mtx, (minimum(fl), maximum(fl)), t_to_mtx
+    img_dict = Observable(Dict{Tuple{Int,Int},Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}}())
+    function on_transition_select(t)
+        #img_dict[][t] = img
+        push!(selected_transitions[], t)
+        #notify(img_dict)
+        notify(selected_transitions)
     end
-    # can't get it to align left
-    # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
 
     bins = @lift begin
         return $h_range[1]:1:($h_range[2]+1)
@@ -61,12 +49,12 @@ function build_selection_window(fig_size,
     open_cluster_windows = Dict{Set{Int},Screen}()
     function on_show_cluster_click(clusters)
         if !(clusters in keys(open_cluster_windows))
-            ts_idx = reduce(vcat, map(x -> cluster_groups[][x], collect(clusters)))
+            ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
             ts = t_list[ts_idx]
 
-            ts_idx_to_mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
+            ts_idx_to_mtx_idx = map(x -> cluster_data[].idx_to_mtx[x], ts_idx)
             mtx_idx = sort(ts_idx_to_mtx_idx)
-            mat = reordered_matrix[][1]
+            mat = cluster_data[].matrix
             vals = mat[mtx_idx, mtx_idx]
 
             # want to update volume data in case user messes with volume params
@@ -78,10 +66,11 @@ function build_selection_window(fig_size,
                 vals,
                 scalars,
                 t_to_idx,
-                reordered_matrix[][3],
+                cluster_data[].m_extrema,
                 render_views,
                 widgets,
-                bins
+                bins,
+                on_transition_select
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
@@ -98,7 +87,7 @@ function build_selection_window(fig_size,
     end
 
     # close cluster views if clustering changes
-    on(cluster_groups) do c
+    on(cluster_data) do c
         foreach(s -> close(s), values(open_cluster_windows))
         empty!(open_cluster_windows)
     end
@@ -106,6 +95,7 @@ function build_selection_window(fig_size,
     # will complain about being passed "nothing" as a value if something isn't inside the set
     hovered_cluster = Observable(Set{Int}(1))
 
+    #=
     function build_info(clusters, cluster_reps, rm, clustering)
         # find centroid between all clusters 
         dm = rm[1]
@@ -120,7 +110,7 @@ function build_selection_window(fig_size,
 
         f_rep = t_list[clustering.order[ref_t_idx]]
         return (clusters, t_to_idx[f_rep], f_rep)
-    end
+    end=#
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
@@ -155,15 +145,21 @@ function build_selection_window(fig_size,
         on_show_cluster_click(clusters)
     end
 
-    dendrogram!(graph_ax, clustering, h_cutoff, h_range, hovered_cluster; on_click=on_dendrogram_click, colormap=cluster_colors)
-    heatmap!(hm_ax, lift(x -> x[1], reordered_matrix))
+    dendrogram!(graph_ax,
+        lift(x -> x.clustering, cluster_data),
+        h_cutoff,
+        h_range,
+        hovered_cluster;
+        on_click=on_dendrogram_click,
+        colormap=CLUSTER_COLORS)
+    heatmap!(hm_ax, lift(x -> x.matrix, cluster_data))
 
-    cluster_cmap = to_colormap(cluster_colors)
+    cluster_cmap = to_colormap(CLUSTER_COLORS)
     rendered_clusters = []
     @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        for (c, ts_idx) in $cluster_groups
-            idx_to_mtx = $reordered_matrix[2]
+        for (c, ts_idx) in $(cluster_info).groups
+            idx_to_mtx = $(cluster_data).idx_to_mtx
             m_idx = map(x -> idx_to_mtx[x], ts_idx)
 
             lo = minimum(m_idx)
@@ -175,14 +171,13 @@ function build_selection_window(fig_size,
         end
     end
 
-    function calc_cluster_bounding_box(hc, cg, rm, last_bBox)
+    function calc_cluster_bounding_box(hc, cg, idx_to_mtx, last_bBox)
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        if intersect(hc, Set(collect(keys(cluster_groups[])))) == hc && length(hc) > 0
+        if intersect(hc, Set(collect(keys(cg)))) == hc && length(hc) > 0
             ts_idx = reduce(vcat, map(x -> cg[x], collect(hc)))
-            idx_to_mtx = rm
 
             m_idx = map(x -> idx_to_mtx[x], ts_idx)
 
@@ -202,7 +197,7 @@ function build_selection_window(fig_size,
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     hm_last_bBox = nothing
     @lift begin
-        hm_last_bBox = calc_cluster_bounding_box($hovered_cluster, cluster_groups[], reordered_matrix[][2], hm_last_bBox)
+        hm_last_bBox = calc_cluster_bounding_box($hovered_cluster, cluster_info[].groups, cluster_data[].idx_to_mtx, hm_last_bBox)
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -218,13 +213,13 @@ function build_selection_window(fig_size,
         end
     end
     menu_bar[1, 3] = settings_btn
-    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x[3], reordered_matrix))
+    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
     rowsize!(dGrid, 3, Relative(0.65))
 
     band_sel = Observable(first(sort(collect(keys(per_t_scalars)))))
 
-    x_vals = lift(x -> eachindex(x.order), clustering)
-    colors = lift((x, z) -> map(y -> per_t_scalars[z][t_list[y]], x.order), clustering, band_sel)
+    x_vals = lift(x -> eachindex(x.clustering.order), cluster_data)
+    colors = lift((x, z) -> map(y -> per_t_scalars[z][t_list[y]], x.clustering.order), cluster_data, band_sel)
     colorrange = lift(x -> per_t_scalar_ranges[x], band_sel)
 
     band_ax = Axis(dGrid[4, 1], backgroundcolor=:transparent, title="Per-transition scalar values")
@@ -253,18 +248,130 @@ function build_selection_window(fig_size,
     window[2:3, 2] = tGrid
 
     # Box(tGrid[1, 1], color=:black)
-    umap_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="UMAP embedding of reference transitions")
-    deregister_interaction!(umap_ax, :rectanglezoom)
-    hidedecorations!(umap_ax)
+    scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad")
+    deregister_interaction!(scratchpad_ax, :rectanglezoom)
+    hidedecorations!(scratchpad_ax)
 
-    umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
+    scratchpad!(scratchpad_ax, selected_transitions, t_to_idx, cluster_info, cluster_data, render_views, img_dict)
+
+    #umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
     return window
 end
 
+function scratchpad!(ax,
+    selected_transitions::Observable{Set{Tuple{Int,Int}}},
+    t_to_idx::Dict{Tuple{Int,Int},Int},
+    cluster_info::Observable{ClusterInfo},
+    cluster_data::Observable{ClusterData},
+    render_views,
+    img_dict::Observable{Dict{Tuple{Int,Int},Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}}}
+)
+
+    campixel!(ax.scene)
+
+    selected_render = Observable("Volume")
+    colors = Observable{Vector{RGBAf}}([to_color(:black)])
+    points = Observable{Vector{Point2f}}([Point2f(0.0)])
+    marker_size = Observable(100)
+
+    # run once on creation to bind axis
+    cluster_cmap = to_colormap(CLUSTER_COLORS)
+
+    # create hidden screen to render to
+    fig = Figure()
+    campixel!(fig.scene)
+    render_ax = LScene(fig.scene,
+        bbox=BBox(0, 100, 0, 100),
+        show_axis=false,
+        scenekw=(clear=true, size=(100, 100), backgroundcolor=:black))
+
+    cam3d!(render_ax.scene)
+
+    imgs = @lift begin
+        if length($selected_transitions) != 0
+            new_points = Point2f[]
+            new_colors = RGBAf[]
+            new_imgs = map(x -> Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}(undef, 100, 100), sort(collect($selected_transitions)))
+
+            #new_transitions = collect(setdiff($selected_transitions, Set{Tuple{Int,Int}}(collect(keys(rt_to_idx)))))
+            t_to_mtx = cluster_data[].t_to_mtx
+            assignments = cluster_info[].assignments
+
+            for (i, t) in enumerate($selected_transitions) #new_transitions
+                mtx_idx = t_to_mtx[t]
+
+                buf = IOBuffer()
+                config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+                s = Screen(render_ax.scene, config, buf, MIME"image/png"())
+                if selected_render[] == "Volume"
+                    # still a memory leak somewhere
+                    vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
+                    center!(render_ax.scene)
+                end
+                show(buf, MIME"image/png"(), render_ax.scene, update=false)
+                img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
+
+                new_imgs[i] = img
+                delete!(render_ax, vlo)
+                delete!(render_ax, vhi)
+
+                close(buf)
+                close(s)
+
+                push!(new_points, Point2f(i * 10, 0.0))
+                push!(new_colors, cycle_colormap(assignments[mtx_idx], cluster_cmap))
+            end
+            points.val = deepcopy(new_points)
+            colors.val = deepcopy(new_colors)
+
+            notify(points)
+            notify(colors)
+            return new_imgs
+        else
+            return []
+        end
+    end
+
+    nodes = nothing
+    @lift begin
+        # need to recreate the entire plot if imgs changes, its not an observable
+        if !isempty($imgs)
+            if !isnothing(nodes)
+                delete!(ax, nodes)
+            end
+            nodes = scatter!(ax, points[]; marker=imgs[], overdraw=true, strokecolor=colors[], strokewidth=5, markersize=marker_size)
+            reset_limits!(ax)
+        end
+    end
+
+    #=function on_hover(plt, idx, pos)
+    hovered[] = Set{Int}(umap_cluster_idx[][idx])
+    notify(hovered)
+    return string(umap_cluster_idx[][idx])
+    end
+
+    highlighted = []
+    on(hovered) do hov
+    for (h, ogCol) in highlighted
+        umap_colors.val[h] = ogCol
+    end
+    empty!(highlighted)
+
+    for c in collect(hov)
+        ogColor = umap_colors.val[c]
+        umap_colors.val[c] = set_color_alpha(ogColor, 1.0)
+        push!(highlighted, (c, ogColor))
+    end
+
+    umap_colors[] = umap_colors[]
+    notify(umap_colors)
+    end=#
+end
+
 function umap_graph_view!(window, umap_ax,
     reordered_matrix,
-    cluster_representatives,
+    cluster_info,
     cluster_cmap,
     t_to_idx,
     render_views,

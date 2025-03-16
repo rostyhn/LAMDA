@@ -1,3 +1,4 @@
+using GLMakie: ScreenConfig
 function pair_array(v)
     pairs = Vector{Pair{Any,Any}}()
     for i in 1:length(v)-1
@@ -66,4 +67,40 @@ end
 
 function set_color_alpha(c, a)
     return RGBAf(c.r, c.g, c.b, a)
+end
+
+function cycle_colormap(i, cmap)
+    return cmap[mod1(i, length(cmap))]
+end
+
+# leaving this an example
+# to render a view to an image, you need to create a new screen for it, render to it
+# and then save its information to a buffer, which is what show() does.
+
+function snapshot_view(render_fn)
+    fig = Figure()
+    campixel!(fig.scene)
+    ax = LScene(fig[1, 1], show_axis=false, scenekw=(clear=true, backgroundcolor=:black))
+    cam3d!(ax.scene)
+
+    fn = function (t)
+        # even though the screen isn't visible, it will still render to a colorbuffer which show() dumps internally into the iobuffer
+        config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+        buf = IOBuffer()
+        s = Screen(fig.scene, config, buf, MIME"image/png"())
+
+        plot = render_fn[](ax, t)
+        # make sure that you are updating the camera to the new limits inside the render fn
+        center!(ax.scene)
+
+        show(buf, MIME"image/png"(), ax.scene, update=false)
+        img = deepcopy(FileIO.load(Stream{FileIO.format"PNG"}(buf)))
+        close(buf)
+        close(s)
+        # in case render_fn returns multiple plots
+        foreach(x -> delete!(ax, plot), collect(plot))
+        return img
+    end
+
+    return fn
 end

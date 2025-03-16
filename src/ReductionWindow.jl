@@ -98,7 +98,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
     rendered_clusters = []
     avgs = @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        cmap = to_colormap(cluster_colors)
+        cmap = to_colormap(CLUSTER_COLORS)
         avgs = []
         for (c, ts_idx) in $cluster_groups
             idx_to_mtx = $reordered_matrix[2]
