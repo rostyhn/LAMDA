@@ -258,16 +258,21 @@ function build_selection_window(fig_size,
     linkxaxes!(hm_ax, graph_ax, band_ax)
 
     tGrid = GridLayout()
-    window[2:3, 2] = tGrid
+    scg = GridLayout()
+
+    window[2:3, 2] = vgrid!(tGrid, scg)
 
     # Box(tGrid[1, 1], color=:black)
     scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad")
     deregister_interaction!(scratchpad_ax, :rectanglezoom)
     hidedecorations!(scratchpad_ax)
 
-    scratchpad!(scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views, hovered=hovered_transition)
+    render_selection, scratchpad_render_menu = widgets["Render"](window)
+    scalar_selection, scalar_menu = widgets["Scalar"](window)
+    scg[1, 1] = scratchpad_render_menu
+    scg[1, 2] = scalar_menu
 
-    #umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
+    scratchpad!(scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views, render_selection, scalar_selection, hovered=hovered_transition)
 
     return window
 end
@@ -276,7 +281,9 @@ function scratchpad!(ax,
     selected_transitions::Observable{Set{Tuple{Int,Int}}},
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
-    render_views;
+    render_views,
+    render_selection,
+    scalar_selection;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     on_click=(x) -> ()
 )
@@ -325,18 +332,22 @@ function scratchpad!(ax,
                 buf = IOBuffer()
                 config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
                 s = Screen(render_ax.scene, config, buf, MIME"image/png"())
-                if selected_render[] == "Volume"
+                views = []
+                if render_selection[] == "Volume"
                     # still a memory leak somewhere
                     vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
-                    center!(render_ax.scene)
+                    views = [vlo, vhi]
+                else
+                    atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
+                    views = [atom_s]
                 end
+                center!(render_ax.scene)
                 show(buf, MIME"image/png"(), render_ax.scene, update=false)
                 img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
 
-
                 push!(new_imgs, img)
-                delete!(render_ax, vlo)
-                delete!(render_ax, vhi)
+                foreach(x -> delete!(render_ax, x), views)
+                empty!(views)
 
                 close(buf)
                 close(s)
@@ -358,6 +369,38 @@ function scratchpad!(ax,
 
             imgs[] = imgs[]
         end
+    end
+
+    onany(render_selection, scalar_selection) do rs, ss
+        new_imgs = ColorMatrix[]
+
+        for t in keys(rt_to_idx)
+            buf = IOBuffer()
+            config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+            s = Screen(render_ax.scene, config, buf, MIME"image/png"())
+            views = []
+            if rs == "Volume"
+                # still a memory leak somewhere
+                vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
+                views = [vlo, vhi]
+            else
+                # need to pass down observable hence scalar_selection instead of ss
+                atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
+                views = [atom_s]
+            end
+            center!(render_ax.scene)
+
+            show(buf, MIME"image/png"(), render_ax.scene, update=false)
+            img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
+
+            push!(new_imgs, img)
+            foreach(x -> delete!(render_ax, x), views)
+            empty!(views)
+
+            close(buf)
+            close(s)
+        end
+        imgs[] = new_imgs
     end
 
     # forces the plot to be created only when there are points to render 
@@ -650,7 +693,7 @@ function setup_transition_view!(
                 il, is = render_views[selection](rootScene, inspector, t)
                 return il, [gg]
             elseif selection == "Atom"
-                gg, time, scalar_vals = widgets["Atom"](0.0, fig, g)
+                gg, time, scalar_vals = widgets["Atom"](0.0, fig)
                 render_views[selection](rootScene, t, scalar_vals, time)
                 return [], [gg]
             else

@@ -404,9 +404,10 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene, transition, scalar_vals, time)
+    function render_atom_view(scene, transition, selected_scalar, time)
         t_ap = create_position_alignment_observer(transition)
-        return simple_atom_view!(scene, t_ap, lift((x, y) -> x[y], scalar_vals, transition), scalar_range, atom_cmap, time)
+        @show typeof(transition), selected_scalar
+        return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
     end
 
     function render_volume_view(scene, transition)
@@ -497,6 +498,33 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return time, sg
     end
 
+    # could be one func
+    function render_menu(figure; default="Volume")
+        scene_selector = Observable(default)
+        render_menu = Menu(figure,
+            options=SINGLE_TRANSITION_RENDER_OPTIONS,
+            default=scene_selector[], tellwidth=false)
+
+        on(render_menu.selection) do s
+            scene_selector[] = s
+            notify(scene_selector)
+        end
+
+        return scene_selector, render_menu
+    end
+
+    function scalar_menu(figure)
+        opts = sort(collect(keys(scalars)))
+        scalar_selection = Observable(first(opts))
+
+        m = Menu(figure, options=opts, default=scalar_selection[])
+        on(m.selection) do ms
+            scalar_selection[] = ms
+        end
+
+        return scalar_selection, m
+    end
+
     function atom_widgets(init_time, figure, grid)
         gg = GridLayout(grid[end+1, :])
 
@@ -505,15 +533,11 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
         gg[1, 1:2] = t_slider
 
-        scalar_vals = Observable(scalars[first(opts)])
-        m = Menu(gg[2, 1], options=opts, default=first(opts))
-        on(m.selection) do ms
-            scalar_vals[] = scalars[ms]
-        end
-
+        scalar_selection, m = scalar_menu(figure)
+        gg[2, 1] = m
         Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)
 
-        return gg, time, scalar_vals
+        return gg, time, scalar_selection
     end
 
     # just pass this dictionary around and pass in the arguments it needs
@@ -527,6 +551,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     widgets = Dict()
     widgets["Atom"] = atom_widgets
     widgets["Movement"] = time_slider
+    widgets["Render"] = render_menu
+    widgets["Scalar"] = scalar_menu
 
     function on_click(t, on_window_hover)
         t_idx = t_to_idx[t]

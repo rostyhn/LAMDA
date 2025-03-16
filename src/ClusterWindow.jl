@@ -339,7 +339,7 @@ function linked_transition_view(rootScene,
             render_views[selection](rootScene, t)
             return [], []
         elseif selection == "Atom"
-            render_views[selection](rootScene, t, lift(x -> scalars[x], scalar_selection), time)
+            render_views[selection](rootScene, t, scalar_selection, time)
             return [], []
         elseif selection == "Superquadric"
             return render_views[selection](rootScene, inspector[], t)
