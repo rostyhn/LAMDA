@@ -406,7 +406,6 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time)
         t_ap = create_position_alignment_observer(transition)
-        @show typeof(transition), selected_scalar
         return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
     end
 
@@ -465,7 +464,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return [], []
     end
 
-    function render_superquadrics_view(scene, inspector, transition)
+    function render_superquadrics_view(scene, transition, inspector)
         t_ap = create_position_alignment_observer(transition)
 
         invariant = lift((x, y) -> active_trajectory[x][y], selected_invariant, transition)

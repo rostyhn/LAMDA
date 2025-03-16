@@ -272,12 +272,13 @@ function build_selection_window(fig_size,
     scg[1, 1] = scratchpad_render_menu
     scg[1, 2] = scalar_menu
 
-    scratchpad!(scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views, render_selection, scalar_selection, hovered=hovered_transition)
+    scratchpad!(window, scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views, render_selection, scalar_selection, hovered=hovered_transition)
 
     return window
 end
 
-function scratchpad!(ax,
+function scratchpad!(window,
+    ax,
     selected_transitions::Observable{Set{Tuple{Int,Int}}},
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
@@ -359,8 +360,6 @@ function scratchpad!(ax,
 
             all_points = vcat(points.val, new_points)
 
-            # new transitions need to get laid out by the layout algorithm
-            new_t_idx = (x -> rt_to_idx[x], new_transitions)
 
             # do this so they don't overlap
             points.val = spring(zeros(length(st), length(st)); C=1.0, pin=Dict(last_rendered .=> true), initialpos=all_points)
@@ -456,6 +455,22 @@ function scratchpad!(ax,
                 hovered[] = nothing
                 notify(hovered)
             end
+        elseif e.type == MouseEventTypes.leftdoubleclick
+            # add textbox at point
+            x, y = mouseposition_px(window.scene)
+
+            txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50), placeholder="...", textcolor=:white, focused=true)
+            px, py = mouseposition(ax)
+            on(txt.stored_string) do s
+                text!(ax.scene, px, py; text=s, color=:white)
+            end
+
+            on(txt.focused) do is_focused
+                if !is_focused
+                    delete!(txt)
+                end
+            end
+
         end
     end
 

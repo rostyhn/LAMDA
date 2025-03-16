@@ -138,7 +138,6 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
     return v_lo, v_hi
 end
 
-
 function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange, inspector)
     # try to only render visible points, helps with point picking when hovering 
     v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), colors, points)

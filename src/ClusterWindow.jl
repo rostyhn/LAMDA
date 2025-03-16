@@ -158,7 +158,6 @@ function build_cluster_window(clusters,
         return Consume(false)
     end
 
-    in_scene = Observable{Vector{Observable{Vec2}}}(Vector{Observable{Vec2}}[])
     scenes = []
     scene_info = []
     for i in 1:GRID_X
@@ -342,7 +341,7 @@ function linked_transition_view(rootScene,
             render_views[selection](rootScene, t, scalar_selection, time)
             return [], []
         elseif selection == "Superquadric"
-            return render_views[selection](rootScene, inspector[], t)
+            return render_views[selection](rootScene, t, inspector[])
         else
             return render_views[selection](rootScene, t, time)
         end
