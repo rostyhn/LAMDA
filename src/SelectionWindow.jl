@@ -2,7 +2,7 @@ using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform
 using GLMakie: Screen
 using StatsBase
 using UMAP
-
+using ImageIO
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
@@ -34,7 +34,6 @@ function build_selection_window(fig_size,
     init_transitions = Set{Tuple{Int,Int}}()
     selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
 
-    img_dict = Observable(Dict{Tuple{Int,Int},Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}}())
     function on_transition_select(t)
         #img_dict[][t] = img
         push!(selected_transitions[], t)
@@ -252,7 +251,7 @@ function build_selection_window(fig_size,
     deregister_interaction!(scratchpad_ax, :rectanglezoom)
     hidedecorations!(scratchpad_ax)
 
-    scratchpad!(scratchpad_ax, selected_transitions, t_to_idx, cluster_info, cluster_data, render_views, img_dict)
+    scratchpad!(scratchpad_ax, selected_transitions, t_to_idx, cluster_info, cluster_data, render_views)
 
     #umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
@@ -265,16 +264,16 @@ function scratchpad!(ax,
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
     render_views,
-    img_dict::Observable{Dict{Tuple{Int,Int},Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}}}
 )
 
     campixel!(ax.scene)
 
     selected_render = Observable("Volume")
-    colors = Observable{Vector{RGBAf}}([to_color(:black)])
-    points = Observable{Vector{Point2f}}([Point2f(0.0)])
+    imgs = Observable{Vector{ColorMatrix}}(ColorMatrix[])
+    colors = Observable{Vector{RGBAf}}(RGBAf[])
+    points = Observable{Vector{Point2f}}(Point2f[])
     marker_size = Observable(100)
-
+    has_points = Observable(false)
     # run once on creation to bind axis
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
@@ -288,17 +287,26 @@ function scratchpad!(ax,
 
     cam3d!(render_ax.scene)
 
-    imgs = @lift begin
-        if length($selected_transitions) != 0
+    num_transitions = 0
+    rt_to_idx = Dict() # gets plotted index of transition
+
+    on(selected_transitions) do st
+        if length(st) != 0
             new_points = Point2f[]
             new_colors = RGBAf[]
-            new_imgs = map(x -> Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}(undef, 100, 100), sort(collect($selected_transitions)))
+            new_imgs = ColorMatrix[]
 
-            #new_transitions = collect(setdiff($selected_transitions, Set{Tuple{Int,Int}}(collect(keys(rt_to_idx)))))
+            @show st, keys(rt_to_idx)
+            new_transitions = collect(setdiff(st, Set{Tuple{Int,Int}}(collect(keys(rt_to_idx)))))
+            filter!(x -> !(x in keys(rt_to_idx)), new_transitions)
+
             t_to_mtx = cluster_data[].t_to_mtx
             assignments = cluster_info[].assignments
 
-            for (i, t) in enumerate($selected_transitions) #new_transitions
+            for t in new_transitions
+                num_transitions += 1
+                rt_to_idx[t] = num_transitions
+
                 mtx_idx = t_to_mtx[t]
 
                 buf = IOBuffer()
@@ -312,37 +320,39 @@ function scratchpad!(ax,
                 show(buf, MIME"image/png"(), render_ax.scene, update=false)
                 img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
 
-                new_imgs[i] = img
+
+                push!(new_imgs, img)
                 delete!(render_ax, vlo)
                 delete!(render_ax, vhi)
 
                 close(buf)
                 close(s)
 
-                push!(new_points, Point2f(i * 10, 0.0))
+                push!(new_points, Point2f(num_transitions * 10, 0.0))
                 push!(new_colors, cycle_colormap(assignments[mtx_idx], cluster_cmap))
             end
-            points.val = deepcopy(new_points)
-            colors.val = deepcopy(new_colors)
+            points.val = vcat(points.val, new_points)
+            colors.val = vcat(colors.val, new_colors)
+            imgs.val = vcat(imgs.val, new_imgs)
 
-            notify(points)
-            notify(colors)
-            return new_imgs
-        else
-            return []
+            imgs[] = imgs[]
+            if !isempty(new_points) && !has_points[]
+                println("flip flag")
+                has_points[] = true
+                notify(has_points)
+            end
         end
     end
 
+
     nodes = nothing
-    @lift begin
-        # need to recreate the entire plot if imgs changes, its not an observable
-        if !isempty($imgs)
-            if !isnothing(nodes)
-                delete!(ax, nodes)
-            end
-            nodes = scatter!(ax, points[]; marker=imgs[], overdraw=true, strokecolor=colors[], strokewidth=5, markersize=marker_size)
-            reset_limits!(ax)
+    on(imgs) do new_imgs
+        # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
+        if !isnothing(nodes)
+            delete!(ax, nodes)
         end
+        nodes = scatter!(ax, points; marker=new_imgs, strokecolor=colors, strokewidth=5, markersize=lift(x -> size.(x), imgs))
+        reset_limits!(ax)
     end
 
     #=function on_hover(plt, idx, pos)
