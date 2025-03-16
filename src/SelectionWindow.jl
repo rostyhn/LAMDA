@@ -382,23 +382,42 @@ function scratchpad!(ax,
             markersize=lift(x -> size.(x), imgs))
     end
 
-    on(events(ax).mouseposition) do mp
+    dragging = false
+    selected_point = 0
+
+    on(events(ax).mouseposition, priority=2) do mp
         if is_mouseinside(ax.scene)
             plot, idx = pick(ax, mp)
             if !isnothing(plot)
-                # empty space seems to be a Mesh plot
-                if plot isa Makie.Mesh && !isnothing(hovered[])
-                    hovered[] = nothing
-                    notify(hovered)
+                if !dragging
+                    # empty space seems to be a Mesh plot
+                    if plot isa Makie.Mesh && !isnothing(hovered[])
+                        hovered[] = nothing
+                        notify(hovered)
+                    end
+                else
+                    points[][selected_point] = mouseposition(ax)
+                    notify(points)
+                    return Consume(true)
                 end
             end
         end
+        return Consume(false)
     end
 
-    on(events(ax).mousebutton) do event
+    on(events(ax).mousebutton, priority=1) do event
         if is_mouseinside(ax.scene)
-            if event.button == Mouse.left && event.action == Mouse.press
-                on_click(hovered[])
+            if event.button == Mouse.left
+                if event.action == Mouse.press
+                    plt, idx = pick(ax)
+                    if !isnothing(plt) && !(plot isa Makie.Mesh)
+                        dragging = true
+                        selected_point = idx
+                    end
+                elseif event.action == Mouse.release
+                    dragging = false
+                end
+                return Consume(dragging)
             end
         end
     end

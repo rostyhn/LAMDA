@@ -214,7 +214,6 @@ function build_cluster_window(clusters,
     # not elegant, but it works and is relatively efficient
     # saves us from having 16 observables
     bBox = nothing
-    last_bBox = 0
     on(events(window).mouseposition) do mp
         if is_mouseinside(window)
             found = false

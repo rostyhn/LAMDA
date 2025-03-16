@@ -194,6 +194,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     # makie renders this as one plot, which the inspector grabs a bounding box around
     sqHoverListener = on(events(scene).mouseposition) do mp
         if is_mouseinside(scene)
+            # might be able to use onpick()
             plot, idx = pick(scene)
             if plot != Nothing
                 pos = position_on_plot(plot, idx)
