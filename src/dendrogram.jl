@@ -135,8 +135,6 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
         inspector_label=on_hover,
     )
 
-    DataInspector(ls)
-
     on(events(ax).mousebutton, priority=1) do e
         if is_mouseinside(ax)
             if e.button == Mouse.left && e.action == Mouse.press

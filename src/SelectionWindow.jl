@@ -35,11 +35,11 @@ function build_selection_window(fig_size,
 
     init_transitions = Set{Tuple{Int,Int}}()
     selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
+    hovered_transition = MaybeObservable{Tuple{Int,Int}}()
 
+    # used to place transitions into scratchpad
     function on_transition_select(t)
-        #img_dict[][t] = img
         push!(selected_transitions[], t)
-        #notify(img_dict)
         notify(selected_transitions)
     end
 
@@ -60,21 +60,26 @@ function build_selection_window(fig_size,
 
             # want to update volume data in case user messes with volume params
             # but we keep atom positions consistent with the alignment that existed at the time of creation
+            ds::MaybeObservable{DataInspector} = Observable(nothing)
             w = build_cluster_window(
                 clusters,
                 ts,
                 collect(eachindex(ts_idx_to_mtx_idx)),
                 vals,
                 scalars,
-                t_to_idx,
                 cluster_data[].m_extrema,
                 render_views,
                 widgets,
                 bins,
-                on_transition_select
+                on_transition_select,
+                hovered_transition,
+                ds
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
+
+            # create inspector after render to avoid bugs
+            ds[] = DataInspector(w)
 
 
             open_cluster_windows[clusters] = s
@@ -253,7 +258,7 @@ function build_selection_window(fig_size,
     deregister_interaction!(scratchpad_ax, :rectanglezoom)
     hidedecorations!(scratchpad_ax)
 
-    scratchpad!(scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views)
+    scratchpad!(scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views, hovered=hovered_transition)
 
     #umap_sc = umap_graph_view!(window, umap_ax, reordered_matrix, cluster_representatives, cluster_cmap, t_to_idx, render_views, hovered_cluster; on_click=on_show_cluster_click)
 
@@ -264,8 +269,8 @@ function scratchpad!(ax,
     selected_transitions::Observable{Set{Tuple{Int,Int}}},
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
-    render_views,
-    hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing);
+    render_views;
+    hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     on_click=(x) -> ()
 )
 
@@ -405,7 +410,7 @@ function scratchpad!(ax,
         end
         empty!(highlighted)
 
-        if !isnothing(hov)
+        if !isnothing(hov) && hov in keys(rt_to_idx)
             idx = rt_to_idx[hov]
             ogColor = colors.val[idx]
             colors.val[idx] = set_color_alpha(ogColor, 1.0)

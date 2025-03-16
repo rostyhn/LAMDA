@@ -170,7 +170,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         transparency=true,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
-        fxaa=false,
+        fxaa=false
     )
     m_lo.inspectable[] = false
 
@@ -182,7 +182,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         transparency=true,
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
-        fxaa=false,
+        fxaa=false
     )
     m_hi.inspectable[] = false
 
@@ -190,6 +190,8 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         update_cam!(parent_scene(m_lo))
     end
 
+    # no other way around this other than this super ugly way, 
+    # makie renders this as one plot, which the inspector grabs a bounding box around
     sqHoverListener = on(events(scene).mouseposition) do mp
         if is_mouseinside(scene)
             plot, idx = pick(scene)
@@ -207,7 +209,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     end
 
     update_cam!(parent_scene(m_lo))
-    return [sqHoverListener, cam_listener], []
+    return [cam_listener, sqHoverListener], []
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)

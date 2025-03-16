@@ -6,8 +6,21 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
-function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets, bins,
-    on_transition_select; fig_size=(400, 400))
+function build_cluster_window(clusters,
+    ts,
+    idx_to_mtx_idx,
+    vals,
+    scalars,
+    mat_range,
+    render_views,
+    widgets,
+    bins,
+    on_transition_select,
+    hovered_transition,
+    inspector_ref::MaybeObservable{DataInspector};
+    fig_size=(400, 400)
+)
+
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
@@ -50,11 +63,14 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     l_btn = Button(window, label="◀", tellwidth=false)
     r_btn = Button(window, label="▶", tellwidth=false)
 
-    # transition coupled with matrix coords
-    ts_pairs = sort(collect(zip(ts, idx_to_mtx_idx)), by=x -> x[2])
+    # sort transitions by idx in matrix
+    sortperm!(idx_to_mtx_idx, ts)
+
+    # transition to matrix index dict
+    t_to_mtx = Dict(reverse.(collect(enumerate(ts))))
 
     curr_page = Observable(1)
-    ts_chunks = collect(Iterators.partition(ts_pairs, GRID_SIZE))
+    ts_chunks = collect(Iterators.partition(ts, GRID_SIZE))
     num_pages = length(ts_chunks)
 
     on(l_btn.clicks) do n
@@ -103,14 +119,15 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     )
 
     hm_ax, hm = heatmap(mat_grid[2, 1], vals, colorrange=mat_range)
-    DataInspector(hm)
+    hidedecorations!(hm_ax)
+    deregister_interaction!(hm_ax, :rectanglezoom)
 
     rowsize!(mat_grid, 2, Relative(0.75))
 
     # draw boxes around pages
     page_boxes = []
-    for ts_p in ts_chunks
-        idxs = last.(ts_p)
+    for ts_page in ts_chunks
+        idxs = map(x -> t_to_mtx[x], ts_page)
         lo = minimum(idxs)
         hi = maximum(idxs)
         p = draw_bbox_pixel_space!(hm_ax, lo, hi; color=:grey)
@@ -125,9 +142,6 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         end
         last_cp = cp
     end
-
-    hidedecorations!(hm_ax)
-    deregister_interaction!(hm_ax, :rectanglezoom)
 
     on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
@@ -144,6 +158,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         return Consume(false)
     end
 
+    in_scene = Observable{Vector{Observable{Vec2}}}(Vector{Observable{Vec2}}[])
     scenes = []
     scene_info = []
     for i in 1:GRID_X
@@ -153,93 +168,85 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
                 show_axis=false,
                 scenekw=(backgroundcolor=:black, clear=true),
             )
-            DataInspector(rootScene)
 
             idx = (i - 1) * 4 + j
             init_t = nothing
-            init_mtx = nothing
-            if idx <= length(ts_pairs)
-                init_t = ts_pairs[idx][1]
-                init_mtx = ts_pairs[idx][2]
+            if idx <= length(ts)
+                init_t = ts[idx]
             end
 
-            t = Observable{Union{Nothing,Tuple{Int,Int}}}(init_t)
-            mtx_idx = Observable{Union{Nothing,Int}}(init_mtx)
-
+            t = MaybeObservable{Tuple{Int,Int}}(init_t)
             is_visible = Observable(false)
             # could be more efficient if this gets updated per page instead of per transition
             on(curr_page, update=true) do cp
                 curr_chunk = ts_chunks[cp]
 
                 if idx <= length(curr_chunk)
-                    t[] = curr_chunk[idx][1]
-                    mtx_idx[] = curr_chunk[idx][2]
+                    t[] = curr_chunk[idx]
                     is_visible[] = true
                 else
                     t.val = nothing
-                    mtx_idx.val = nothing
+                    #notify(t)
                     is_visible[] = false
                 end
             end
 
-            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, scalars, t_to_idx, time, is_visible, render_views)
+            linked_transition_view(rootScene,
+                window,
+                tGrid,
+                (i, j),
+                t,
+                scene_selector,
+                scalar_selector,
+                scalars,
+                time,
+                is_visible,
+                render_views,
+                inspector_ref
+            )
 
             push!(scenes, rootScene.scene)
-            push!(scene_info, (t, mtx_idx))
+            push!(scene_info, t)
         end
     end
 
     # draws rectangle on matrix whenever a transition is hovered over
     # not elegant, but it works and is relatively efficient
-    hovered = Observable{Union{Nothing,Tuple{Int,Int}}}(nothing)
+    # saves us from having 16 observables
     bBox = nothing
     last_bBox = 0
     on(events(window).mouseposition) do mp
         if is_mouseinside(window)
             found = false
-            for (i, s) in enumerate(scenes)
-                if mp in viewport(s)[]
-                    if last_bBox != i
-                        if !isnothing(bBox)
-                            delete!(parent_scene(bBox), bBox)
-                        end
-                        if !isnothing(scene_info[i][2][])
-                            bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][2][], scene_info[i][2][])
-                            last_bBox = i
-                            if !isnothing(scene_info[i][1][])
-                                hovered[] = scene_info[i][1][]
-                                notify(hovered)
-                            end
-                        end
+            currently_rendered = collect(ts_chunks[curr_page[]])
+            for (i, s) in enumerate(scenes[1:length(currently_rendered)])
+                if is_mouseinside(s)
+                    if hovered_transition[] != currently_rendered[i]
+                        hovered_transition[] = currently_rendered[i]
+                        notify(hovered_transition)
                     end
                     found = true
                     break
                 end
             end
-            if !found
-                if !isnothing(bBox)
-                    last_bBox = 0
-                    delete!(parent_scene(bBox), bBox)
-                    bBox = nothing
-                end
-            end
-        else
-            if !isnothing(bBox)
-                last_bBox = 0
-                delete!(parent_scene(bBox), bBox)
-                bBox = nothing
+
+            if !found && !isnothing(hovered_transition[])
+                hovered_transition.val = nothing
+                notify(hovered_transition)
             end
         end
+        return Consume(false)
     end
 
     on(events(window).mousebutton, priority=1) do event
         if is_mouseinside(window)
             if event.button == Mouse.left && event.action == Mouse.press
-                if !isnothing(hovered[])
-                    on_transition_select(hovered[])
+                if !isnothing(hovered_transition[])
+                    on_transition_select(hovered_transition[])
                 end
             end
         end
+        return Consume(true)
     end
 
     function color_scene!(idx, color)
@@ -249,16 +256,33 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         end
     end
 
-
     last_lh = 0
     last_rh = 0
-    on(mat_hovered, update=true) do h
+
+    scene_idx = 0
+    on(hovered_transition) do t
+        currently_rendered_transitions = ts_chunks[curr_page[]]
+        if !isnothing(bBox)
+            delete!(parent_scene(bBox), bBox)
+            color_scene!(scene_idx, BLACK)
+        end
+        if !isnothing(t) && t in currently_rendered_transitions
+            scene_idx = findfirst(==(t), currently_rendered_transitions)
+            mtx_idx = t_to_mtx[t]
+            bBox = draw_bbox_pixel_space!(hm_ax, mtx_idx, mtx_idx)
+            color_scene!(scene_idx, SCENE_SELECTED)
+        end
+    end
+
+    on(mat_hovered) do h
         lh, rh = h
 
-        curr_chunk = last.(ts_chunks[curr_page[]])
+        # get current page's indexes
+        curr_chunk = ts_chunks[curr_page[]]
+        current_idxs = map(x -> t_to_mtx[x], curr_chunk)
 
         if lh != last_lh
-            if lh in curr_chunk
+            if lh in current_idxs
                 color_scene!(lh, SCENE_SELECTED)
             end
             color_scene!(last_lh, BLACK)
@@ -266,7 +290,7 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         end
 
         if rh != last_rh
-            if rh in curr_chunk
+            if rh in current_idxs
                 color_scene!(rh, SCENE_SELECTED)
             end
             color_scene!(last_rh, BLACK)
@@ -274,13 +298,26 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         end
     end
 
+
     return window
 end
 
 
-function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, scalars, t_to_idx, time, is_visible, render_views)
-    t_idx::Observable{Union{Nothing,Int}} = lift(x -> get(t_to_idx, x, nothing), t)
-    is_empty = lift((x, y) -> isnothing(x) || isnothing(y), t, t_idx)
+function linked_transition_view(rootScene,
+    fig,
+    parentGrid,
+    loc,
+    t,
+    scene_selection,
+    scalar_selection,
+    scalars,
+    time,
+    is_visible,
+    render_views,
+    inspector
+)
+
+    is_empty = lift(x -> isnothing(x), t)
 
     l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))
     i, j = loc
@@ -288,7 +325,6 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
 
-    inspector = DataInspector(rootScene)
     function select_fn(selection)
         #band-aid solution for now, will break if user goes to last page and then switches selection
         if is_empty[]
@@ -301,13 +337,13 @@ function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_select
         end
 
         if selection == "Volume"
-            render_views[selection](rootScene, t_idx, t)
+            render_views[selection](rootScene, t)
             return [], []
         elseif selection == "Atom"
             render_views[selection](rootScene, t, lift(x -> scalars[x], scalar_selection), time)
             return [], []
         elseif selection == "Superquadric"
-            return render_views[selection](rootScene, inspector, t)
+            return render_views[selection](rootScene, inspector[], t)
         else
             return render_views[selection](rootScene, t, time)
         end

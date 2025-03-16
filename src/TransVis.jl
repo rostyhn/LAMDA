@@ -81,10 +81,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     per_t_scalars = active_trajectory["per_t_scalars"]
 
     # absolute index for volume data
-    t_to_idx = Dict{Tuple{Int,Int},Int}()
-    for (i, t) in enumerate(active_trajectory["transitions"])
-        t_to_idx[t] = i
-    end
+    t_to_idx = Dict{Tuple{Int,Int},Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
 
     per_t_scalars["t_to_idx"] = t_to_idx
     per_t_scalar_ranges["t_to_idx"] = (1, length(active_trajectory["transitions"]))
@@ -412,10 +409,9 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return simple_atom_view!(scene, t_ap, lift((x, y) -> x[y], scalar_vals, transition), scalar_range, atom_cmap, time)
     end
 
-    function render_volume_view(scene, t_idx, transition)
+    function render_volume_view(scene, transition)
         vd = lift((x, y, z) ->
-                reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volumeData, t_idx, sampleRanges)
-
+                reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, transition, sampleRanges)
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
@@ -549,5 +545,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     =#
     screen = GLMakie.Screen()
     display(screen, window)
+
+    # create inspector after render to avoid bugs
+    DataInspector(window)
 end
 end
