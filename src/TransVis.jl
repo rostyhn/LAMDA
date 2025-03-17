@@ -49,14 +49,17 @@ function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(theme_latexfonts(); fontsize=18.0)
-    window = build_reduction_window(active_trajectory, main_window; kwargs...)
+
+    screen_ref = Ref{Maybe{Screen}}(nothing)
+    window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
     screen = GLMakie.Screen()
+    screen_ref[] = screen
     display(screen, window)
 end
 
-function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
+function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
     # GLMakie.closeall() # close reduction window 
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
@@ -586,5 +589,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     # create inspector after render to avoid bugs
     DataInspector(window)
+
+    # close reduction window
+    close(screen_ref[])
 end
 end
