@@ -153,6 +153,11 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
                 hovered.val = nothing
                 notify(hovered)
             end
+        elseif e.type == MouseEventTypes.out
+            if !isnothing(hovered[])
+                hovered.val = nothing
+                notify(hovered)
+            end
         end
     end
 
