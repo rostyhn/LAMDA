@@ -273,7 +273,8 @@ function build_selection_window(fig_size,
     scalar_selection, scalar_menu = widgets["Scalar"](window)
     scg[1, 1] = scratchpad_render_menu
     scg[1, 2] = scalar_menu
-
+    scratchpad_time, scratchpad_t_slider = widgets["Movement"](0.0, window)
+    scg[2, 1:2] = scratchpad_t_slider
     #=
     function on_scratchpad_hover(t)
         t_idx = rel_t_to_idx[t]
@@ -289,6 +290,7 @@ function build_selection_window(fig_size,
         render_views,
         render_selection,
         scalar_selection,
+        scratchpad_time,
         #on_hover=on_scratchpad_hover,
         hovered=hovered_transition)
 
@@ -302,7 +304,8 @@ function scratchpad!(window,
     cluster_data::Observable{ClusterData},
     render_views,
     render_selection,
-    scalar_selection;
+    scalar_selection,
+    time=Observable(0.0);
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     on_hover=(x) -> (),
     on_click=(x) -> ()
@@ -357,7 +360,7 @@ function scratchpad!(window,
                     vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
                     views = [vlo, vhi]
                 else
-                    atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
+                    atom_s = render_views["Atom"](render_ax, t, scalar_selection, time)
                     views = [atom_s]
                 end
                 center!(render_ax.scene)
@@ -401,7 +404,7 @@ function scratchpad!(window,
         notify(colors)
     end
 
-    onany(render_selection, scalar_selection) do rs, ss
+    onany(render_selection, scalar_selection, time) do rs, ss, time_obs
         new_imgs = ColorMatrix[]
 
         for t in keys(rt_to_idx)
@@ -415,7 +418,7 @@ function scratchpad!(window,
                 views = [vlo, vhi]
             else
                 # need to pass down observable hence scalar_selection instead of ss
-                atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
+                atom_s = render_views["Atom"](render_ax, t, scalar_selection, time)
                 views = [atom_s]
             end
             center!(render_ax.scene)
@@ -436,6 +439,7 @@ function scratchpad!(window,
     # forces the plot to be created only when there are points to render 
     nodes = nothing
     mp_listener = nothing
+    last_rendered = 0
     on(imgs) do new_imgs
         # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
         # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
@@ -463,6 +467,7 @@ function scratchpad!(window,
             inspector_label=on_hit,
             strokewidth=5,
             markersize=lift(x -> size.(x), imgs))
+
     end
 
     selected_point = Ref(0)
