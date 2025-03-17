@@ -273,16 +273,16 @@ function build_selection_window(fig_size,
     window[2:3, 2] = vgrid!(tGrid, scg)
 
     # Box(tGrid[1, 1], color=:black)
-    scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad", xautolimitmargin=(0, 0), yautolimitmargin=(0, 0))
+    scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad")
     deregister_interaction!(scratchpad_ax, :rectanglezoom)
-    #hidedecorations!(scratchpad_ax)
+    hidedecorations!(scratchpad_ax)
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
     scg[1, 1] = scratchpad_render_menu
     scg[1, 2] = scalar_menu
-    scratchpad_time, scratchpad_t_slider = widgets["Movement"](0.0, window)
-    scg[2, 1:2] = scratchpad_t_slider
+    #scratchpad_time, scratchpad_t_slider = widgets["Movement"](0.0, window)
+    #scg[2, 1:2] = scratchpad_t_slider
 
     #= try to link clusters to scratchpad
     function on_scratchpad_hover(t)
@@ -299,7 +299,6 @@ function build_selection_window(fig_size,
         render_views,
         render_selection,
         scalar_selection,
-        scratchpad_time,
         #on_hover=on_scratchpad_hover,
         hovered=hovered_transition)
 
@@ -313,8 +312,7 @@ function scratchpad!(window,
     cluster_data::Observable{ClusterData},
     render_views,
     render_selection,
-    scalar_selection,
-    time=Observable(0.0);
+    scalar_selection;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     on_hover=(x) -> (),
     on_click=(x) -> ()
@@ -392,7 +390,8 @@ function scratchpad!(window,
             all_points = vcat(points.val, new_points)
 
             # do this so they don't overlap
-            points.val = spring(zeros(length(st), length(st)); C=1.0, pin=Dict(last_rendered .=> true), initialpos=all_points)
+            points.val = spring(zeros(length(st), length(st)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
+
             colors.val = vcat(colors.val, new_colors)
             imgs.val = vcat(imgs.val, new_imgs)
 
@@ -414,7 +413,7 @@ function scratchpad!(window,
         notify(colors)
     end
 
-    onany(render_selection, scalar_selection, time) do rs, ss, time_obs
+    onany(render_selection, scalar_selection) do rs, ss, time_obs
         new_imgs = ColorMatrix[]
 
         for t in keys(rt_to_idx)
@@ -428,7 +427,7 @@ function scratchpad!(window,
                 views = [vlo, vhi]
             else
                 # need to pass down observable hence scalar_selection instead of ss
-                atom_s = render_views["Atom"](render_ax, t, scalar_selection, time)
+                atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
                 views = [atom_s]
             end
             center!(render_ax.scene)
@@ -446,9 +445,8 @@ function scratchpad!(window,
         imgs[] = new_imgs
     end
 
-    # forces the plot to be created only when there are points to render 
-
-    #= attempt to control marker size, works fine but limits constantly get reset which is annoying
+    # attempt to control marker size, works fine but limits constantly get reset which is annoying
+    # using markerspace = :data causes aspect ratio warping
     MIN_SIZE = 50
     MAX_SIZE = 200
 
@@ -462,26 +460,21 @@ function scratchpad!(window,
         return round(min(max(MIN_SIZE, x_size), MAX_SIZE))
     end
 
-    on(ax.xaxis.attributes.limits) do xlim
-        println("axes changed")
+    on(events(ax.scene).scroll, priority=1) do (dx, dy)
+        xlim = ax.xaxis.attributes.limits[]
         if !isnothing(og_xlim[])
             size_px = calc_size(xlim)
             marker_size[] = size_px
             notify(marker_size)
         end
-    end=#
+        return Consume(false)
+    end
 
+    # forces the plot to be created only when there are points to render 
     nodes = nothing
-    mp_listener = nothing
-
     on(imgs) do new_imgs
         # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
         # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
-        if !isnothing(mp_listener)
-            off(mp_listener)
-            mp_listener = nothing
-            GC.gc()
-        end
 
         if !isnothing(nodes)
             delete!(ax, nodes)
@@ -496,11 +489,17 @@ function scratchpad!(window,
             return string(idx_to_rt[idx])
         end
 
-        nodes = scatter!(ax, points; marker=new_imgs,
+        new_nodes = scatter!(ax, points;
+            marker=new_imgs,
             strokecolor=colors,
             inspector_label=on_hit,
             strokewidth=5,
-            markersize=lift(x -> size.(x), imgs))
+            markersize=marker_size)
+
+        if isnothing(nodes)
+            og_xlim[] = ax.xaxis.attributes.limits[]
+        end
+        nodes = new_nodes
     end
 
     selected_point = Ref(0)
@@ -545,6 +544,8 @@ function scratchpad!(window,
 
         end
     end
+
+    MouseEventTypes.instances
 
     highlighted = []
     on(hovered) do hov
