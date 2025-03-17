@@ -571,8 +571,10 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
+    rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
+
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, cluster_data, cluster_info, scalars, h_cutoff, h_range, settings_window, render_views, widgets, invariantRange, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
+    window = build_selection_window((600, 800), transitionSequence, rel_t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, cluster_data, cluster_info, scalars, h_cutoff, h_range, settings_window, render_views, widgets, invariantRange, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
 
 
     #= 

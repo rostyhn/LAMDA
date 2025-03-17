@@ -227,8 +227,9 @@ function build_cluster_window(clusters,
     # not elegant, but it works and is relatively efficient
     # saves us from having 16 observables
     bBox = nothing
-    on(events(window).mouseposition) do mp
-        if is_mouseinside(window)
+    m_events = addmouseevents!(window.scene)
+    on(m_events.obs) do e
+        if e.type === MouseEventTypes.over
             found = false
             currently_rendered = collect(ts_chunks[curr_page[]])
             for (i, s) in enumerate(scenes[1:length(currently_rendered)])
@@ -241,28 +242,21 @@ function build_cluster_window(clusters,
                     break
                 end
             end
-
             if !found && !isnothing(hovered_transition[])
                 hovered_transition.val = nothing
                 notify(hovered_transition)
             end
-        end
-        return Consume(false)
-    end
-
-    on(events(window).mousebutton, priority=1) do event
-        if is_mouseinside(window)
-            if event.button == Mouse.left && event.action == Mouse.press
-                if !isnothing(hovered_transition[])
-                    on_transition_select(hovered_transition[])
-                end
+        elseif e.type == MouseEventTypes.leftdoubleclick
+            if !isnothing(hovered_transition[])
+                on_transition_select(hovered_transition[])
             end
         end
-        return Consume(true)
     end
 
     on(events(window).entered_window) do entered
-        on_window_hover(clusters)
+        if entered
+            on_window_hover(clusters)
+        end
     end
 
     function color_scene!(idx, color)

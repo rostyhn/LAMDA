@@ -10,7 +10,7 @@ const MAX_NODE_SIZE = 100.0
 
 function build_selection_window(fig_size,
     t_list,
-    t_to_idx::Dict{Tuple{Int,Int},Int},
+    rel_t_to_idx::Dict{Tuple{Int16,Int16},Int},
     on_click,
     num_atoms,
     dm,
@@ -49,7 +49,6 @@ function build_selection_window(fig_size,
     bins = @lift begin
         return $h_range[1]:1:($h_range[2]+1)
     end
-
 
     function on_cluster_window_hover(c)
         hovered_cluster[] = c
@@ -100,7 +99,6 @@ function build_selection_window(fig_size,
 
     # close cluster views if clustering changes
     on(cluster_info) do c
-        @show open_cluster_windows
         foreach(s -> close(s), values(open_cluster_windows))
         empty!(open_cluster_windows)
     end
@@ -276,7 +274,23 @@ function build_selection_window(fig_size,
     scg[1, 1] = scratchpad_render_menu
     scg[1, 2] = scalar_menu
 
-    scratchpad!(window, scratchpad_ax, selected_transitions, cluster_info, cluster_data, render_views, render_selection, scalar_selection, hovered=hovered_transition)
+    #=
+    function on_scratchpad_hover(t)
+        t_idx = rel_t_to_idx[t]
+        hovered_cluster[] = Set(cluster_data[].clustering.order[t_idx])
+        notify(hovered_cluster)
+    end=#
+
+    scratchpad!(window,
+        scratchpad_ax,
+        selected_transitions,
+        cluster_info,
+        cluster_data,
+        render_views,
+        render_selection,
+        scalar_selection,
+        #on_hover=on_scratchpad_hover,
+        hovered=hovered_transition)
 
     return window
 end
@@ -290,12 +304,12 @@ function scratchpad!(window,
     render_selection,
     scalar_selection;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
+    on_hover=(x) -> (),
     on_click=(x) -> ()
 )
 
     campixel!(ax.scene)
 
-    selected_render = Observable("Volume")
     imgs = Observable{Vector{ColorMatrix}}(ColorMatrix[])
     colors = Observable{Vector{RGBAf}}(RGBAf[])
     points = Observable{Vector{Point2f}}(Point2f[])
@@ -320,8 +334,8 @@ function scratchpad!(window,
             last_rendered = collect(values(rt_to_idx))
 
             new_points = Point2f[]
-            new_colors = RGBAf[]
             new_imgs = ColorMatrix[]
+            new_colors = RGBAf[]
 
             new_transitions = filter(x -> !(x in keys(rt_to_idx)), collect(st))
             t_to_mtx = cluster_data[].t_to_mtx
@@ -364,7 +378,6 @@ function scratchpad!(window,
 
             all_points = vcat(points.val, new_points)
 
-
             # do this so they don't overlap
             points.val = spring(zeros(length(st), length(st)); C=1.0, pin=Dict(last_rendered .=> true), initialpos=all_points)
             colors.val = vcat(colors.val, new_colors)
@@ -372,6 +385,20 @@ function scratchpad!(window,
 
             imgs[] = imgs[]
         end
+    end
+
+    onany(cluster_data, cluster_info) do cd, ci
+        new_colors = RGBAf[]
+
+        t_to_mtx = cd.t_to_mtx
+        assignments = ci.assignments
+        for t in keys(rt_to_idx)
+            mtx_idx = t_to_mtx[t]
+            node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
+            push!(new_colors, set_color_alpha(node_color, 0.6))
+        end
+        colors[] = new_colors
+        notify(colors)
     end
 
     onany(render_selection, scalar_selection) do rs, ss
@@ -423,8 +450,11 @@ function scratchpad!(window,
         end
 
         function on_hit(plt, idx, pos)
-            hovered[] = idx_to_rt[idx]
+            t = idx_to_rt[idx]
+            hovered[] = t
             notify(hovered)
+            on_hover(t)
+
             return string(idx_to_rt[idx])
         end
 
@@ -495,149 +525,6 @@ function scratchpad!(window,
         colors[] = colors[]
         notify(colors)
     end
-end
-
-function umap_graph_view!(window, umap_ax,
-    reordered_matrix,
-    cluster_info,
-    cluster_cmap,
-    t_to_idx,
-    render_views,
-    hovered=Observable(Set{Int}(1));
-    on_click=(x) -> (),
-)
-    campixel!(umap_ax.scene)
-
-    selected_render = Observable("Volume")
-
-    umap_cluster_idx = Observable(sort(collect(keys(cluster_representatives[]))))
-    umap_colors = Observable(map(x -> cluster_cmap[mod1(x, length(cluster_cmap))], umap_cluster_idx[]))
-
-    function on_hover(plt, idx, pos)
-        hovered[] = Set{Int}(umap_cluster_idx[][idx])
-        notify(hovered)
-        return string(umap_cluster_idx[][idx])
-    end
-
-    highlighted = []
-    on(hovered) do hov
-        for (h, ogCol) in highlighted
-            umap_colors.val[h] = ogCol
-        end
-        empty!(highlighted)
-
-        for c in collect(hov)
-            ogColor = umap_colors.val[c]
-            umap_colors.val[c] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted, (c, ogColor))
-        end
-
-        umap_colors[] = umap_colors[]
-        notify(umap_colors)
-    end
-
-    imgs = Observable(map(x -> Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}}(undef, 100, 100), sort(collect(keys(cluster_representatives[])))))
-
-    render_ax = LScene(umap_ax.scene,
-        show_axis=false,
-        bbox=BBox(0, 100, 0, 100),
-        scenekw=(backgroundcolor=:black, clear=true, size=(100, 100))
-    )
-
-    @time embedding = @lift begin
-        println("Computing umap embedding...")
-
-        dm = $reordered_matrix[1]
-        t_to_mtx = $reordered_matrix[4]
-
-        new_cluster_idx = sort(collect(keys($cluster_representatives)))
-        umap_cluster_idx.val = new_cluster_idx
-
-        reps = map(x -> $cluster_representatives[x], new_cluster_idx)
-        mtx_idx = map(x -> t_to_mtx[x], reps)
-        rep_mat = reduce(hcat, map(x -> dm[x, :][mtx_idx], mtx_idx))
-
-        em = transpose(umap(transpose(rep_mat), 2; metric=:precomputed, n_neighbors=min(15, length(reps) - 1)))
-        new_colors = map(x -> set_color_alpha(cluster_cmap[mod1(x, length(cluster_cmap))], 0.6), new_cluster_idx)
-        umap_colors.val = new_colors
-
-        render_ax.scene.visible[] = true
-        println("Rendering representatives...")
-        new_imgs = []
-        cs = sort(collect(keys($cluster_representatives)))
-        @time for c_idx in cs
-            t = $cluster_representatives[c_idx]
-            idx = t_to_idx[t]
-            buf = IOBuffer()
-            cam3d!(render_ax.scene)
-
-            if selected_render[] == "Volume"
-                # still a memory leak somewhere
-                render_views["Volume_no_obs"](render_ax, idx, t)
-                center!(render_ax.scene)
-            end
-
-            show(buf, MIME"image/png"(), render_ax.scene, update=false)
-            push!(new_imgs, FileIO.load(Stream{FileIO.format"PNG"}(buf)))
-            empty!(render_ax.scene)
-            close(buf)
-        end
-        GC.gc()
-        render_ax.scene.visible[] = false
-
-        imgs.val = new_imgs
-        return map(x -> Point2f(x), eachrow(em))
-    end
-
-    MIN_SIZE = 10.0
-    MAX_SIZE = 100.0
-
-    marker_size = Observable(MIN_SIZE)
-
-    og_xlim = Observable(umap_ax.xaxis.attributes.limits[])
-    og_ylim = Observable(umap_ax.yaxis.attributes.limits[])
-
-    umap_nodes = scatter!(umap_ax, embedding; inspector_label=on_hover, marker=imgs, markersize=marker_size, strokecolor=umap_colors, strokewidth=5)
-
-    on(embedding, update=true) do e
-        umap_cluster_idx[] = umap_cluster_idx[]
-        umap_colors[] = umap_colors[]
-        imgs[] = imgs[]
-        notify(umap_cluster_idx)
-        notify(umap_colors)
-        notify(imgs)
-
-        reset_limits!(umap_ax)
-        og_xlim[] = umap_ax.xaxis.attributes.limits[]
-        og_ylim[] = umap_ax.yaxis.attributes.limits[]
-
-        marker_size[] = MIN_SIZE
-        notify(marker_size)
-    end
-
-    on(events(umap_ax.scene).mousebutton) do event
-        if is_mouseinside(umap_ax.scene)
-            if event.button == Mouse.left && event.action == Mouse.press
-                on_click(Set(hovered[]))
-            end
-        end
-    end
-
-    function calc_size(xlim)
-        og_x_extent = (og_xlim[][2] - og_xlim[][1])
-        x_extent = (xlim[2] - xlim[1])
-        x_size = MIN_SIZE * (1.0 / (x_extent / og_x_extent))
-
-        return round(min(max(MIN_SIZE, x_size), MAX_SIZE))
-    end
-
-    onany(umap_ax.xaxis.attributes.limits, umap_ax.scene.camera.resolution) do xlim, res
-        size_px = calc_size(xlim)
-        marker_size[] = size_px
-        notify(marker_size)
-    end
-
-    return umap_nodes
 end
 
 function setup_transition_view!(
