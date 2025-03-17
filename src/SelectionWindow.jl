@@ -265,9 +265,9 @@ function build_selection_window(fig_size,
     window[2:3, 2] = vgrid!(tGrid, scg)
 
     # Box(tGrid[1, 1], color=:black)
-    scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad")
+    scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad", xautolimitmargin=(0, 0), yautolimitmargin=(0, 0))
     deregister_interaction!(scratchpad_ax, :rectanglezoom)
-    hidedecorations!(scratchpad_ax)
+    #hidedecorations!(scratchpad_ax)
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
@@ -319,13 +319,14 @@ function scratchpad!(window,
     # run once on creation to bind axis
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
+    IMG_SIZE = 200
     # create hidden screen to render to
     fig = Figure()
     campixel!(fig.scene)
     render_ax = LScene(fig.scene,
-        bbox=BBox(0, 100, 0, 100),
+        bbox=BBox(0, IMG_SIZE, 0, IMG_SIZE),
         show_axis=false,
-        scenekw=(clear=true, size=(100, 100), backgroundcolor=:black))
+        scenekw=(clear=true, size=(IMG_SIZE, IMG_SIZE), backgroundcolor=:black))
 
     cam3d!(render_ax.scene)
 
@@ -437,9 +438,33 @@ function scratchpad!(window,
     end
 
     # forces the plot to be created only when there are points to render 
+
+    #= attempt to control marker size, works fine but limits constantly get reset which is annoying
+    MIN_SIZE = 50
+    MAX_SIZE = 200
+
+    og_xlim::MaybeObservable{Any} = Observable(nothing)
+    marker_size = Observable(MIN_SIZE)
+    function calc_size(xlim)
+        og_x_extent = (og_xlim[][2] - og_xlim[][1])
+        x_extent = (xlim[2] - xlim[1])
+        x_size = MIN_SIZE * (1.0 / (x_extent / og_x_extent))
+
+        return round(min(max(MIN_SIZE, x_size), MAX_SIZE))
+    end
+
+    on(ax.xaxis.attributes.limits) do xlim
+        println("axes changed")
+        if !isnothing(og_xlim[])
+            size_px = calc_size(xlim)
+            marker_size[] = size_px
+            notify(marker_size)
+        end
+    end=#
+
     nodes = nothing
     mp_listener = nothing
-    last_rendered = 0
+
     on(imgs) do new_imgs
         # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
         # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
@@ -467,7 +492,6 @@ function scratchpad!(window,
             inspector_label=on_hit,
             strokewidth=5,
             markersize=lift(x -> size.(x), imgs))
-
     end
 
     selected_point = Ref(0)
