@@ -413,7 +413,7 @@ function scratchpad!(window,
         notify(colors)
     end
 
-    onany(render_selection, scalar_selection) do rs, ss, time_obs
+    onany(render_selection, scalar_selection) do rs, ss
         new_imgs = ColorMatrix[]
 
         for t in keys(rt_to_idx)
@@ -525,6 +525,9 @@ function scratchpad!(window,
             if plt isa Makie.Mesh && !isnothing(hovered[])
                 hovered[] = nothing
                 notify(hovered)
+                # can use this to select the text and do stuff
+                #elseif plt isa Makie.Text
+                #    @show plt
             end
         elseif e.type == MouseEventTypes.leftdoubleclick
             # add textbox at point
@@ -533,7 +536,7 @@ function scratchpad!(window,
             txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50), placeholder="...", textcolor=:white, focused=true)
             px, py = mouseposition(ax)
             on(txt.stored_string) do s
-                text!(ax.scene, px, py; text=s, color=:white)
+                text!(ax.scene, px, py; text=s, color=:white, markerspace=:data)
             end
 
             on(txt.focused) do is_focused
