@@ -37,6 +37,9 @@ function build_selection_window(fig_size,
     selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
     hovered_transition = MaybeObservable{Tuple{Int,Int}}()
 
+    # will complain about being passed "nothing" as a value if something isn't inside the set
+    hovered_cluster = MaybeObservable{Set{Int}}(Set{Int}(1))
+
     # used to place transitions into scratchpad
     function on_transition_select(t)
         push!(selected_transitions[], t)
@@ -47,6 +50,11 @@ function build_selection_window(fig_size,
         return $h_range[1]:1:($h_range[2]+1)
     end
 
+
+    function on_cluster_window_hover(c)
+        hovered_cluster[] = c
+        notify(hovered_cluster)
+    end
     open_cluster_windows = Dict{Set{Int},Screen}()
     function on_show_cluster_click(clusters)
         if !(clusters in keys(open_cluster_windows))
@@ -78,33 +86,24 @@ function build_selection_window(fig_size,
                 on_transition_select,
                 hovered_transition,
                 ds,
-                ref_t
+                ref_t,
+                on_window_hover=on_cluster_window_hover
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
 
             # create inspector after render to avoid bugs
             ds[] = DataInspector(w)
-
-
             open_cluster_windows[clusters] = s
-            # might be causing a memory leak
-            on(events(w).window_open) do is_open
-                if !is_open
-                    delete!(open_cluster_windows, clusters)
-                end
-            end
         end
     end
 
     # close cluster views if clustering changes
-    on(cluster_data) do c
+    on(cluster_info) do c
+        @show open_cluster_windows
         foreach(s -> close(s), values(open_cluster_windows))
         empty!(open_cluster_windows)
     end
-
-    # will complain about being passed "nothing" as a value if something isn't inside the set
-    hovered_cluster = Observable(Set{Int}(1))
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s

@@ -19,6 +19,7 @@ function build_cluster_window(clusters,
     hovered_transition,
     inspector_ref::MaybeObservable{DataInspector},
     ref_t;
+    on_window_hover=(x) -> (),
     fig_size=(400, 400)
 )
 
@@ -130,9 +131,6 @@ function build_cluster_window(clusters,
         color=cluster_color,
         bins=bins
     )
-
-
-
 
     hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
     hidedecorations!(hm_ax)
@@ -261,6 +259,10 @@ function build_cluster_window(clusters,
             end
         end
         return Consume(true)
+    end
+
+    on(events(window).entered_window) do entered
+        on_window_hover(clusters)
     end
 
     function color_scene!(idx, color)
