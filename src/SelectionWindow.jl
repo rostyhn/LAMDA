@@ -51,15 +51,21 @@ function build_selection_window(fig_size,
     end
 
     function on_cluster_window_hover(c)
-        hovered_cluster[] = c
-        notify(hovered_cluster)
+        if !isnothing(c)
+            hovered_cluster[] = c
+            notify(hovered_cluster)
+        else
+            if !isnothing(hovered_cluster[])
+                hovered_cluster.val = nothing
+                hovered_cluster[] = hovered_cluster[]
+                notify(hovered_cluster)
+            end
+        end
     end
+
     open_cluster_windows = Dict{Set{Int},Screen}()
     function on_show_cluster_click(clusters)
         if !(clusters in keys(open_cluster_windows))
-
-            # find centroid between all clusters
-            ref_t = find_group_centroid(clusters, cluster_data[], cluster_info[], t_list)
 
             ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
             ts = t_list[ts_idx]
@@ -85,7 +91,6 @@ function build_selection_window(fig_size,
                 on_transition_select,
                 hovered_transition,
                 ds,
-                ref_t,
                 on_window_hover=on_cluster_window_hover
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
@@ -144,6 +149,7 @@ function build_selection_window(fig_size,
         hovered_cluster;
         on_click=on_dendrogram_click,
         colormap=CLUSTER_COLORS)
+
     hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data))
     hm_m_events = addmouseevents!(hm_ax.scene)
 
@@ -186,12 +192,12 @@ function build_selection_window(fig_size,
         end
     end
 
-    function calc_cluster_bounding_box(hc, cg, idx_to_mtx, last_bBox)
+    function calc_cluster_bounding_box(hc, cg, idx_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        if intersect(hc, Set(collect(keys(cg)))) == hc && length(hc) > 0
+        if !isnothing(hc) && intersect(hc, Set(collect(keys(cg)))) == hc && length(hc) > 0
             ts_idx = reduce(vcat, map(x -> cg[x], collect(hc)))
 
             m_idx = map(x -> idx_to_mtx[x], ts_idx)
@@ -207,12 +213,14 @@ function build_selection_window(fig_size,
 
             return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=3)
         end
+        return draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
     end
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    hm_last_bBox = nothing
+    hm_last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = nothing
     @lift begin
-        hm_last_bBox = calc_cluster_bounding_box($hovered_cluster, cluster_info[].groups, cluster_data[].idx_to_mtx, hm_last_bBox)
+        res = calc_cluster_bounding_box($hovered_cluster, cluster_info[].groups, cluster_data[].idx_to_mtx, hm_last_bBox)
+        hm_last_bBox = res
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -275,7 +283,8 @@ function build_selection_window(fig_size,
     scg[1, 2] = scalar_menu
     scratchpad_time, scratchpad_t_slider = widgets["Movement"](0.0, window)
     scg[2, 1:2] = scratchpad_t_slider
-    #=
+
+    #= try to link clusters to scratchpad
     function on_scratchpad_hover(t)
         t_idx = rel_t_to_idx[t]
         hovered_cluster[] = Set(cluster_data[].clustering.order[t_idx])

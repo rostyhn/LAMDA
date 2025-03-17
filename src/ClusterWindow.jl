@@ -17,8 +17,7 @@ function build_cluster_window(clusters,
     bins,
     on_transition_select,
     hovered_transition,
-    inspector_ref::MaybeObservable{DataInspector},
-    ref_t;
+    inspector_ref::MaybeObservable{DataInspector};
     on_window_hover=(x) -> (),
     fig_size=(400, 400)
 )
@@ -256,6 +255,8 @@ function build_cluster_window(clusters,
     on(events(window).entered_window) do entered
         if entered
             on_window_hover(clusters)
+        else
+            on_window_hover(nothing)
         end
     end
 

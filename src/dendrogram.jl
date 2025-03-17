@@ -60,6 +60,9 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
     on_click=((x, y) -> ()),
     kwargs...)
 
+    ax.xgridvisible = false
+    ax.ygridvisible = false
+
     cmap = to_colormap(colormap)
 
     #FIXME still fires twice thanks to multiple observables
@@ -119,11 +122,13 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
         end
         empty!(highlighted)
 
-        for c in collect(hov)
-            idx = c_dict[][Set(c)]
-            ogColor = d_colors.val[idx]
-            d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted, (idx, ogColor))
+        if !isnothing(hov)
+            for c in collect(hov)
+                idx = c_dict[][Set(c)]
+                ogColor = d_colors.val[idx]
+                d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
+                push!(highlighted, (idx, ogColor))
+            end
         end
         d_colors[] = d_colors[]
         notify(d_colors)
@@ -135,13 +140,20 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
         inspector_label=on_hover,
     )
 
-    on(events(ax).mousebutton, priority=1) do e
-        if is_mouseinside(ax)
-            if e.button == Mouse.left && e.action == Mouse.press
+    m_events = addmouseevents!(ax.scene)
+
+    on(m_events.obs) do e
+        if e.type === MouseEventTypes.leftdown
+            if !isnothing(hovered[])
                 on_click(hovered[])
             end
+        elseif e.type === MouseEventTypes.over
+            plot, idx = pick(ax)
+            if isnothing(plot) && !isnothing(hovered[])
+                hovered.val = nothing
+                notify(hovered)
+            end
         end
-        return Consume(false)
     end
 
     # add cutoff line
