@@ -423,6 +423,16 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift(x -> alignment_rotations[][x], transition))
     end
 
+    # assume the list of ts doesn't change
+    function render_static_movement_view(scene, ts, time)
+        bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
+        posValsTup = map(t -> apply_alignment(alignment_rotations[][t], alignedPositionsMatrices[t]), ts)
+
+        inits = reduce(vcat, first.(posValsTup))
+        fins = reduce(vcat, last.(posValsTup))
+
+        simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
+    end
 
     function render_movement_view(scene, clusters, time)
         # first attempt, this is really dependent on the quality of the alignment
@@ -546,6 +556,7 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     render_views["Volume_no_obs"] = render_volume_view_no_obs
     render_views["Superquadric"] = render_superquadrics_view
     render_views["Movement"] = render_movement_view
+    render_views["SMovement"] = render_static_movement_view
 
     widgets = Dict()
     widgets["Atom"] = atom_widgets

@@ -17,7 +17,8 @@ function build_cluster_window(clusters,
     bins,
     on_transition_select,
     hovered_transition,
-    inspector_ref::MaybeObservable{DataInspector};
+    inspector_ref::MaybeObservable{DataInspector},
+    ref_t;
     fig_size=(400, 400)
 )
 
@@ -103,7 +104,19 @@ function build_cluster_window(clusters,
         cluster_color = cluster_cmap[mod1(first(cl), length(cluster_cmap))]
     end
 
-    hist_ax = Axis(mat_grid[1, 1], title="Intra-cluster distances",
+    centroid_grid = GridLayout()
+    mat_grid[1, 1] = centroid_grid
+
+    Label(centroid_grid[1, 1], "Cluster average", font=:bold, tellwidth=false)
+    centroid_scene = LScene(
+        centroid_grid[2, 1],
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    render_views["SMovement"](centroid_scene, ts, time)
+
+    hist_ax = Axis(mat_grid[2, 1], title="Intra-cluster distances",
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
     deregister_interaction!(hist_ax, :rectanglezoom)
@@ -118,11 +131,14 @@ function build_cluster_window(clusters,
         bins=bins
     )
 
-    hm_ax, hm = heatmap(mat_grid[2, 1], vals, colorrange=mat_range)
+
+
+
+    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    rowsize!(mat_grid, 2, Relative(0.75))
+    #rowsize!(mat_grid, 2, Relative(0.75))
 
     # draw boxes around pages
     page_boxes = []

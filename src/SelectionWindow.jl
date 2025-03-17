@@ -50,6 +50,10 @@ function build_selection_window(fig_size,
     open_cluster_windows = Dict{Set{Int},Screen}()
     function on_show_cluster_click(clusters)
         if !(clusters in keys(open_cluster_windows))
+
+            # find centroid between all clusters
+            ref_t = find_group_centroid(clusters, cluster_data[], cluster_info[], t_list)
+
             ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
             ts = t_list[ts_idx]
 
@@ -73,7 +77,8 @@ function build_selection_window(fig_size,
                 bins,
                 on_transition_select,
                 hovered_transition,
-                ds
+                ds,
+                ref_t
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
