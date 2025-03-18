@@ -453,27 +453,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
         simple_atom_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time)
 
-        #=
-        l = @lift begin
-            # calculate 10 interpolated positions for each moving atom
-            idx = findall(x -> x > 0.5, $t_ap[2])
-
-            init_lines = $t_ap[1][1][idx, :]
-            final_lines = $t_ap[1][2][idx, :]
-
-            lines = []
-            interpolated_range = collect(0.0:0.1:1.0)
-            for (i, (init, final)) in enumerate(zip(eachrow(init_lines), eachrow(final_lines)))
-                diff = final - init
-                push!(lines, map(x -> Point3f(init + (diff .* x)), interpolated_range)...)
-                push!(lines, Point3f(NaN))
-            end
-            return lines
-        end
-
-        lin = lines!(scene, l, overdraw=true)
-        lin.inspectable = false
-        =#
         return [], []
     end
 

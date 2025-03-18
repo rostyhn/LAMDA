@@ -55,7 +55,7 @@ function scene_switcher(scene, grid, selector, select_fn)
     end
 end
 
-function simple_atom_view!(scene, ap, scalars, scalar_range, cmap, time)
+function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64})
     int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
 
     # makes it so the atom view can handle points changing

@@ -54,13 +54,14 @@ function build_cluster_window(clusters,
     end
 
     time, t_slider = widgets["Movement"](0.0, window)
+    btn_centroid = Button(window, label="Show centroid")
 
     window[2, 1:2] = hgrid!(
+        btn_centroid,
         Label(window, "Render mode"),
         render_menu,
         scalar_menu,
         t_slider)
-
 
     l_btn = Button(window, label="◀", tellwidth=false)
     r_btn = Button(window, label="▶", tellwidth=false)
@@ -74,6 +75,19 @@ function build_cluster_window(clusters,
     curr_page = Observable(1)
     ts_chunks = collect(Iterators.partition(ts, GRID_SIZE))
     num_pages = length(ts_chunks)
+
+    centroid_page = 1
+    for chunk in ts_chunks
+        if ref_t in chunk
+            break
+        end
+        centroid_page += 1
+    end
+
+    on(btn_centroid.clicks) do n
+        curr_page[] = centroid_page
+        notify(curr_page)
+    end
 
     on(l_btn.clicks) do n
         if curr_page[] > 1
