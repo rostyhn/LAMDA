@@ -513,9 +513,8 @@ function scratchpad!(window,
         empty!(selected_clusters[])
         selected_clusters[] = selected_clusters[]
         # only trigger imgs if not empty, otherwise it'll try to render 
-        if !isempty(imgs[])
-            imgs[] = imgs[]
-        end
+        notify(colors)
+        imgs[] = imgs[]
     end
 
 
@@ -600,12 +599,15 @@ function scratchpad!(window,
             delete!(ax, nodes)
         end
 
-        new_nodes = scatter!(ax, points;
-            marker=new_imgs,
-            strokecolor=colors,
-            inspector_label=on_hit,
-            strokewidth=5,
-            markersize=marker_size)
+        new_nodes = nothing
+        if !isempty(imgs[])
+            new_nodes = scatter!(ax, points;
+                marker=new_imgs,
+                strokecolor=colors,
+                inspector_label=on_hit,
+                strokewidth=5,
+                markersize=marker_size)
+        end
 
         if isnothing(nodes)
             og_xlim[] = ax.xaxis.attributes.limits[]
@@ -682,22 +684,22 @@ function scratchpad!(window,
         notify(colors)
     end
 
-    # can cause segfaults, probably cause so much is happening 
-    #=on(hovered_cluster) do hc
-        for (h, ogCol) in highlighted
+    highlighted_clusters = []
+    on(hovered_cluster) do hc
+        for (h, ogCol) in highlighted_clusters
             colors.val[h] = ogCol
         end
-        empty!(highlighted)
+        empty!(highlighted_clusters)
 
         if !isnothing(hc) && hc in keys(c_to_idx)
             idx = c_to_idx[hc]
             ogColor = colors.val[idx]
             colors.val[idx] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted, (idx, ogColor))
+            push!(highlighted_clusters, (idx, ogColor))
         end
         colors[] = colors[]
         notify(colors)
-    end=#
+    end
 end
 
 function setup_transition_view!(
