@@ -131,7 +131,7 @@ function build_cluster_window(clusters,
     )
 
     render_views["SMovement"](centroid_scene, ts, time)
-    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad")
+    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], tellwidth=false, label="To scratchpad")
 
     on(btn_centroid_to_scratchpad.clicks) do n
         on_cluster_select(clusters)
