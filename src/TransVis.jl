@@ -434,7 +434,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         inits = reduce(vcat, first.(posValsTup))
         fins = reduce(vcat, last.(posValsTup))
 
-        simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
+        return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
     end
 
     function render_movement_view(scene, clusters, time)

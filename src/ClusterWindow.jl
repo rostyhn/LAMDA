@@ -19,6 +19,7 @@ function build_cluster_window(clusters,
     on_transition_select,
     hovered_transition,
     inspector_ref::MaybeObservable{DataInspector};
+    on_cluster_select=(x) -> (),
     on_window_hover=(x) -> (),
     fig_size=(400, 400)
 )
@@ -130,6 +131,11 @@ function build_cluster_window(clusters,
     )
 
     render_views["SMovement"](centroid_scene, ts, time)
+    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad")
+
+    on(btn_centroid_to_scratchpad.clicks) do n
+        on_cluster_select(clusters)
+    end
 
     hist_ax = Axis(mat_grid[2, 1], title="Intra-cluster distances",
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)

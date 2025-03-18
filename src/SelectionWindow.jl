@@ -37,6 +37,9 @@ function build_selection_window(fig_size,
     selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
     hovered_transition = MaybeObservable{Tuple{Int,Int}}()
 
+    init_clusters = Set{Set{Int}}()
+    selected_clusters = Observable{Set{Set{Int}}}(init_clusters)
+
     # will complain about being passed "nothing" as a value if something isn't inside the set
     hovered_cluster = MaybeObservable{Set{Int}}(Set{Int}(1))
 
@@ -44,6 +47,11 @@ function build_selection_window(fig_size,
     function on_transition_select(t)
         push!(selected_transitions[], t)
         notify(selected_transitions)
+    end
+
+    function on_cluster_select(c)
+        push!(selected_clusters[], c)
+        notify(selected_clusters)
     end
 
     bins = @lift begin
@@ -94,7 +102,8 @@ function build_selection_window(fig_size,
                 on_transition_select,
                 hovered_transition,
                 ds,
-                on_window_hover=on_cluster_window_hover
+                on_window_hover=on_cluster_window_hover,
+                on_cluster_select=on_cluster_select
             )
             s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
             display(s, w)
@@ -135,7 +144,6 @@ function build_selection_window(fig_size,
         Label(window, "Cutoff", tellwidth=false))
 
     hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
-
 
     rowsize!(dGrid, 2, Relative(0.25))
     deregister_interaction!(hm_ax, :rectanglezoom)
@@ -302,6 +310,8 @@ function build_selection_window(fig_size,
         render_views,
         render_selection,
         scalar_selection,
+        selected_clusters,
+        t_list,
         #on_hover=on_scratchpad_hover,
         hovered=hovered_transition)
 
@@ -315,7 +325,9 @@ function scratchpad!(window,
     cluster_data::Observable{ClusterData},
     render_views,
     render_selection,
-    scalar_selection;
+    scalar_selection,
+    selected_clusters,
+    t_list;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     on_hover=(x) -> (),
     on_click=(x) -> ()
@@ -340,12 +352,13 @@ function scratchpad!(window,
 
     cam3d!(render_ax.scene)
 
-    num_transitions = 0
+    num_objs = 0
+    c_to_idx = Dict{Set{Int},Int}() # gets plotted index of centroid
     rt_to_idx = Dict{Tuple{Int,Int},Int}() # gets plotted index of transition
-    idx_to_rt = Tuple{Int,Int}[] # gets transition from plotted idx
+    idx_to_obj = Union{Set{Int},Tuple{Int,Int}}[] # gets transition from plotted idx
     on(selected_transitions) do st
         if length(st) != 0
-            last_rendered = collect(values(rt_to_idx))
+            last_rendered = vcat(collect(values(rt_to_idx)), collect(values(c_to_idx)))
 
             new_points = Point2f[]
             new_imgs = ColorMatrix[]
@@ -356,9 +369,9 @@ function scratchpad!(window,
             assignments = cluster_info[].assignments
 
             for t in new_transitions
-                num_transitions += 1
-                rt_to_idx[t] = num_transitions
-                push!(idx_to_rt, t)
+                num_objs += 1
+                rt_to_idx[t] = num_objs
+                push!(idx_to_obj, t)
 
                 mtx_idx = t_to_mtx[t]
 
@@ -371,7 +384,7 @@ function scratchpad!(window,
                     vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
                     views = [vlo, vhi]
                 else
-                    atom_s = render_views["Atom"](render_ax, t, scalar_selection, time)
+                    atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
                     views = [atom_s]
                 end
                 center!(render_ax.scene)
@@ -393,7 +406,7 @@ function scratchpad!(window,
             all_points = vcat(points.val, new_points)
 
             # do this so they don't overlap
-            points.val = spring(zeros(length(st), length(st)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
+            points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
 
             colors.val = vcat(colors.val, new_colors)
             imgs.val = vcat(imgs.val, new_imgs)
@@ -402,24 +415,75 @@ function scratchpad!(window,
         end
     end
 
-    onany(cluster_data, cluster_info) do cd, ci
-        new_colors = RGBAf[]
+    on(selected_clusters) do sc
+        if length(sc) != 0
+            last_rendered = vcat(collect(values(rt_to_idx)), collect(values(c_to_idx)))
 
+            new_points = Point2f[]
+            new_imgs = ColorMatrix[]
+            new_colors = RGBAf[]
+
+            new_clusters = filter(x -> !(x in keys(c_to_idx)), collect(sc))
+
+            for c in new_clusters
+                num_objs += 1
+                c_to_idx[c] = num_objs
+                push!(idx_to_obj, c)
+
+                buf = IOBuffer()
+                config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+                s = Screen(render_ax.scene, config, buf, MIME"image/png"())
+
+                g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(c)))
+                ts = map(x -> t_list[x], g)
+                av = render_views["SMovement"](render_ax, ts, Observable(0.0))
+                center!(render_ax.scene)
+                show(buf, MIME"image/png"(), render_ax.scene, update=false)
+                img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
+
+                push!(new_imgs, img)
+                delete!(render_ax, av)
+
+                close(buf)
+                close(s)
+
+                push!(new_points, Point2f(0.0, 0.0))
+                node_color = to_color(:grey)
+                if length(c) == 1
+                    node_color = cycle_colormap(first(collect(c)), cluster_cmap)
+                end
+                push!(new_colors, set_color_alpha(node_color, 0.6))
+
+            end
+
+            all_points = vcat(points.val, new_points)
+            points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
+            colors.val = vcat(colors.val, new_colors)
+            imgs.val = vcat(imgs.val, new_imgs)
+
+            imgs[] = imgs[]
+
+        end
+    end
+
+    onany(cluster_data, cluster_info) do cd, ci
+        # should clear selected_clusters here
         t_to_mtx = cd.t_to_mtx
         assignments = ci.assignments
         for t in keys(rt_to_idx)
+            plt_idx = rt_to_idx[t]
             mtx_idx = t_to_mtx[t]
             node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
-            push!(new_colors, set_color_alpha(node_color, 0.6))
+            colors.val[plt_idx] = set_color_alpha(node_color, 0.6)
         end
-        colors[] = new_colors
+        colors[] = colors[]
         notify(colors)
     end
 
-    onany(render_selection, scalar_selection) do rs, ss
-        new_imgs = ColorMatrix[]
 
+    onany(render_selection, scalar_selection) do rs, ss
         for t in keys(rt_to_idx)
+            plt_idx = rt_to_idx[t]
             buf = IOBuffer()
             config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
             s = Screen(render_ax.scene, config, buf, MIME"image/png"())
@@ -438,14 +502,14 @@ function scratchpad!(window,
             show(buf, MIME"image/png"(), render_ax.scene, update=false)
             img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
 
-            push!(new_imgs, img)
             foreach(x -> delete!(render_ax, x), views)
             empty!(views)
 
             close(buf)
             close(s)
+            imgs.val[plt_idx] = img
         end
-        imgs[] = new_imgs
+        imgs[] = imgs[]
     end
 
     # attempt to control marker size, works fine but limits constantly get reset which is annoying
@@ -484,12 +548,17 @@ function scratchpad!(window,
         end
 
         function on_hit(plt, idx, pos)
-            t = idx_to_rt[idx]
-            hovered[] = t
-            notify(hovered)
-            on_hover(t)
+            obj = idx_to_obj[idx]
+            s = string(obj)
+            if obj isa Tuple{Int,Int}
+                hovered[] = obj
+                notify(hovered)
+                on_hover(obj)
+            else
+                s = str_limit(obj)
+            end
 
-            return string(idx_to_rt[idx])
+            return s
         end
 
         new_nodes = scatter!(ax, points;
@@ -547,11 +616,8 @@ function scratchpad!(window,
                     delete!(txt)
                 end
             end
-
         end
     end
-
-    MouseEventTypes.instances
 
     highlighted = []
     on(hovered) do hov
