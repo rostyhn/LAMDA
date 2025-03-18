@@ -67,6 +67,8 @@ function build_selection_window(fig_size,
     function on_show_cluster_click(clusters)
         if !(clusters in keys(open_cluster_windows))
 
+            ref_t = find_group_centroid(clusters, cluster_data[], cluster_info[], t_list)
+
             ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
             ts = t_list[ts_idx]
 
@@ -81,6 +83,7 @@ function build_selection_window(fig_size,
             w = build_cluster_window(
                 clusters,
                 ts,
+                ref_t,
                 collect(eachindex(ts_idx_to_mtx_idx)),
                 vals,
                 scalars,

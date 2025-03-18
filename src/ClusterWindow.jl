@@ -8,6 +8,7 @@ const BLACK = to_color(:black)
 
 function build_cluster_window(clusters,
     ts,
+    ref_t,
     idx_to_mtx_idx,
     vals,
     scalars,
@@ -214,7 +215,8 @@ function build_cluster_window(clusters,
                 time,
                 is_visible,
                 render_views,
-                inspector_ref
+                inspector_ref,
+                lift(x -> ref_t == x, t)
             )
 
             push!(scenes, rootScene.scene)
@@ -325,16 +327,18 @@ function linked_transition_view(rootScene,
     time,
     is_visible,
     render_views,
-    inspector
+    inspector,
+    is_centroid
 )
 
     is_empty = lift(x -> isnothing(x), t)
 
-    l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))
+    l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible), font=lift(x -> (x) ? :bold : :regular, is_centroid))
     i, j = loc
 
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
+    parentGrid[i, j] = Box(fig, strokecolor=:green, color=:transparent, visible=(lift(x -> x, is_centroid)))
 
     function select_fn(selection)
         #band-aid solution for now, will break if user goes to last page and then switches selection
