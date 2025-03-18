@@ -1,7 +1,6 @@
 using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform_and_model
 using GLMakie: Screen
 using StatsBase
-using UMAP
 using ImageIO
 using NetworkLayout
 
