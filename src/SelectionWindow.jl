@@ -356,6 +356,33 @@ function scratchpad!(window,
     c_to_idx = Dict{Set{Int},Int}() # gets plotted index of centroid
     rt_to_idx = Dict{Tuple{Int,Int},Int}() # gets plotted index of transition
     idx_to_obj = Union{Set{Int},Tuple{Int,Int}}[] # gets transition from plotted idx
+
+    function delete_obj!(obj)
+        num_objs -= 1
+        plt_idx = 0
+        rel_dict = rt_to_idx
+        if obj isa Set{Int}
+            rel_dict = c_to_idx
+        end
+        plt_idx = rel_dict[obj]
+        delete!(rel_dict, obj)
+
+        points.val = deleteat!(points.val, plt_idx)
+        colors.val = deleteat!(colors.val, plt_idx)
+        imgs.val = deleteat!(imgs.val, plt_idx)
+        idx_to_obj = deleteat!(idx_to_obj, plt_idx)
+        empty!(c_to_idx)
+        empty!(rt_to_idx)
+
+        for (new_idx, obj) in enumerate(idx_to_obj)
+            if obj isa Set{Int}
+                c_to_idx[obj] = new_idx
+            else
+                rt_to_idx[obj] = new_idx
+            end
+        end
+    end
+
     on(selected_transitions) do st
         if length(st) != 0
             last_rendered = vcat(collect(values(rt_to_idx)), collect(values(c_to_idx)))
@@ -434,6 +461,7 @@ function scratchpad!(window,
                 config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
                 s = Screen(render_ax.scene, config, buf, MIME"image/png"())
 
+                # not sure why cluster_info never gets updated here
                 g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(c)))
                 ts = map(x -> t_list[x], g)
                 av = render_views["SMovement"](render_ax, ts, Observable(0.0))
@@ -467,7 +495,10 @@ function scratchpad!(window,
     end
 
     onany(cluster_data, cluster_info) do cd, ci
-        # should clear selected_clusters here
+        for c in keys(c_to_idx)
+            delete_obj!(c)
+        end
+
         t_to_mtx = cd.t_to_mtx
         assignments = ci.assignments
         for t in keys(rt_to_idx)
@@ -476,8 +507,9 @@ function scratchpad!(window,
             node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
             colors.val[plt_idx] = set_color_alpha(node_color, 0.6)
         end
-        colors[] = colors[]
-        notify(colors)
+        empty!(selected_clusters[])
+        selected_clusters[] = selected_clusters[]
+        imgs[] = imgs[]
     end
 
 
