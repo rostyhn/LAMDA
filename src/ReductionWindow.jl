@@ -1,4 +1,4 @@
-function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
+function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
     window = Figure(size=(400, 400))
 
     menu_bar = top_bar(window, "Reduction", 2)
@@ -98,7 +98,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
     rendered_clusters = []
     avgs = @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        cmap = to_colormap(cluster_colors)
+        cmap = to_colormap(CLUSTER_COLORS)
         avgs = []
         for (c, ts_idx) in $cluster_groups
             idx_to_mtx = $reordered_matrix[2]
@@ -172,7 +172,7 @@ function build_reduction_window(active_trajectory, on_click; init_h_cutoff=0.3, 
         active_trajectory["selected_dm"] = Observable(reduced[][1])
         active_trajectory["reduced_transitions"] = reduced[][2]
         active_trajectory["selected_dm_name"] = selected_dm[]
-        on_click(active_trajectory; init_h_cutoff=init_h_cutoff, kwargs...)
+        on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 
     Colorbar(window[4, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false)

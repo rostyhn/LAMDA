@@ -15,7 +15,7 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
-function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vector{Set{Int}}}
+function treepositions(hc, cutoff)::Tuple{Vector{Any},Vector{Set{Int}}}
     clusterIdx = cutree(hc; h=cutoff)
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
@@ -46,29 +46,36 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
         end
     end
 
-    if orientation == :horizontal
-        return lines, clusters
-    else
-        return lines, clusters
-    end
+    return lines, clusters
 end
 
-function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colormap=:tab20, rootcolor=:black, on_click=((x, y) -> ()), kwargs...)
+function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));
+    hover_callbackfn=(x -> ()),
+    colormap=:tab20,
+    rootcolor=:black,
+    on_click=((x, y) -> ()),
+    kwargs...)
+
+    ax.xgridvisible = false
+    ax.ygridvisible = false
+
     cmap = to_colormap(colormap)
 
-    #FIXME still fires twice thanks to multiple observables
     @time dendrogram = @lift begin
         println("Calculating dendrogram...")
-        @time lines, clusters = treepositions($h, $cutoff; kwargs...)
+        clusters = $(cluster_info).clusters
+        lines = $(cluster_info).lines
+        cutoff = $(cluster_info).cutoff
+
         colors = []
         for c in clusters
             if length(c) == 1
                 clusterIdx = first(collect(c))
                 color = cmap[mod1(clusterIdx, length(cmap))]
             else
-                color = rootcolor
+                color = to_color(rootcolor)
             end
-            push!(colors, color)
+            push!(colors, set_color_alpha(color, 0.2))
         end
 
         # to get label idx just divide by 2
@@ -76,7 +83,7 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
             return clusters[div(i, 2)]
         end
 
-        cutoff_line = ([0, length(h[].order)], [$cutoff, $cutoff])
+        cutoff_line = ([0, length($(cluster_info).assignments)], [cutoff, cutoff])
 
         cl_to_idx = Dict{Set{Int},Int}()
         for (i, c) in enumerate(clusters)
@@ -86,9 +93,13 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
         return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters
     end
 
-    colors = lift(x -> x[2], dendrogram)
+    highlighted = []
+    on(dendrogram) do d
+        empty!(highlighted)
+    end
 
-    hovered = Observable(Set{Int}(1))
+    d_colors = lift(x -> x[2], dendrogram)
+    c_dict = lift(x -> x[4], dendrogram)
 
     function on_hover(plt, idx, pos)
         cl = dendrogram[][5](2)
@@ -96,51 +107,63 @@ function dendrogram!(ax, h, cutoff, h_range; hover_callbackfn=(x -> ()), colorma
             cl = dendrogram[][5](idx)
         end
         hover_callbackfn(cl)
+
         hovered[] = cl
         notify(hovered)
+
         return str_limit(cl)
+    end
+
+    on(hovered) do hov
+        for (h, ogCol) in highlighted
+            d_colors.val[h] = ogCol
+        end
+        empty!(highlighted)
+
+        if !isnothing(hov)
+            for c in collect(hov)
+                idx = c_dict[][Set(c)]
+                ogColor = d_colors.val[idx]
+                d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
+                push!(highlighted, (idx, ogColor))
+            end
+        end
+        d_colors[] = d_colors[]
+        notify(d_colors)
     end
 
     ls = linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        color=colors,
+        color=d_colors,
         inspector_label=on_hover,
     )
 
-    on(events(parent_scene(ls)).mousebutton) do e
-        if is_mouseinside(parent_scene(ls))
-            if e.button == Mouse.left && e.action == Mouse.press
-                on_click(hovered[], events(ls).keyboardstate)
+    m_events = addmouseevents!(ax.scene)
+
+    on(m_events.obs) do e
+        if e.type === MouseEventTypes.leftdown
+            if !isnothing(hovered[])
+                on_click(hovered[])
+            end
+        elseif e.type === MouseEventTypes.over
+            plot, idx = pick(ax)
+            if isnothing(plot) && !isnothing(hovered[])
+                hovered.val = nothing
+                notify(hovered)
+            end
+        elseif e.type == MouseEventTypes.out
+            if !isnothing(hovered[])
+                hovered.val = nothing
+                notify(hovered)
             end
         end
-        return Consume(true)
     end
-
-
-    last_bBox = nothing
-
-    #=
-    @lift begin
-
-        # FIXME doesn't keep up with changes in dendrogram
-        c_dict = $dendrogram[6]
-        idx = c_dict[$hovered_index]
-
-        if !isnothing(last_bBox)
-            colors[][last_bBox] = $dendrogram[2][last_bBox]
-        end
-
-        colors[][idx] = to_color(:red)
-        notify(colors)
-        last_bBox = idx
-    end
-    =#
 
     # add cutoff line
     l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
         linestyle=:dash,
-        color=:grey,
-        visible=lift((x, y) -> x > minimum(y.heights), cutoff, h))
+        color=:grey)
+
     l.inspectable[] = false
 
     # add listeners to reset limits whenever something changes
