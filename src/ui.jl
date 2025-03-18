@@ -81,6 +81,104 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
     return s
 end
 
+function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64}, mobilityClusters::Observable{Vector{Float32}}, vel::Observable{Matrix{Float32}})
+    int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
+    int_vel = lift(x -> 2.0*x, vel)
+
+    # @show "Simple Arrow View Called"
+    # @show length(int_pos[])
+    # @show length(int_vel[])
+
+    # @show length(points[])
+    # @show length(velocities[])
+
+    # makes it so the atom view can handle points changing
+    colors = Observable(scalars[])
+    points = Observable(Point3f.(eachrow(int_pos[])))
+    velocities = Observable(Point3f.(eachrow(int_vel[])))
+
+    colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(scalars[])))
+
+    
+
+    on(int_pos) do ip
+        points.val = Point3f.(eachrow(ip))
+        colors.val = scalars[]
+        velocities.val = Point3f.(eachrow(int_vel[]))
+        colors[] = scalars[]
+        points[] = points[]
+        velocities[] = velocities[]
+
+        # notify(velocities)
+        
+        # @show "update"
+        # @show length(points[])
+        # @show length(velocities[])
+    end
+
+    atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright, 20)
+
+    # @show colors[]
+    # @show scalar_range
+
+     getAlpha(value, range) = max(get(cmap, floor(Int32,min((value - range[1])/(range[2] - range[1]), 1.0)*99) + 1, ColorTypes.RGBA(0,0,0,-1.0)).alpha, 0.0)
+     colorVector[] =  ColorTypes.RGBA{Float64}.(
+        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:r),
+        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:g),       
+        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:b),
+        getAlpha.(colors[], Ref(scalar_range))) # ugliest solution i could think of....
+    #  colorVector[].alpha = getAlpha.(colors[], Ref(scalar_range))
+    #  @show unique(mobilityClusters[])
+    #  mobilityClusterTransparencies = 
+    # atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright, 20, alpha=[getAlpha.(colors, Ref(scalar_range))])
+
+
+    s = arrows!(scene, points, velocities;
+        color=colorVector,
+        # colorrange=(2,20),
+        # lowclip=:transparent,
+        arrowsize=1.2,
+        transparency = true,
+        # colormap=:seaborn_bright,   
+          )
+
+    h = meshscatter!(scene, points;
+        color=:gray,
+        colorrange=(1,1),
+        marker=:Sphere,
+        alpha=0.3,
+        lowclip=:transparent,
+        highclip=:transparent,
+        transparency = true,
+        inspector_label=(self, i, p) -> "Atom $(i); weight: $(colors[][i])",
+        markersize=0.2)
+
+    h = meshscatter!(scene, points;
+        color=colorVector,
+        # colorrange=(2,20),
+        marker=:Sphere,
+        transparency = true,
+        # lowclip=:transparent,
+        # colormap=:seaborn_bright,
+        inspector_label=(self, i, p) -> "Atom $(i); weight: $(colors[][i])",
+        markersize=0.7)
+
+    # s = scatter!(scene, points;
+    #     color=colors,
+    #     colorrange=scalar_range,
+    #     lowclip=:transparent,
+    #     colormap=cmap,
+    #     depthsorting=true, # depth sorting slows things down a lot... what if we passed the points sorted by z order?
+    #     inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
+    #     markersize=30)
+
+
+
+    update_cam!(parent_scene(s))
+
+    return s
+end
+
 function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; update=false)
     t = Observable(Transformation())
 

@@ -24,6 +24,7 @@ using Base.Threads
 using Statistics
 using ProgressMeter
 using Mmap
+using Clustering
 
 include("io.jl")
 include("data_types.jl")
@@ -413,6 +414,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
+
     function render_atom_view(scene, transition, selected_scalar, time)
         t_ap = create_position_alignment_observer(transition)
         return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
@@ -437,10 +439,70 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
         posValsTup = map(t -> apply_alignment(alignment_rotations[][t], alignedPositionsMatrices[t]), ts)
 
+        velocities = reduce(vcat,last.(posValsTup) .- first.(posValsTup))
+        velocityMagnitudes =  reduce(vcat,norm.(eachrow(velocities)))
+        zMagnitudes = zscore(velocityMagnitudes, 0.0, std(velocityMagnitudes))
+        # zMagnitudes = zscore(velocityMagnitudes)
+        distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
+        @show "starting fuzzy comp"
+        @time R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
+        groupOne = Vector{Int32}()
+        groupTwo = Vector{Int32}()
+
+        for index in eachindex(R.weights[:,1])
+            if R.weights[index,1] > 0.3 #if probaility is higher than 30% (performs better than a hard cut between clusters)
+                push!(groupOne, index)
+            end
+            if R.weights[index,2] > 0.3
+                push!(groupTwo, index)
+            end
+        end
+        meanOne = mean( velocityMagnitudes[groupOne])
+        meanTwo = mean( velocityMagnitudes[groupTwo])
+
+        groupMobile = Vector{Int32}()
+        groupStatic = Vector{Int32}()
+        if meanOne > meanTwo # which of the two groups is the static one: seems random
+            groupMobile = groupOne
+            groupStatic = groupTwo
+        else
+            groupStatic = groupOne
+            groupMobile = groupTwo
+        end
+        distanceMatrixMobile = pairwise(Euclidean(), velocities[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
+        
+        positions = reduce(vcat,first.(posValsTup))
+        distanceMatrixLocation = pairwise(Euclidean(), positions[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
+        
+        mobileResult = kmedoids(distanceMatrixMobile, 5) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
+
+        @show numberOfAtoms = trunc(Int32,length(groupMobile)/length(posValsTup))
+        atomMedians = kmedoids(distanceMatrixLocation, numberOfAtoms) #number of atoms 
+        @show assignments(atomMedians)
+
+        
+        clusters = ones(Float32,length(bondVals))
+
+        for i in eachindex(groupMobile)
+            clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left fore immobile atoms
+        end
+        
+        vels = zeros(Float32, size(velocities))
+        vels[groupMobile[mobileResult.medoids],:] = velocities[groupMobile[mobileResult.medoids],:] 
+
+        pos = zeros(Float32, size(velocities))
+        pos[groupMobile[mobileResult.medoids],:] = positions[groupMobile[mobileResult.medoids],:] 
+
+
         inits = reduce(vcat, first.(posValsTup))
         fins = reduce(vcat, last.(posValsTup))
 
-        return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
+        # inits[assignments(atomMedians)]
+
+
+        return simple_arrow_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time, Observable(clusters), Observable(vels))
+
+        # return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
     end
 
     function render_movement_view(scene, clusters, time)
@@ -451,13 +513,63 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
             posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
 
+            positions = reduce(vcat,first.(posValsTup))
+            velocities = reduce(vcat,last.(posValsTup) .- first.(posValsTup))
+            velocityMagnitudes =  reduce(vcat,norm.(eachrow(velocities)))
+            # zMagnitudes = zscore(velocityMagnitudes, 0.0, std(velocityMagnitudes))
+            zMagnitudes = zscore(velocityMagnitudes)
+
+            distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
+            R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
+            groupOne = Vector{Int32}()
+            groupTwo = Vector{Int32}()
+
+            for index in eachindex(R.weights[:,1])
+                if R.weights[index,1] > 0.3 #if probaility is higher than 30% (performs better than a hard cut between clusters)
+                    push!(groupOne, index)
+                end
+                if R.weights[index,2] > 0.3
+                    push!(groupTwo, index)
+                end
+            end
+
+            meanOne = mean( velocityMagnitudes[groupOne])
+            meanTwo = mean( velocityMagnitudes[groupTwo])
+
+            groupMobile = Vector{Int32}()
+            groupStatic = Vector{Int32}()
+            if meanOne > meanTwo # which of the two groups is the static one: seems random
+                groupMobile = groupOne
+                groupStatic = groupTwo
+            else
+                groupStatic = groupOne
+                groupMobile = groupTwo
+            end
+            distanceMatrixMobile = pairwise(CosineDist(), velocities[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
+
+
+            distanceMatrixLocation = pairwise(Euclidean(), positions[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
+
+            # distanceMatrixMobile = distanceMatrixMobile .+ distanceMatrixLocation
+            
+            mobileResult = kmedoids(distanceMatrixLocation, 5) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
+
+
+            clusters = ones(length(bondVals))
+
+            for i in eachindex(groupMobile)
+                clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left fore immobile atoms
+            end
+           
+            vels[groupMobile[mobileResult.medoids],:] = velocities[groupMobile[mobileResult.medoids],:] 
+
             inits = reduce(vcat, first.(posValsTup))
             fins = reduce(vcat, last.(posValsTup))
 
-            return (inits, fins), bondVals
+            return (inits, fins), clusters, vels
         end
 
-        simple_atom_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time)
+        # simple_arrow_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time, lift(x -> x[3], t_ap))
 
         return [], []
     end
@@ -545,6 +657,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views["Superquadric"] = render_superquadrics_view
     render_views["Movement"] = render_movement_view
     render_views["SMovement"] = render_static_movement_view
+    # render_views["Movement"] = render_static_movement_view
+    # render_views["SMovement"] = render_movement_view
 
     widgets = Dict()
     widgets["Atom"] = atom_widgets
