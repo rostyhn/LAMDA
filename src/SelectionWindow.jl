@@ -123,7 +123,7 @@ function build_selection_window(fig_size,
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
-        hovered_cluster[] = Set{Int}(1)
+        hovered_cluster.val = nothing
         notify(hovered_cluster)
 
         h_cutoff[] = parse(Float64, s)
@@ -154,8 +154,7 @@ function build_selection_window(fig_size,
     end
 
     dendrogram!(graph_ax,
-        lift(x -> x.clustering, cluster_data),
-        h_cutoff,
+        cluster_info,
         h_range,
         hovered_cluster;
         on_click=on_dendrogram_click,
@@ -168,16 +167,14 @@ function build_selection_window(fig_size,
         if e.type === MouseEventTypes.leftdown
             plot, _ = pick(hm_ax)
             if !isnothing(plot)
-                ord = cluster_data[].clustering.order
+                ord = cluster_data[].mtx_to_t
                 xy = mouseposition(hm_ax)
                 i, j = Int.(round.(xy))
-                t_idx1 = ord[i]
-                t_idx2 = ord[j]
-                t1 = t_list[t_idx1]
+                t1 = ord[i]
+                t2 = ord[j]
                 push!(selected_transitions[], t1)
 
-                if t_idx1 != t_idx2
-                    t2 = t_list[t_idx2]
+                if t1 != t2
                     push!(selected_transitions[], t2)
                 end
 
@@ -295,12 +292,15 @@ function build_selection_window(fig_size,
     #scratchpad_time, scratchpad_t_slider = widgets["Movement"](0.0, window)
     #scg[2, 1:2] = scratchpad_t_slider
 
-    #= try to link clusters to scratchpad
     function on_scratchpad_hover(t)
-        t_idx = rel_t_to_idx[t]
-        hovered_cluster[] = Set(cluster_data[].clustering.order[t_idx])
+        if t isa Tuple{Int,Int}
+            t_idx = rel_t_to_idx[t]
+            hovered_cluster[] = Set(cluster_info[].assignments[t_idx])
+        else
+            hovered_cluster[] = t
+        end
         notify(hovered_cluster)
-    end=#
+    end
 
     scratchpad!(window,
         scratchpad_ax,
@@ -312,7 +312,9 @@ function build_selection_window(fig_size,
         scalar_selection,
         selected_clusters,
         t_list,
-        #on_hover=on_scratchpad_hover,
+        rel_t_to_idx,
+        on_hover=on_scratchpad_hover,
+        hovered_cluster=hovered_cluster,
         hovered=hovered_transition)
 
     return window
@@ -327,9 +329,11 @@ function scratchpad!(window,
     render_selection,
     scalar_selection,
     selected_clusters,
-    t_list;
+    t_list,
+    rel_t_to_idx;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
-    on_hover=(x) -> (),
+    hovered_cluster::MaybeObservable{Set{Int}},
+    on_hover,
     on_click=(x) -> ()
 )
 
@@ -392,7 +396,7 @@ function scratchpad!(window,
             new_colors = RGBAf[]
 
             new_transitions = filter(x -> !(x in keys(rt_to_idx)), collect(st))
-            t_to_mtx = cluster_data[].t_to_mtx
+            #t_to_mtx = cluster_data[].t_to_mtx
             assignments = cluster_info[].assignments
 
             for t in new_transitions
@@ -400,7 +404,7 @@ function scratchpad!(window,
                 rt_to_idx[t] = num_objs
                 push!(idx_to_obj, t)
 
-                mtx_idx = t_to_mtx[t]
+                mtx_idx = rel_t_to_idx[t]
 
                 buf = IOBuffer()
                 config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
@@ -494,22 +498,24 @@ function scratchpad!(window,
         end
     end
 
-    onany(cluster_data, cluster_info) do cd, ci
+    on(cluster_info) do ci
         for c in keys(c_to_idx)
             delete_obj!(c)
         end
 
-        t_to_mtx = cd.t_to_mtx
         assignments = ci.assignments
         for t in keys(rt_to_idx)
             plt_idx = rt_to_idx[t]
-            mtx_idx = t_to_mtx[t]
-            node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
+            t_idx = rel_t_to_idx[t]
+            node_color = cycle_colormap(assignments[t_idx], cluster_cmap)
             colors.val[plt_idx] = set_color_alpha(node_color, 0.6)
         end
         empty!(selected_clusters[])
         selected_clusters[] = selected_clusters[]
-        imgs[] = imgs[]
+        # only trigger imgs if not empty, otherwise it'll try to render 
+        if !isempty(imgs[])
+            imgs[] = imgs[]
+        end
     end
 
 
@@ -569,28 +575,29 @@ function scratchpad!(window,
         return Consume(false)
     end
 
+    function on_hit(plt, idx, pos)
+        obj = idx_to_obj[idx]
+        s = string(obj)
+        if obj isa Tuple{Int,Int}
+            hovered[] = obj
+            notify(hovered)
+        else
+            s = str_limit(obj)
+        end
+        on_hover(obj)
+        return s
+    end
+
     # forces the plot to be created only when there are points to render 
     nodes = nothing
     on(imgs) do new_imgs
+        hovered_cluster[] = nothing
+        notify(hovered_cluster)
         # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
         # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
 
         if !isnothing(nodes)
             delete!(ax, nodes)
-        end
-
-        function on_hit(plt, idx, pos)
-            obj = idx_to_obj[idx]
-            s = string(obj)
-            if obj isa Tuple{Int,Int}
-                hovered[] = obj
-                notify(hovered)
-                on_hover(obj)
-            else
-                s = str_limit(obj)
-            end
-
-            return s
         end
 
         new_nodes = scatter!(ax, points;
@@ -626,9 +633,15 @@ function scratchpad!(window,
             selected_point[] = 0
         elseif e.type == MouseEventTypes.over
             plt, idx = pick(ax.scene)
-            if plt isa Makie.Mesh && !isnothing(hovered[])
-                hovered[] = nothing
-                notify(hovered)
+            if plt isa Makie.Mesh
+                if !isnothing(hovered[])
+                    hovered[] = nothing
+                    notify(hovered)
+                end
+                if !isnothing(hovered_cluster[])
+                    hovered_cluster[] = nothing
+                    notify(hovered_cluster)
+                end
                 # can use this to select the text and do stuff
                 #elseif plt isa Makie.Text
                 #    @show plt
@@ -668,6 +681,23 @@ function scratchpad!(window,
         colors[] = colors[]
         notify(colors)
     end
+
+    # can cause segfaults, probably cause so much is happening 
+    #=on(hovered_cluster) do hc
+        for (h, ogCol) in highlighted
+            colors.val[h] = ogCol
+        end
+        empty!(highlighted)
+
+        if !isnothing(hc) && hc in keys(c_to_idx)
+            idx = c_to_idx[hc]
+            ogColor = colors.val[idx]
+            colors.val[idx] = set_color_alpha(ogColor, 1.0)
+            push!(highlighted, (idx, ogColor))
+        end
+        colors[] = colors[]
+        notify(colors)
+    end=#
 end
 
 function setup_transition_view!(

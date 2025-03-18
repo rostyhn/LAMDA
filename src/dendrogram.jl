@@ -15,7 +15,7 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
-function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vector{Set{Int}}}
+function treepositions(hc, cutoff)::Tuple{Vector{Any},Vector{Set{Int}}}
     clusterIdx = cutree(hc; h=cutoff)
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
@@ -46,14 +46,10 @@ function treepositions(hc, cutoff; orientation=:vertical)::Tuple{Vector{Any},Vec
         end
     end
 
-    if orientation == :horizontal
-        return lines, clusters
-    else
-        return lines, clusters
-    end
+    return lines, clusters
 end
 
-function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
+function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));
     hover_callbackfn=(x -> ()),
     colormap=:tab20,
     rootcolor=:black,
@@ -65,10 +61,12 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
 
     cmap = to_colormap(colormap)
 
-    #FIXME still fires twice thanks to multiple observables
     @time dendrogram = @lift begin
         println("Calculating dendrogram...")
-        @time lines, clusters = treepositions($h, $cutoff; kwargs...)
+        clusters = $(cluster_info).clusters
+        lines = $(cluster_info).lines
+        cutoff = $(cluster_info).cutoff
+
         colors = []
         for c in clusters
             if length(c) == 1
@@ -85,7 +83,7 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
             return clusters[div(i, 2)]
         end
 
-        cutoff_line = ([0, length(h[].order)], [$cutoff, $cutoff])
+        cutoff_line = ([0, length($(cluster_info).assignments)], [cutoff, cutoff])
 
         cl_to_idx = Dict{Set{Int},Int}()
         for (i, c) in enumerate(clusters)
@@ -164,8 +162,8 @@ function dendrogram!(ax, h, cutoff, h_range, hovered=Observable(Set{Int}(1));
     # add cutoff line
     l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
         linestyle=:dash,
-        color=:grey,
-        visible=lift((x, y) -> x > minimum(y.heights), cutoff, h))
+        color=:grey)
+
     l.inspectable[] = false
 
     # add listeners to reset limits whenever something changes

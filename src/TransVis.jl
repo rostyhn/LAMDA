@@ -99,18 +99,19 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         # gets the correct idx 
         idx_to_mtx = zeros(Int, size($dm)[1])
         t_to_mtx = Dict()
+        mtx_to_t = Dict()
         for (i, r) in enumerate(clustering.order)
             rm[i, :] .= $dm[r, :][clustering.order]
             idx_to_mtx[r] = i
             t_to_mtx[transitionSequence[r]] = i
+            mtx_to_t[i] = transitionSequence[r]
         end
 
         # get minimum and maximum of entire matrix for cmap
         fl = vec($dm)
         h_range[] = extrema(clustering.heights)
         notify(h_range)
-
-        return ClusterData(clustering=clustering, matrix=rm, idx_to_mtx=idx_to_mtx, m_extrema=(extrema(fl)), t_to_mtx=t_to_mtx)
+        return ClusterData(clustering=clustering, matrix=rm, idx_to_mtx=idx_to_mtx, m_extrema=(extrema(fl)), t_to_mtx=t_to_mtx, mtx_to_t=mtx_to_t)
     end
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
@@ -147,7 +148,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             reps[clusterIdx] = transitionSequence[ref_t_idx]
         end
 
-        return ClusterInfo(groups=groups, representatives=reps, assignments=assignments)
+        lines, clusters = treepositions($(cluster_data).clustering, $h_cutoff)
+        return ClusterInfo(groups=groups,
+            representatives=reps,
+            assignments=assignments,
+            lines=lines,
+            clusters=clusters,
+            cutoff=$h_cutoff)
     end
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
