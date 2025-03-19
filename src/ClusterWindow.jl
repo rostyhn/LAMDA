@@ -6,6 +6,19 @@ const GRID_Y = Int(sqrt(GRID_SIZE))
 const SCENE_SELECTED = to_color(:grey)
 const BLACK = to_color(:black)
 
+function find_cluster_representatives(distances::Matrix{Float64}, ts, maximumNumber::Int=5)
+    # @show size(distances)
+    # @show typeof(ts)
+    if length(distances[1,:]) > maximumNumber
+        R = kmedoids(distances, maximumNumber)
+    end
+    if length(ts) > maximumNumber
+        return ts[R.medoids]
+    else
+        return ts
+    end
+end
+
 function build_cluster_window(clusters,
     ts,
     ref_t,
@@ -140,7 +153,7 @@ function build_cluster_window(clusters,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    render_views["SMovement"](centroid_scene, ts, time)
+    render_views["SMovement"](centroid_scene, find_cluster_representatives(vals,ts), time) # precalculate distances based on ts
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
