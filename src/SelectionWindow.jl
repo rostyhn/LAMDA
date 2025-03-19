@@ -110,6 +110,13 @@ function build_selection_window(fig_size,
             # create inspector after render to avoid bugs
             ds[] = DataInspector(w)
             open_cluster_windows[clusters] = s
+
+            on(events(w).window_open) do e
+                if !e
+                    delete!(open_cluster_windows, clusters)
+                    close(s)
+                end
+            end
         end
     end
 
@@ -314,7 +321,8 @@ function build_selection_window(fig_size,
         rel_t_to_idx,
         on_hover=on_scratchpad_hover,
         hovered_cluster=hovered_cluster,
-        hovered=hovered_transition)
+        hovered=hovered_transition,
+        show_cluster=on_show_cluster_click)
 
     return window
 end
@@ -332,6 +340,7 @@ function scratchpad!(window,
     rel_t_to_idx;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
+    show_cluster,
     on_hover,
     on_click=(x) -> ()
 )
@@ -397,6 +406,8 @@ function scratchpad!(window,
             new_transitions = filter(x -> !(x in keys(rt_to_idx)), collect(st))
             #t_to_mtx = cluster_data[].t_to_mtx
             assignments = cluster_info[].assignments
+            config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+            s = Screen(render_ax.scene, config)
 
             for t in new_transitions
                 num_objs += 1
@@ -406,8 +417,7 @@ function scratchpad!(window,
                 mtx_idx = rel_t_to_idx[t]
 
                 buf = IOBuffer()
-                config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
-                s = Screen(render_ax.scene, config, buf, MIME"image/png"())
+
                 views = []
                 if render_selection[] == "Volume"
                     # still a memory leak somewhere
@@ -426,13 +436,12 @@ function scratchpad!(window,
                 empty!(views)
 
                 close(buf)
-                close(s)
 
                 push!(new_points, Point2f(0.0, 0.0))
                 node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
                 push!(new_colors, set_color_alpha(node_color, 0.6))
             end
-
+            close(s)
             all_points = vcat(points.val, new_points)
 
             # do this so they don't overlap
@@ -454,6 +463,8 @@ function scratchpad!(window,
             new_colors = RGBAf[]
 
             new_clusters = filter(x -> !(x in keys(c_to_idx)), collect(sc))
+            config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+            s = Screen(render_ax.scene, config)
 
             for c in new_clusters
                 num_objs += 1
@@ -461,8 +472,6 @@ function scratchpad!(window,
                 push!(idx_to_obj, c)
 
                 buf = IOBuffer()
-                config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
-                s = Screen(render_ax.scene, config, buf, MIME"image/png"())
 
                 # not sure why cluster_info never gets updated here
                 g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(c)))
@@ -476,7 +485,6 @@ function scratchpad!(window,
                 delete!(render_ax, av)
 
                 close(buf)
-                close(s)
 
                 push!(new_points, Point2f(0.0, 0.0))
                 node_color = to_color(:grey)
@@ -486,6 +494,7 @@ function scratchpad!(window,
                 push!(new_colors, set_color_alpha(node_color, 0.6))
 
             end
+            close(s)
 
             all_points = vcat(points.val, new_points)
             points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
@@ -518,11 +527,11 @@ function scratchpad!(window,
 
 
     onany(render_selection, scalar_selection) do rs, ss
+        config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
+        s = Screen(render_ax.scene, config)
         for t in keys(rt_to_idx)
             plt_idx = rt_to_idx[t]
             buf = IOBuffer()
-            config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
-            s = Screen(render_ax.scene, config, buf, MIME"image/png"())
             views = []
             if rs == "Volume"
                 # still a memory leak somewhere
@@ -542,9 +551,10 @@ function scratchpad!(window,
             empty!(views)
 
             close(buf)
-            close(s)
             imgs.val[plt_idx] = img
         end
+        close(s)
+
         imgs[] = imgs[]
     end
 
@@ -648,19 +658,33 @@ function scratchpad!(window,
                 #    @show plt
             end
         elseif e.type == MouseEventTypes.leftdoubleclick
-            # add textbox at point
-            x, y = mouseposition_px(window.scene)
+            plt, idx = pick(ax.scene)
+            if plt isa Makie.Mesh
+                # add textbox at point if empty space was clicked
+                x, y = mouseposition_px(window.scene)
 
-            txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50), placeholder="...", textcolor=:white, focused=true)
-            px, py = mouseposition(ax)
-            on(txt.stored_string) do s
-                text!(ax.scene, px, py; text=s, color=:white, markerspace=:data)
-            end
-
-            on(txt.focused) do is_focused
-                if !is_focused
-                    delete!(txt)
+                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50), placeholder="...", textcolor=:white, focused=true)
+                px, py = mouseposition(ax)
+                on(txt.stored_string) do s
+                    text!(ax.scene, px, py; text=s, color=:white)
                 end
+
+                on(txt.focused) do is_focused
+                    if !is_focused
+                        delete!(txt)
+                    end
+                end
+            else
+                # open cluster window
+                obj = idx_to_obj[idx]
+                if obj isa Set{Int}
+                    show_cluster(obj)
+                else
+                    t_idx = rel_t_to_idx[obj]
+                    cluster = Set(cluster_info[].assignments[t_idx])
+                    show_cluster(cluster)
+                end
+
             end
         end
     end

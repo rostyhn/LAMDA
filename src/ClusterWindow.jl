@@ -67,11 +67,21 @@ function build_cluster_window(clusters,
     l_btn = Button(window, label="◀", tellwidth=false)
     r_btn = Button(window, label="▶", tellwidth=false)
 
+    dist_sums = map(x -> sum(vals[x, :]), collect(values(idx_to_mtx_idx)))
+    distinctness_order = sortperm(dist_sums, lt=Base.isgreater)
+
+    v = zeros(size(vals))
+    for (i, nmtx) in enumerate(distinctness_order)
+        v[i, :] .= vals[nmtx, distinctness_order]
+    end
     # sort transitions by idx in matrix
-    sortperm!(idx_to_mtx_idx, ts)
+    sortperm!(distinctness_order, ts)
 
     # transition to matrix index dict
-    t_to_mtx = Dict(reverse.(collect(enumerate(ts))))
+    t_to_mtx = Dict()
+    for (t, i) in zip(ts, idx_to_mtx_idx)
+        t_to_mtx[t] = i
+    end
 
     curr_page = Observable(1)
     ts_chunks = collect(Iterators.partition(ts, GRID_SIZE))
@@ -131,7 +141,7 @@ function build_cluster_window(clusters,
     )
 
     render_views["SMovement"](centroid_scene, ts, time)
-    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], tellwidth=false, label="To scratchpad")
+    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
         on_cluster_select(clusters)
@@ -152,7 +162,7 @@ function build_cluster_window(clusters,
         bins=bins
     )
 
-    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
+    hm_ax, hm = heatmap(mat_grid[3, 1], v, colorrange=mat_range)
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -358,7 +368,7 @@ function linked_transition_view(rootScene,
 
     g = vgrid!(rootScene, l)
     parentGrid[i, j] = g
-    parentGrid[i, j] = Box(fig, strokecolor=:green, color=:transparent, visible=(lift(x -> x, is_centroid)))
+    parentGrid[i, j] = Box(fig, strokecolor=:green, color=:transparent, visible=(lift((x, y) -> x && y, is_centroid, is_visible)))
 
     function select_fn(selection)
         #band-aid solution for now, will break if user goes to last page and then switches selection
