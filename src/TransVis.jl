@@ -490,8 +490,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         vels = zeros(Float32, size(velocities))
         vels[groupMobile[mobileResult.medoids],:] = velocities[groupMobile[mobileResult.medoids],:] 
 
-        pos = zeros(Float32, size(velocities))
-        pos[groupMobile[mobileResult.medoids],:] = positions[groupMobile[mobileResult.medoids],:] 
+        # pos = zeros(Float32, size(velocities))
+        # pos[groupMobile[mobileResult.medoids],:] = positions[groupMobile[mobileResult.medoids],:] 
 
 
         inits = reduce(vcat, first.(posValsTup))
@@ -505,74 +505,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         # return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
     end
 
-    function render_movement_view(scene, clusters, time)
-        # first attempt, this is really dependent on the quality of the alignment
-        t_ap = @lift begin
-            g = reduce(vcat, map(x -> $(cluster_info).groups[x], collect($clusters)))
-            ts = map(x -> transitionSequence[x], g)
-            bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
-            posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
-
-            positions = reduce(vcat,first.(posValsTup))
-            velocities = reduce(vcat,last.(posValsTup) .- first.(posValsTup))
-            velocityMagnitudes =  reduce(vcat,norm.(eachrow(velocities)))
-            # zMagnitudes = zscore(velocityMagnitudes, 0.0, std(velocityMagnitudes))
-            zMagnitudes = zscore(velocityMagnitudes)
-
-            distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
-            R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
-            groupOne = Vector{Int32}()
-            groupTwo = Vector{Int32}()
-
-            for index in eachindex(R.weights[:,1])
-                if R.weights[index,1] > 0.3 #if probaility is higher than 30% (performs better than a hard cut between clusters)
-                    push!(groupOne, index)
-                end
-                if R.weights[index,2] > 0.3
-                    push!(groupTwo, index)
-                end
-            end
-
-            meanOne = mean( velocityMagnitudes[groupOne])
-            meanTwo = mean( velocityMagnitudes[groupTwo])
-
-            groupMobile = Vector{Int32}()
-            groupStatic = Vector{Int32}()
-            if meanOne > meanTwo # which of the two groups is the static one: seems random
-                groupMobile = groupOne
-                groupStatic = groupTwo
-            else
-                groupStatic = groupOne
-                groupMobile = groupTwo
-            end
-            distanceMatrixMobile = pairwise(CosineDist(), velocities[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
-
-
-            distanceMatrixLocation = pairwise(Euclidean(), positions[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
-
-            # distanceMatrixMobile = distanceMatrixMobile .+ distanceMatrixLocation
-            
-            mobileResult = kmedoids(distanceMatrixLocation, 5) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
-
-
-            clusters = ones(length(bondVals))
-
-            for i in eachindex(groupMobile)
-                clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left fore immobile atoms
-            end
-           
-            vels[groupMobile[mobileResult.medoids],:] = velocities[groupMobile[mobileResult.medoids],:] 
-
-            inits = reduce(vcat, first.(posValsTup))
-            fins = reduce(vcat, last.(posValsTup))
-
-            return (inits, fins), clusters, vels
-        end
-
-        # simple_arrow_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time, lift(x -> x[3], t_ap))
-
-        return [], []
-    end
 
     function render_superquadrics_view(scene, transition, inspector)
         t_ap = create_position_alignment_observer(transition)
@@ -655,7 +587,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views["Volume"] = render_volume_view
     render_views["Volume_no_obs"] = render_volume_view_no_obs
     render_views["Superquadric"] = render_superquadrics_view
-    render_views["Movement"] = render_movement_view
+    # render_views["Movement"] = render_movement_view
     render_views["SMovement"] = render_static_movement_view
     # render_views["Movement"] = render_static_movement_view
     # render_views["SMovement"] = render_movement_view
