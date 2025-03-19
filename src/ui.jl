@@ -121,12 +121,13 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
     # @show colors[]
     # @show scalar_range
 
-     getAlpha(value, range) = max(get(cmap, floor(Int32,min((value - range[1])/(range[2] - range[1]), 1.0)*99) + 1, ColorTypes.RGBA(0,0,0,-1.0)).alpha, 0.0)
+     getAlpha(value, clusterId,range) = clusterId == 1 ? 0 : max(get(cmap, floor(Int32,min((value - range[1])/(range[2] - range[1]), 1.0)*99) + 1, ColorTypes.RGBA(0,0,0,-1.0)).alpha, 0.0)
+     
      colorVector[] =  ColorTypes.RGBA{Float64}.(
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:r),
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:g),       
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:b),
-        getAlpha.(colors[], Ref(scalar_range))) # ugliest solution i could think of....
+        getAlpha.(colors[], trunc.(Int32,mobilityClusters[]), Ref(scalar_range))) # ugliest solution i could think of....
     #  colorVector[].alpha = getAlpha.(colors[], Ref(scalar_range))
     #  @show unique(mobilityClusters[])
     #  mobilityClusterTransparencies = 
