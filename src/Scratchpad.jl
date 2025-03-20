@@ -26,8 +26,6 @@ function scratchpad!(
 
     points = Observable{Vector{Point2f}}(Point2f[Point2f(0.0)])
     # run once on creation to bind axis
-    nodes = scatter!(ax, points, marker=:rect)
-
     reset_limits!(ax)
     center!(ax.scene)
 
@@ -60,16 +58,6 @@ function scratchpad!(
         Observables.clear(size)
         Observables.clear(scene_color)
         delete!(obj_to_idx[], obj)
-
-        #views[] = deleteat!(views[], v_idx)
-        #=idx_to_obj.val = deleteat!(idx_to_obj.val, v_idx)
-        for (new_idx, obj) in enumerate(idx_to_obj.val)
-            obj_to_idx[][obj] = new_idx + 1
-        end
-        points[] = deleteat!(points[], plt_idx)=#
-        #notify(idx_to_obj)
-
-        #num_objs[] -= 1
     end
 
     onany(selected_transitions, selected_clusters) do st, sc
@@ -112,17 +100,15 @@ function scratchpad!(
     end
 
     function on_hit(plt, idx, pos)
-        obj = idx_to_obj[][idx]
+        obj = idx_to_obj[][idx-1]
         s = string(obj)
-        if obj isa Tuple{Int,Int}
-            hovered[] = obj
-            notify(hovered)
-        else
+        if obj isa Set{Int}
             s = str_limit(obj)
         end
-        on_hover(obj)
         return s
     end
+
+    nodes = scatter!(ax, points, marker=:rect, visible=false, inspector_label=on_hit)
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
