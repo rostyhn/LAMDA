@@ -33,6 +33,7 @@ function scratchpad!(
 
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
+    # could be a dictionary, helps with tracking and don't have to worry about setting idx
     idx_to_obj = Observable{Vector{Union{Set{Int},Tuple{Int,Int}}}}(Union{Set{Int},Tuple{Int,Int}}[]) # gets transition from plotted idx
     obj_to_idx = Ref(Dict{Union{Set{Int},Tuple{Int,Int}},Int}())
     rendered_idxes = Ref(Set{Int}())

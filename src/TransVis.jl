@@ -98,11 +98,11 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     cluster_data = @lift begin
         clustering = hclust($dm, linkage=:ward, branchorder=:barjoseph)
 
-        rm = zeros(size($dm))
+        rm = zeros(Float32, size($dm))
         # gets the correct idx 
         idx_to_mtx = zeros(Int, size($dm)[1])
-        t_to_mtx = Dict()
-        mtx_to_t = Dict()
+        t_to_mtx = Dict{Tuple{Int,Int},Int}()
+        mtx_to_t = Dict{Int,Tuple{Int,Int}}()
         for (i, r) in enumerate(clustering.order)
             rm[i, :] .= $dm[r, :][clustering.order]
             idx_to_mtx[r] = i
@@ -114,7 +114,12 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         fl = vec($dm)
         h_range[] = extrema(clustering.heights)
         notify(h_range)
-        return ClusterData(clustering=clustering, matrix=rm, idx_to_mtx=idx_to_mtx, m_extrema=(extrema(fl)), t_to_mtx=t_to_mtx, mtx_to_t=mtx_to_t)
+        return ClusterData(clustering=clustering,
+            matrix=rm,
+            idx_to_mtx=idx_to_mtx,
+            m_extrema=(extrema(fl)),
+            t_to_mtx=t_to_mtx,
+            mtx_to_t=mtx_to_t)
     end
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
@@ -413,22 +418,31 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    # assume the list of ts doesn't change
-    function render_static_movement_view(scene, ts, time)
-        alignment = calc_alignment(ts)
-        bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
-        posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
+    function render_movement_view_ts(scene, ts, time)
+        d = @lift begin
+            alignment = calc_alignment($ts)
+            bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], $ts))
+            posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), $ts)
 
-        inits = reduce(vcat, first.(posValsTup))
-        fins = reduce(vcat, last.(posValsTup))
+            inits = reduce(vcat, first.(posValsTup))
+            fins = reduce(vcat, last.(posValsTup))
+            return (inits, fins), bondVals
+        end
 
-        return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
+        return simple_atom_view!(scene,
+            lift(x -> x[1], d),
+            lift(x -> x[2], d),
+            (0.5, 2.0),
+            atom_cmap,
+            time)
     end
 
     function render_movement_view_clusters(scene, clusters, time)
-        g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
-        ts = map(x -> transitionSequence[x], g)
-        return render_static_movement_view(scene, ts, time)
+        ts = @lift begin
+            g = reduce(vcat, map(x -> cluster_info[].groups[x], collect($clusters)))
+            return map(x -> transitionSequence[x], g)
+        end
+        return render_movement_view_ts(scene, ts, time)
     end
 
     function render_superquadrics_view(scene, transition, inspector, ts)
@@ -512,7 +526,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views["Volume"] = render_volume_view
     render_views["Superquadric"] = render_superquadrics_view
     render_views["CMovement"] = render_movement_view_clusters
-    render_views["SMovement"] = render_static_movement_view
+    render_views["SMovement"] = render_movement_view_ts
 
     widgets = Dict()
     widgets["Atom"] = atom_widgets

@@ -72,53 +72,56 @@ function build_selection_window(fig_size,
         end
     end
 
-    open_cluster_windows = Dict{Set{Int},Screen}()
+    num_open_windows = 0
+    open_cluster_windows = Dict{Int,Screen}()
     function on_show_cluster_click(clusters)
-        if !(clusters in keys(open_cluster_windows))
+        cc = Observable(clusters)
+        scd = @lift begin
+            ref_t = find_group_centroid($cc, cluster_data[], cluster_info[], t_list)
 
-            ref_t = find_group_centroid(clusters, cluster_data[], cluster_info[], t_list)
-
-            ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
+            ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect($cc)))
             ts = t_list[ts_idx]
 
             ts_idx_to_mtx_idx = map(x -> cluster_data[].idx_to_mtx[x], ts_idx)
             mtx_idx = sort(ts_idx_to_mtx_idx)
-            mat = cluster_data[].matrix
-            vals = mat[mtx_idx, mtx_idx]
+            mat = cluster_data[].matrix[mtx_idx, mtx_idx]
 
-            # want to update volume data in case user messes with volume params
-            # but we keep atom positions consistent with the alignment that existed at the time of creation
-            ds::MaybeObservable{DataInspector} = Observable(nothing)
-            w = build_cluster_window(
-                clusters,
-                ts,
-                ref_t,
-                collect(eachindex(ts_idx_to_mtx_idx)),
-                vals,
-                scalars,
-                cluster_data[].m_extrema,
-                render_views,
-                widgets,
-                bins,
-                on_transition_select,
-                hovered_transition,
-                hovered_cluster,
-                ds,
-                on_window_hover=on_cluster_window_hover,
-                on_cluster_select=on_cluster_select
-            )
-            s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
-            display(s, w)
+            return buildSingleClusterData(
+                ref_t=ref_t,
+                ts=ts,
+                mat=mat,
+                idx_to_mtx_idx=collect(eachindex(ts_idx_to_mtx_idx)))
+        end
 
-            # create inspector after render to avoid bugs
-            ds[] = DataInspector(w)
-            open_cluster_windows[clusters] = s
+        ds::MaybeObservable{DataInspector} = Observable(nothing)
+        w = build_cluster_window(
+            cc,
+            scd,
+            scalars,
+            cluster_data[].m_extrema,
+            render_views,
+            widgets,
+            bins,
+            on_transition_select,
+            hovered_transition,
+            hovered_cluster,
+            ds,
+            on_window_hover=on_cluster_window_hover,
+            on_cluster_select=on_cluster_select
+        )
+        s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
+        display(s, w)
 
-            on(events(w).window_open) do e
-                if !e
-                    delete!(open_cluster_windows, clusters)
-                    close(s)
-                end
+        num_open_windows += 1
+        w_idx = num_open_windows
+        # create inspector after render to avoid bugs
+        ds[] = DataInspector(w)
+        open_cluster_windows[w_idx] = s
+
+        on(events(w).window_open) do e
+            if !e
+                delete!(open_cluster_windows, w_idx)
+                close(s)
             end
         end
     end

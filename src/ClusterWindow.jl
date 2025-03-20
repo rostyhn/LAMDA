@@ -1,10 +1,8 @@
 using Makie
 
-function build_cluster_window(clusters,
-    ts,
-    ref_t,
-    idx_to_mtx_idx,
-    vals,
+function build_cluster_window(
+    clusters::Observable{Set{Int}},
+    cluster_data::Observable{SingleClusterData},
     scalars,
     mat_range,
     render_views,
@@ -27,7 +25,7 @@ function build_cluster_window(clusters,
     scene_selector = Observable("Volume")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = "Cluster $(str_limit(clusters; len=25))"
+    title = lift(x -> "Cluster $(str_limit(x; len=25))", clusters)
     menu_bar = top_bar(window, title, 3)
 
     render_menu = Menu(window,
@@ -59,13 +57,8 @@ function build_cluster_window(clusters,
         scalar_menu,
         t_slider)
 
-    sortperm!(idx_to_mtx_idx, ts)
-
-    # transition to matrix index dict
-    t_to_mtx = Dict()
-    for (t, i) in zip(ts, idx_to_mtx_idx)
-        t_to_mtx[t] = i
-    end
+    ts = lift(x -> x.ts, cluster_data)
+    vals = lift(x -> x.mat, cluster_data)
 
     umap_graph_view!(window[3, 1:2],
         ts,
@@ -75,21 +68,23 @@ function build_cluster_window(clusters,
         time,
         render_views,
         hovered_transition,
-        highlight_borders=lift(x -> !isnothing(x) && length(collect(intersect(clusters, x))) > 0, hovered_cluster),
+        highlight_borders=lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0, hovered_cluster, clusters),
         on_click=on_transition_select)
 
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
 
-    utri = triu!(trues(size(vals)))
-    hist_vals = vec(vals[utri])
+    #=hist_vals = @lift begin
+        utri = triu!(trues(size(vals)))
+        return vec(vals[utri])
+    end
 
     cluster_cmap = to_colormap(CLUSTER_COLORS)
     cluster_color = to_color(:grey)
     cl = collect(clusters)
     if length(cl) == 1
         cluster_color = cluster_cmap[mod1(first(cl), length(cluster_cmap))]
-    end
+    end=#
 
     centroid_grid = GridLayout()
     mat_grid[1, 1] = centroid_grid
@@ -101,14 +96,14 @@ function build_cluster_window(clusters,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    render_views["SMovement"](centroid_scene, ts, time)
+    render_views["CMovement"](centroid_scene, clusters, time)
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
-        on_cluster_select(clusters)
+        on_cluster_select(clusters[])
     end
 
-    hist_ax = Axis(mat_grid[2, 1], title="Intra-cluster distances",
+    #=hist_ax = Axis(mat_grid[2, 1], title="Intra-cluster distances",
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
     deregister_interaction!(hist_ax, :rectanglezoom)
@@ -121,9 +116,9 @@ function build_cluster_window(clusters,
         strokecolor=:black,
         color=cluster_color,
         bins=bins
-    )
+    )=#
 
-    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
+    hm_ax, hm = heatmap(mat_grid[2, 1], vals, colorrange=mat_range)
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -144,7 +139,7 @@ function build_cluster_window(clusters,
 
     on(events(window).entered_window) do entered
         if entered
-            on_window_hover(clusters)
+            on_window_hover(clusters[])
         else
             on_window_hover(nothing)
         end
