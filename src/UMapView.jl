@@ -9,7 +9,7 @@ function umap_graph_view!(
     hovered=MaybeObservable{Tuple{Int,Int}};
     highlight_borders=Observable(false),
     on_click=(x) -> (),
-    markersize=150,
+    markersize=100,
 )
     ax = Axis(loc, backgroundcolor=:transparent)
     on(highlight_borders, update=true) do hb
@@ -55,12 +55,14 @@ function umap_graph_view!(
             ms,
             ms))
 
-        ax3d = Scene(ax.scene, show_axis=false,
+        ax3d = Scene(ax.scene,
+            show_axis=false,
             viewport=vp,
-            backgroundcolor=:black, clear=true, size=size)
+            backgroundcolor=:black,
+            clear=true,
+            size=size)
 
         cam3d!(ax3d)
-        translate!(ax3d, 0, 0, 100)
 
         inspector = DataInspector(ax3d)
 
@@ -72,10 +74,17 @@ function umap_graph_view!(
                 v_lo, v_hi = render_views[$selected_render](ax3d, Observable(t))
                 rendered = vcat(rendered, [v_lo, v_hi])
             elseif $selected_render == "Atom"
-                s = render_views["Atom"](ax3d, Observable(t), selected_scalar, atom_time)
+                s = render_views["Atom"](ax3d,
+                    Observable(t),
+                    selected_scalar,
+                    atom_time,
+                    Observable(ts))
+
                 rendered = [s]
             else
-                il, is, plots = render_views["Superquadric"](ax3d, Observable(t), inspector)
+                il, is, plots = render_views["Superquadric"](ax3d,
+                    Observable(t),
+                    inspector, Observable(ts))
                 rendered = plots
             end
             center!(ax3d)

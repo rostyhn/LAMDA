@@ -204,11 +204,15 @@ function scratchpad!(
                         elseif rs == "Atom"
                             s = render_views["Atom"](ax3d, Observable(obj),
                                 scalar_selection,
-                                atom_time)
+                                atom_time,
+                                lift(x -> collect(x), selected_transitions))
                             plt_rendered = [s]
                         else
                             il, is, plots = render_views["Superquadric"](ax3d,
-                                Observable(obj), inspector)
+                                Observable(obj),
+                                inspector,
+                                lift(x -> collect(x), selected_transitions)
+                            )
                             plt_rendered = plots
                         end
                         center!(ax3d)
