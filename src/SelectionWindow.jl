@@ -371,7 +371,6 @@ function scratchpad!(window,
     idx_to_obj = Union{Set{Int},Tuple{Int,Int}}[] # gets transition from plotted idx
 
     function delete_obj!(obj)
-        num_objs -= 1
         plt_idx = 0
         rel_dict = rt_to_idx
         if obj isa Set{Int}
@@ -394,6 +393,7 @@ function scratchpad!(window,
                 rt_to_idx[obj] = new_idx
             end
         end
+        num_objs -= 1
     end
 
     on(selected_transitions) do st
@@ -422,7 +422,7 @@ function scratchpad!(window,
                 views = []
                 if render_selection[] == "Volume"
                     # still a memory leak somewhere
-                    vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
+                    vlo, vhi = render_views["Volume"](render_ax, Observable(t))
                     views = [vlo, vhi]
                 else
                     atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
@@ -522,6 +522,7 @@ function scratchpad!(window,
         empty!(selected_clusters[])
         selected_clusters[] = selected_clusters[]
         # only trigger imgs if not empty, otherwise it'll try to render 
+        notify(points)
         notify(colors)
         imgs[] = imgs[]
     end
@@ -536,7 +537,7 @@ function scratchpad!(window,
             views = []
             if rs == "Volume"
                 # still a memory leak somewhere
-                vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
+                vlo, vhi = render_views["Volume"](render_ax, Observable(t))
                 views = [vlo, vhi]
             else
                 # need to pass down observable hence scalar_selection instead of ss
@@ -657,6 +658,26 @@ function scratchpad!(window,
                 # can use this to select the text and do stuff
                 #elseif plt isa Makie.Text
                 #    @show plt
+            end
+        elseif e.type == MouseEventTypes.rightdown
+            plt, idx = pick(ax.scene)
+            if !(plt isa Makie.Mesh)
+                obj = idx_to_obj[idx]
+                delete_obj!(obj)
+                if obj isa Set{Int}
+                    delete!(selected_clusters[], obj)
+                    notify(selected_clusters)
+                else
+                    delete!(selected_transitions[], obj)
+                    notify(selected_transitions)
+                end
+                hovered_cluster[] = nothing
+                notify(hovered_cluster)
+                hovered[] = nothing
+                notify(hovered)
+                notify(colors)
+                notify(points)
+                notify(imgs)
             end
         elseif e.type == MouseEventTypes.leftdoubleclick
             plt, idx = pick(ax.scene)

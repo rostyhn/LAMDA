@@ -36,6 +36,7 @@ include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
+include("UMapView.jl")
 include("SettingsWindow.jl")
 include("ClusterWindow.jl")
 include("ReductionWindow.jl")
@@ -425,14 +426,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_volume_view_no_obs(scene, transition)
-        t_idx = lift(x -> t_to_idx[x], transition)
-        vd = lift((x, y, z) ->
-                reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volumeData, t_idx, sampleRanges)
-
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift(x -> alignment_rotations[][x], transition))
-    end
-
     # assume the list of ts doesn't change
     function render_static_movement_view(scene, ts, time)
         bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
@@ -477,10 +470,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             sq[] = superquadric.(1.0, points[], s, 3.0, 0.1)[:]
         end
 
-        il, is = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
+        il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
 
         push!(il, calc_sq)
-        return il, is
+        return il, is, plots
     end
 
     function time_slider(init_time, figure)
@@ -542,7 +535,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views = Dict()
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
-    render_views["Volume_no_obs"] = render_volume_view_no_obs
     render_views["Superquadric"] = render_superquadrics_view
     render_views["Movement"] = render_movement_view
     render_views["SMovement"] = render_static_movement_view

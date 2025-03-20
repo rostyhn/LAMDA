@@ -191,7 +191,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
 
     # no other way around this other than this super ugly way, 
     # makie renders this as one plot, which the inspector grabs a bounding box around
-    sqHoverListener = on(events(scene).mouseposition) do mp
+    #=sqHoverListener = on(events(scene).mouseposition) do mp
         if is_mouseinside(scene)
             # might be able to use onpick()
             plot, idx = pick(scene)
@@ -206,10 +206,10 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
             return Consume(true)
         end
         return Consume(false)
-    end
+    end=#
 
     update_cam!(parent_scene(m_lo))
-    return [cam_listener, sqHoverListener], []
+    return [cam_listener], [], [m_lo, m_hi]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
