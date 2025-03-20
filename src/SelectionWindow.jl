@@ -3,6 +3,7 @@ using GLMakie: Screen
 using StatsBase
 using ImageIO
 using NetworkLayout
+using Observables
 
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
@@ -100,6 +101,7 @@ function build_selection_window(fig_size,
                 bins,
                 on_transition_select,
                 hovered_transition,
+                hovered_cluster,
                 ds,
                 on_window_hover=on_cluster_window_hover,
                 on_cluster_select=on_cluster_select
@@ -252,51 +254,16 @@ function build_selection_window(fig_size,
     menu_bar[1, 3] = settings_btn
     dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
     rowsize!(dGrid, 3, Relative(0.65))
-
-    band_sel = Observable(first(sort(collect(keys(per_t_scalars)))))
-
-    x_vals = lift(x -> eachindex(x.clustering.order), cluster_data)
-    colors = lift((x, z) -> map(y -> per_t_scalars[z][t_list[y]], x.clustering.order), cluster_data, band_sel)
-    colorrange = lift(x -> per_t_scalar_ranges[x], band_sel)
-
-    band_ax = Axis(dGrid[4, 1], backgroundcolor=:transparent, title="Per-transition scalar values")
-    band_plot = vlines!(band_ax,
-        x_vals,
-        color=colors,
-        colorrange=colorrange,
-        linewidth=3,
-        inspector_label=(plot, idx, pos) -> "$(plot.color[][idx])")
-
-    hidedecorations!(band_ax)
-    deregister_interaction!(band_ax, :rectanglezoom)
-
-    band_menu = Menu(window, options=sort(collect(keys(per_t_scalars))), default=band_sel[])
-    band_cbar = Colorbar(window, band_plot; vertical=false)
-    dGrid[5, 1:2] = hgrid!(band_menu, band_cbar)
-
-    on(band_menu.selection) do s
-        band_sel[] = s
-        notify(band_sel)
-    end
-
-    linkxaxes!(hm_ax, graph_ax, band_ax)
+    linkxaxes!(hm_ax, graph_ax)
 
     tGrid = GridLayout()
     scg = GridLayout()
 
     window[2:3, 2] = vgrid!(tGrid, scg)
 
-    # Box(tGrid[1, 1], color=:black)
-    scratchpad_ax = Axis(tGrid[1, 1], backgroundcolor=:black, title="Scratchpad")
-    deregister_interaction!(scratchpad_ax, :rectanglezoom)
-    hidedecorations!(scratchpad_ax)
-
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
-    scg[1, 1] = scratchpad_render_menu
-    scg[1, 2] = scalar_menu
-    #scratchpad_time, scratchpad_t_slider = widgets["Movement"](0.0, window)
-    #scg[2, 1:2] = scratchpad_t_slider
+    time, scratchpad_t_slider = widgets["Movement"](0.0, window)
 
     function on_scratchpad_hover(t)
         if t isa Tuple{Int,Int}
@@ -308,509 +275,27 @@ function build_selection_window(fig_size,
         notify(hovered_cluster)
     end
 
-    scratchpad!(window,
-        scratchpad_ax,
+    scratchpad!(
+        window,
+        tGrid[1, 1],
         selected_transitions,
         cluster_info,
         cluster_data,
         render_views,
         render_selection,
         scalar_selection,
+        time,
         selected_clusters,
         t_list,
         rel_t_to_idx,
         on_hover=on_scratchpad_hover,
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,
-        show_cluster=on_show_cluster_click)
+        on_click=on_show_cluster_click)
+
+    scg[1, 1] = scratchpad_render_menu
+    scg[1, 2] = scalar_menu
+    scg[2, 1:2] = scratchpad_t_slider
 
     return window
-end
-
-function scratchpad!(window,
-    ax,
-    selected_transitions::Observable{Set{Tuple{Int,Int}}},
-    cluster_info::Observable{ClusterInfo},
-    cluster_data::Observable{ClusterData},
-    render_views,
-    render_selection,
-    scalar_selection,
-    selected_clusters,
-    t_list,
-    rel_t_to_idx;
-    hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
-    hovered_cluster::MaybeObservable{Set{Int}},
-    show_cluster,
-    on_hover,
-    on_click=(x) -> ()
-)
-
-    campixel!(ax.scene)
-
-    imgs = Observable{Vector{ColorMatrix}}(ColorMatrix[])
-    colors = Observable{Vector{RGBAf}}(RGBAf[])
-    points = Observable{Vector{Point2f}}(Point2f[])
-    # run once on creation to bind axis
-    cluster_cmap = to_colormap(CLUSTER_COLORS)
-
-    IMG_SIZE = 200
-    # create hidden screen to render to
-    fig = Figure()
-    campixel!(fig.scene)
-    render_ax = LScene(fig.scene,
-        bbox=BBox(0, IMG_SIZE, 0, IMG_SIZE),
-        show_axis=false,
-        scenekw=(clear=true, size=(IMG_SIZE, IMG_SIZE), backgroundcolor=:black))
-
-    cam3d!(render_ax.scene)
-
-    num_objs = 0
-    c_to_idx = Dict{Set{Int},Int}() # gets plotted index of centroid
-    rt_to_idx = Dict{Tuple{Int,Int},Int}() # gets plotted index of transition
-    idx_to_obj = Union{Set{Int},Tuple{Int,Int}}[] # gets transition from plotted idx
-
-    function delete_obj!(obj)
-        num_objs -= 1
-        plt_idx = 0
-        rel_dict = rt_to_idx
-        if obj isa Set{Int}
-            rel_dict = c_to_idx
-        end
-        plt_idx = rel_dict[obj]
-        delete!(rel_dict, obj)
-
-        points.val = deleteat!(points.val, plt_idx)
-        colors.val = deleteat!(colors.val, plt_idx)
-        imgs.val = deleteat!(imgs.val, plt_idx)
-        idx_to_obj = deleteat!(idx_to_obj, plt_idx)
-        empty!(c_to_idx)
-        empty!(rt_to_idx)
-
-        for (new_idx, obj) in enumerate(idx_to_obj)
-            if obj isa Set{Int}
-                c_to_idx[obj] = new_idx
-            else
-                rt_to_idx[obj] = new_idx
-            end
-        end
-    end
-
-    on(selected_transitions) do st
-        if length(st) != 0
-            last_rendered = vcat(collect(values(rt_to_idx)), collect(values(c_to_idx)))
-
-            new_points = Point2f[]
-            new_imgs = ColorMatrix[]
-            new_colors = RGBAf[]
-
-            new_transitions = filter(x -> !(x in keys(rt_to_idx)), collect(st))
-            #t_to_mtx = cluster_data[].t_to_mtx
-            assignments = cluster_info[].assignments
-            config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
-            s = Screen(render_ax.scene, config)
-
-            for t in new_transitions
-                num_objs += 1
-                rt_to_idx[t] = num_objs
-                push!(idx_to_obj, t)
-
-                mtx_idx = rel_t_to_idx[t]
-
-                buf = IOBuffer()
-
-                views = []
-                if render_selection[] == "Volume"
-                    # still a memory leak somewhere
-                    vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
-                    views = [vlo, vhi]
-                else
-                    atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
-                    views = [atom_s]
-                end
-                center!(render_ax.scene)
-                show(buf, MIME"image/png"(), render_ax.scene, update=false)
-                img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
-
-                push!(new_imgs, img)
-                foreach(x -> delete!(render_ax, x), views)
-                empty!(views)
-
-                close(buf)
-
-                push!(new_points, Point2f(0.0, 0.0))
-                node_color = cycle_colormap(assignments[mtx_idx], cluster_cmap)
-                push!(new_colors, set_color_alpha(node_color, 0.6))
-            end
-            close(s)
-            all_points = vcat(points.val, new_points)
-
-            # do this so they don't overlap
-            points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
-
-            colors.val = vcat(colors.val, new_colors)
-            imgs.val = vcat(imgs.val, new_imgs)
-
-            imgs[] = imgs[]
-        end
-    end
-
-    on(selected_clusters) do sc
-        if length(sc) != 0
-            last_rendered = vcat(collect(values(rt_to_idx)), collect(values(c_to_idx)))
-
-            new_points = Point2f[]
-            new_imgs = ColorMatrix[]
-            new_colors = RGBAf[]
-
-            new_clusters = filter(x -> !(x in keys(c_to_idx)), collect(sc))
-            config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
-            s = Screen(render_ax.scene, config)
-
-            for c in new_clusters
-                num_objs += 1
-                c_to_idx[c] = num_objs
-                push!(idx_to_obj, c)
-
-                buf = IOBuffer()
-
-                # not sure why cluster_info never gets updated here
-                g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(c)))
-                ts = map(x -> t_list[x], g)
-                av = render_views["SMovement"](render_ax, ts, Observable(0.0))
-                center!(render_ax.scene)
-                show(buf, MIME"image/png"(), render_ax.scene, update=false)
-                img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
-
-                push!(new_imgs, img)
-                delete!(render_ax, av)
-
-                close(buf)
-
-                push!(new_points, Point2f(0.0, 0.0))
-                node_color = to_color(:grey)
-                if length(c) == 1
-                    node_color = cycle_colormap(first(collect(c)), cluster_cmap)
-                end
-                push!(new_colors, set_color_alpha(node_color, 0.6))
-
-            end
-            close(s)
-
-            all_points = vcat(points.val, new_points)
-            points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
-            colors.val = vcat(colors.val, new_colors)
-            imgs.val = vcat(imgs.val, new_imgs)
-
-            imgs[] = imgs[]
-
-        end
-    end
-
-    on(cluster_info) do ci
-        for c in keys(c_to_idx)
-            delete_obj!(c)
-        end
-
-        assignments = ci.assignments
-        for t in keys(rt_to_idx)
-            plt_idx = rt_to_idx[t]
-            t_idx = rel_t_to_idx[t]
-            node_color = cycle_colormap(assignments[t_idx], cluster_cmap)
-            colors.val[plt_idx] = set_color_alpha(node_color, 0.6)
-        end
-        empty!(selected_clusters[])
-        selected_clusters[] = selected_clusters[]
-        # only trigger imgs if not empty, otherwise it'll try to render 
-        notify(colors)
-        imgs[] = imgs[]
-    end
-
-
-    onany(render_selection, scalar_selection) do rs, ss
-        config = Makie.merge_screen_config(ScreenConfig, Dict{Symbol,Any}(:visible => false))
-        s = Screen(render_ax.scene, config)
-        for t in keys(rt_to_idx)
-            plt_idx = rt_to_idx[t]
-            buf = IOBuffer()
-            views = []
-            if rs == "Volume"
-                # still a memory leak somewhere
-                vlo, vhi = render_views["Volume_no_obs"](render_ax, Observable(t))
-                views = [vlo, vhi]
-            else
-                # need to pass down observable hence scalar_selection instead of ss
-                atom_s = render_views["Atom"](render_ax, t, scalar_selection, Observable(0.0))
-                views = [atom_s]
-            end
-            center!(render_ax.scene)
-
-            show(buf, MIME"image/png"(), render_ax.scene, update=false)
-            img = FileIO.load(Stream{FileIO.format"PNG"}(buf))
-
-            foreach(x -> delete!(render_ax, x), views)
-            empty!(views)
-
-            close(buf)
-            imgs.val[plt_idx] = img
-        end
-        close(s)
-
-        imgs[] = imgs[]
-    end
-
-    # attempt to control marker size, works fine but limits constantly get reset which is annoying
-    # using markerspace = :data causes aspect ratio warping
-    MIN_SIZE = 50
-    MAX_SIZE = 200
-
-    og_xlim::MaybeObservable{Any} = Observable(nothing)
-    marker_size = Observable(MIN_SIZE)
-    function calc_size(xlim)
-        og_x_extent = (og_xlim[][2] - og_xlim[][1])
-        x_extent = (xlim[2] - xlim[1])
-        x_size = MIN_SIZE * (1.0 / (x_extent / og_x_extent))
-
-        return round(min(max(MIN_SIZE, x_size), MAX_SIZE))
-    end
-
-    on(events(ax.scene).scroll, priority=1) do (dx, dy)
-        xlim = ax.xaxis.attributes.limits[]
-        if !isnothing(og_xlim[])
-            size_px = calc_size(xlim)
-            marker_size[] = size_px
-            notify(marker_size)
-        end
-        return Consume(false)
-    end
-
-    function on_hit(plt, idx, pos)
-        obj = idx_to_obj[idx]
-        s = string(obj)
-        if obj isa Tuple{Int,Int}
-            hovered[] = obj
-            notify(hovered)
-        else
-            s = str_limit(obj)
-        end
-        on_hover(obj)
-        return s
-    end
-
-    # forces the plot to be created only when there are points to render 
-    nodes = nothing
-    on(imgs) do new_imgs
-        hovered_cluster[] = nothing
-        notify(hovered_cluster)
-        # plot needs to be rebuilt each time because otherwise the underlying texture buffer is out of date
-        # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/glshaders/particles.jl, line 188 
-
-        if !isnothing(nodes)
-            delete!(ax, nodes)
-        end
-
-        new_nodes = nothing
-        if !isempty(imgs[])
-            new_nodes = scatter!(ax, points;
-                marker=new_imgs,
-                strokecolor=colors,
-                inspector_label=on_hit,
-                strokewidth=5,
-                markersize=marker_size)
-        end
-
-        if isnothing(nodes)
-            og_xlim[] = ax.xaxis.attributes.limits[]
-        end
-        nodes = new_nodes
-    end
-
-    selected_point = Ref(0)
-    m_events = addmouseevents!(ax.scene)
-    on(m_events.obs) do e
-        if e.type === MouseEventTypes.leftdragstart
-            plt, idx = pick(ax.scene)
-            if plt == nodes
-                selected_point[] = idx
-            else
-                selected_point[] = 0
-            end
-        elseif e.type == MouseEventTypes.leftdrag
-            # will not prevent dragging off the scene 
-            if selected_point[] != 0
-                points[][selected_point[]] = mouseposition(ax)
-                notify(points)
-            end
-        elseif e.type == MouseEventTypes.leftdragstop
-            selected_point[] = 0
-        elseif e.type == MouseEventTypes.over
-            plt, idx = pick(ax.scene)
-            if plt isa Makie.Mesh
-                if !isnothing(hovered[])
-                    hovered[] = nothing
-                    notify(hovered)
-                end
-                if !isnothing(hovered_cluster[])
-                    hovered_cluster[] = nothing
-                    notify(hovered_cluster)
-                end
-                # can use this to select the text and do stuff
-                #elseif plt isa Makie.Text
-                #    @show plt
-            end
-        elseif e.type == MouseEventTypes.leftdoubleclick
-            plt, idx = pick(ax.scene)
-            if plt isa Makie.Mesh
-                # add textbox at point if empty space was clicked
-                x, y = mouseposition_px(window.scene)
-
-                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50), placeholder="...", textcolor=:white, focused=true)
-                px, py = mouseposition(ax)
-                on(txt.stored_string) do s
-                    text!(ax.scene, px, py; text=s, color=:white)
-                end
-
-                on(txt.focused) do is_focused
-                    if !is_focused
-                        delete!(txt)
-                    end
-                end
-            else
-                # open cluster window
-                obj = idx_to_obj[idx]
-                if obj isa Set{Int}
-                    show_cluster(obj)
-                else
-                    t_idx = rel_t_to_idx[obj]
-                    cluster = Set(cluster_info[].assignments[t_idx])
-                    show_cluster(cluster)
-                end
-
-            end
-        end
-    end
-
-    highlighted = []
-    on(hovered) do hov
-        for (h, ogCol) in highlighted
-            colors.val[h] = ogCol
-        end
-        empty!(highlighted)
-
-        if !isnothing(hov) && hov in keys(rt_to_idx)
-            idx = rt_to_idx[hov]
-            ogColor = colors.val[idx]
-            colors.val[idx] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted, (idx, ogColor))
-        end
-
-        colors[] = colors[]
-        notify(colors)
-    end
-
-    highlighted_clusters = []
-    on(hovered_cluster) do hc
-        for (h, ogCol) in highlighted_clusters
-            colors.val[h] = ogCol
-        end
-        empty!(highlighted_clusters)
-
-        if !isnothing(hc) && hc in keys(c_to_idx)
-            idx = c_to_idx[hc]
-            ogColor = colors.val[idx]
-            colors.val[idx] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted_clusters, (idx, ogColor))
-        end
-        colors[] = colors[]
-        notify(colors)
-    end
-end
-
-function setup_transition_view!(
-    fig,
-    parentGrid,
-    loc,
-    hovered,
-    vol_cmap,
-    volumeRange,
-    on_click,
-    render_views,
-    widgets,
-    invariantRange
-)
-
-    cluster_idx = lift(x -> x[1], hovered)
-    t_idx = lift(x -> x[2], hovered)
-    t = lift(x -> x[3], hovered)
-
-    rootScene = LScene(
-        fig,
-        show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
-    )
-
-    # prevents camera from moving around
-    Camera3D(parent_scene(rootScene); left_key=false, right_key=false)
-    inspector = DataInspector(rootScene)
-
-    sel = Observable("Volume")
-
-    m = Menu(fig,
-        options=collect(keys(render_views)),
-        default=sel[])
-
-    on(m.selection) do cw
-        sel[] = cw
-        notify(sel)
-    end
-
-    btn = Button(fig, label="Show")
-    on(btn.clicks) do n
-        on_click(t[], () -> ())
-    end
-
-    l = Label(fig, lift(x -> string("$(x)"), t), tellwidth=false)
-
-    i, j = loc
-    g = vgrid!(rootScene, hgrid!(l, m, btn))
-    parentGrid[i, j] = g
-
-    function choose_scene(selection)
-        if selection == "Volume"
-            gg = GridLayout(g[end+1, :])
-
-            Colorbar(gg[1, :],
-                colorrange=volumeRange,
-                vertical=false,
-                colormap=vol_cmap,
-                tellwidth=false)
-
-            render_views[selection](rootScene, t_idx, t)
-            return [], [gg]
-        else
-            if selection == "Superquadric"
-                gg = GridLayout(g[end+1, :])
-                Colorbar(gg[1, :],
-                    colorrange=invariantRange,
-                    vertical=false,
-                    colormap=vol_cmap,
-                    tellwidth=false)
-                il, is = render_views[selection](rootScene, inspector, t)
-                return il, [gg]
-            elseif selection == "Atom"
-                gg, time, scalar_vals = widgets["Atom"](0.0, fig)
-                render_views[selection](rootScene, t, scalar_vals, time)
-                return [], [gg]
-            else
-                gg = GridLayout(g[end+1, :])
-                time, slider = widgets["Movement"](0.0, fig)
-                gg[1, 1:2] = slider
-                render_views[selection](rootScene, cluster_idx, time)
-                return [], [gg]
-            end
-        end
-    end
-
-    scene_switcher(rootScene, g, sel, choose_scene)
-
-    return rootScene
 end

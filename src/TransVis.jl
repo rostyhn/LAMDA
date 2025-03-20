@@ -36,6 +36,8 @@ include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
+include("UMapView.jl")
+include("Scratchpad.jl")
 include("SettingsWindow.jl")
 include("ClusterWindow.jl")
 include("ReductionWindow.jl")
@@ -85,6 +87,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     # absolute index for volume data
     t_to_idx = Dict{Tuple{Int,Int},Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
+    rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
 
     per_t_scalars["t_to_idx"] = t_to_idx
     per_t_scalar_ranges["t_to_idx"] = (1, length(active_trajectory["transitions"]))
@@ -165,48 +168,32 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         println("Calculating alignment with $($selected_alignment)")
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
-
         rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool,Tuple{Int,Int}}}()
         for (clusterIdx, g) in $(cluster_info).groups
             # find reference t
-            m = $dm
-            dist_sum = map(x -> sum(m[x, :][g]), g)
+            dist_sum = map(x -> sum($dm[x, :][g]), g)
             ref_t_idx = argmin(dist_sum)
 
             ts = map(x -> transitionSequence[x], g)
+            ref_t = ts[ref_t_idx]
 
-            # for now, use first t as reference 
-            ref_t = popat!(ts, ref_t_idx)
-
-            ref_s1_pos = alignedPositionsMatrices[ref_t][1]
-            ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t][1])))
-            ref_s1_shift = mean(ref_s1_com, dims=1)
-
-            ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(features[ref_t][1])))
-
-            rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false, ref_t)
-
-            for t in ts
-                t_s1_pos = alignedPositionsMatrices[t][1]
-                t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(features[t][1])))
-                t_s1_shift = mean(t_s1_com, dims=1)
-                t_s1_com = reduce(vcat, map(x -> com(t_s1_pos .- t_s1_shift, x), eachcol(features[t][1])))
-
-                t_s2_pos = alignedPositionsMatrices[t][2]
-                t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(features[t][2])))
-                t_s2_shift = mean(t_s2_com, dims=1)
-                t_s2_com = reduce(vcat, map(x -> com(t_s2_pos .- t_s2_shift, x), eachcol(features[t][2])))
-
-                R1, res1 = pure_align(ref_s1_com, t_s1_com)
-                R2, res2 = pure_align(ref_s1_com, t_s2_com)
-
-                R = (res1 < res2) ? R1 : R2
-                shift = (res1 < res2) ? t_s1_shift : t_s2_shift
-                rot[t] = (shift, R, res1 > res2, ref_t)
-            end
+            g_rot = calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+            merge!(rot, g_rot)
         end
-
         return rot
+    end
+
+    # convenience function to avoid passing around all the data
+    function calc_alignment(ts)
+        ts_idx = map(x -> rel_t_to_idx[x], ts)
+        features = alignments[selected_alignment[]]
+
+        dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
+        ref_t_idx = argmin(dist_sum)
+
+        ref_t = ts[ref_t_idx]
+
+        return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
     end
 
     # get number of atoms
@@ -406,17 +393,17 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return (absInvMin, absInvMax)
     end
 
-    function create_position_alignment_observer(transition)
+    function create_position_alignment_observer(transition, align_to)
+        alignment = lift(x -> calc_alignment(x), align_to)
         return @lift begin
-            return apply_alignment($alignment_rotations[$transition], $alignedPositionsMatrices[$transition])
+            return apply_alignment($alignment[$transition], $alignedPositionsMatrices[$transition])
         end
     end
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-
-    function render_atom_view(scene, transition, selected_scalar, time)
-        t_ap = create_position_alignment_observer(transition)
+    function render_atom_view(scene, transition, selected_scalar, time, ts)
+        t_ap = create_position_alignment_observer(transition, ts)
         return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
     end
 
@@ -426,18 +413,11 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_volume_view_no_obs(scene, transition)
-        t_idx = lift(x -> t_to_idx[x], transition)
-        vd = lift((x, y, z) ->
-                reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volumeData, t_idx, sampleRanges)
-
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift(x -> alignment_rotations[][x], transition))
-    end
-
     # assume the list of ts doesn't change
     function render_static_movement_view(scene, ts, time)
+        alignment = calc_alignment(ts)
         bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
-        posValsTup = map(t -> apply_alignment(alignment_rotations[][t], alignedPositionsMatrices[t]), ts)
+        posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
 
         velocities = reduce(vcat,last.(posValsTup) .- first.(posValsTup))
         velocityMagnitudes =  reduce(vcat,norm.(eachrow(velocities)))
@@ -505,9 +485,14 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         # return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
     end
 
+    function render_movement_view_clusters(scene, clusters, time)
+        g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
+        ts = map(x -> transitionSequence[x], g)
+        return render_static_movement_view(scene, ts, time)
+    end
 
-    function render_superquadrics_view(scene, transition, inspector)
-        t_ap = create_position_alignment_observer(transition)
+    function render_superquadrics_view(scene, transition, inspector, ts)
+        t_ap = create_position_alignment_observer(transition, ts)
 
         invariant = lift((x, y) -> active_trajectory[x][y], selected_invariant, transition)
         points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
@@ -520,10 +505,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             sq[] = superquadric.(1.0, points[], s, 3.0, 0.1)[:]
         end
 
-        il, is = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
+        il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
 
         push!(il, calc_sq)
-        return il, is
+        return il, is, plots
     end
 
     function time_slider(init_time, figure)
@@ -585,9 +570,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views = Dict()
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
-    render_views["Volume_no_obs"] = render_volume_view_no_obs
     render_views["Superquadric"] = render_superquadrics_view
-    # render_views["Movement"] = render_movement_view
+    render_views["CMovement"] = render_movement_view_clusters
     render_views["SMovement"] = render_static_movement_view
     # render_views["Movement"] = render_static_movement_view
     # render_views["SMovement"] = render_movement_view
@@ -605,7 +589,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
-    rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
     window = build_selection_window((600, 800), transitionSequence, rel_t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, cluster_data, cluster_info, scalars, h_cutoff, h_range, settings_window, render_views, widgets, invariantRange, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
