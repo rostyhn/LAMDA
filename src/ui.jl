@@ -233,7 +233,7 @@ function top_bar(window, title, num_cols)
     Box(window[1, 1:num_cols], color=:grey95, strokevisible=false)
 
     window[1, 1:num_cols] = g
-    g[1, 1] = Label(window, "TransVis", fontsize=30, font=:bold, halign=:left)
+    g[1, 1] = Label(window, "LAMDA", fontsize=30, font=:bold, halign=:left)
     g[1, 2] = Label(window, "$(title)", fontsize=30, font=:italic, tellwidth=false, halign=:left)
 
     gg = GridLayout()

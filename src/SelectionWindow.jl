@@ -245,7 +245,7 @@ function build_selection_window(fig_size,
     on(settings_btn.clicks) do n
         # n has how many times the button's been clicked
         if isnothing(screen)
-            screen = GLMakie.Screen(title="TransVis Settings")
+            screen = GLMakie.Screen(title="LAMDA Settings")
             display(screen, settings_window)
         else
             close(screen)

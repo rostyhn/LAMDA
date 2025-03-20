@@ -7,7 +7,7 @@ function build_mol_window(transition, t_idx, render_views, widgets; fig_size=(40
     setup_state_view!(molWindow, (2, 1), "Volume", transition, t_idx, render_views, widgets)
     setup_state_view!(molWindow, (2, 2), "Volume", transition, t_idx, render_views, widgets)
 
-    screen = GLMakie.Screen(title="TransVis - $transition")
+    screen = GLMakie.Screen(title="LAMDA - $transition")
     display(screen, molWindow)
 
     #on(events(molWindow).entered_window) do is_hovered
