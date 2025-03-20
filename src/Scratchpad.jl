@@ -247,7 +247,11 @@ function scratchpad!(
         end
     end
 
+    d_start = Point2f(0.0)
+    d_end = Point2f(0.0)
+    bbox = Observable(BBox(0, 0, 0, 0))
     m_events = addmouseevents!(ax.scene)
+    boxes = []
     on(m_events.obs) do e
         if e.type == MouseEventTypes.over
             plt, idx = pick(ax.scene)
@@ -264,6 +268,21 @@ function scratchpad!(
                 #elseif plt isa Makie.Text
                 #    @show plt
             end
+        elseif e.type === MouseEventTypes.leftdragstart
+            d_start = mouseposition(ax.scene)
+            w = wireframe!(ax.scene, bbox, color=:red)
+            w.inspectable[] = false
+        elseif e.type === MouseEventTypes.leftdrag
+            d_end = mouseposition(ax.scene)
+            l = (d_start[1] < d_end[1]) ? d_start[1] : d_end[1]
+            r = (l == d_start[1]) ? d_end[1] : d_start[1]
+
+            b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
+            t = (b == d_start[2]) ? d_end[2] : d_start[2]
+            bbox[] = BBox(l, r, b, t)
+        elseif e.type === MouseEventTypes.leftdragstop
+            push!(boxes, bbox[])
+            bbox = Observable(BBox(0, 0, 0, 0))
         elseif e.type == MouseEventTypes.leftdoubleclick
             plt, idx = pick(ax.scene)
             if isnothing(plt)
