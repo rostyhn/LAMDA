@@ -1,11 +1,5 @@
 using Makie
 
-const GRID_SIZE = 16
-const GRID_X = Int(sqrt(GRID_SIZE))
-const GRID_Y = Int(sqrt(GRID_SIZE))
-const SCENE_SELECTED = to_color(:grey)
-const BLACK = to_color(:black)
-
 function build_cluster_window(clusters,
     ts,
     ref_t,
@@ -18,6 +12,7 @@ function build_cluster_window(clusters,
     bins,
     on_transition_select,
     hovered_transition,
+    hovered_cluster,
     inspector_ref::MaybeObservable{DataInspector};
     on_cluster_select=(x) -> (),
     on_window_hover=(x) -> (),
@@ -80,6 +75,7 @@ function build_cluster_window(clusters,
         time,
         render_views,
         hovered_transition,
+        highlight_borders=lift(x -> !isnothing(x) && length(collect(intersect(clusters, x))) > 0, hovered_cluster),
         on_click=on_transition_select)
 
     mat_grid = GridLayout()
@@ -144,6 +140,14 @@ function build_cluster_window(clusters,
         end
         notify(mat_hovered)
         return Consume(false)
+    end
+
+    on(events(window).entered_window) do entered
+        if entered
+            on_window_hover(clusters)
+        else
+            on_window_hover(nothing)
+        end
     end
 
     return window

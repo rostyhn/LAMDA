@@ -37,6 +37,7 @@ include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
 include("UMapView.jl")
+include("Scratchpad.jl")
 include("SettingsWindow.jl")
 include("ClusterWindow.jl")
 include("ReductionWindow.jl")
@@ -437,23 +438,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
     end
 
-    function render_movement_view(scene, clusters, time)
-        # first attempt, this is really dependent on the quality of the alignment
-        t_ap = @lift begin
-            g = reduce(vcat, map(x -> $(cluster_info).groups[x], collect($clusters)))
-            ts = map(x -> transitionSequence[x], g)
-            bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
-            posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
-
-            inits = reduce(vcat, first.(posValsTup))
-            fins = reduce(vcat, last.(posValsTup))
-
-            return (inits, fins), bondVals
-        end
-
-        simple_atom_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time)
-
-        return [], []
+    function render_movement_view_clusters(scene, clusters, time)
+        g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
+        ts = map(x -> transitionSequence[x], g)
+        return render_static_movement_view(scene, ts, time)
     end
 
     function render_superquadrics_view(scene, transition, inspector)
@@ -536,7 +524,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
     render_views["Superquadric"] = render_superquadrics_view
-    render_views["Movement"] = render_movement_view
+    render_views["CMovement"] = render_movement_view_clusters
     render_views["SMovement"] = render_static_movement_view
 
     widgets = Dict()

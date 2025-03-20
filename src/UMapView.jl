@@ -1,4 +1,3 @@
-
 function umap_graph_view!(
     loc,
     ts,
@@ -8,10 +7,21 @@ function umap_graph_view!(
     atom_time,
     render_views,
     hovered=MaybeObservable{Tuple{Int,Int}};
+    highlight_borders=Observable(false),
     on_click=(x) -> (),
     markersize=150,
 )
     ax = Axis(loc, backgroundcolor=:transparent)
+    on(highlight_borders, update=true) do hb
+        border_color = to_color(:black)
+        if hb
+            border_color = to_color(:red)
+        end
+        ax.topspinecolor[] = border_color
+        ax.bottomspinecolor[] = border_color
+        ax.leftspinecolor[] = border_color
+        ax.rightspinecolor[] = border_color
+    end
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
 
@@ -29,6 +39,8 @@ function umap_graph_view!(
 
     ins = DataInspector(umap_nodes)
     center!(ax.scene)
+
+    t_to_pltidx = Dict(reverse.(enumerate(ts)))
 
     views = []
     for (i, t) in enumerate(ts)
@@ -75,17 +87,20 @@ function umap_graph_view!(
                 show_data(ins, umap_nodes, i)
                 hovered[] = t
                 notify(hovered)
+            elseif event.type === MouseEventTypes.out
+                hovered[] = nothing
+                notify(hovered)
             elseif event.type === MouseEventTypes.leftdoubleclick
                 on_click(t)
             end
         end
-        push!(views, (vp, size))
+        push!(views, (vp, size, ax3d))
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits) do xlim, ylim
         ms = Int.(round.(ax.scene.camera.projectionview[] * Point4f(markersize, markersize, 0, 0)))[1]
-        for (i, (vp, size)) in enumerate(views)
+        for (i, (vp, size, scene)) in enumerate(views)
             pos = position_on_plot(umap_nodes, i, apply_transform=false)
             x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
 
@@ -99,6 +114,20 @@ function umap_graph_view!(
 
             notify(vp)
             notify(size)
+        end
+    end
+
+    highlighted = []
+    on(hovered) do hov
+        for (v_idx) in highlighted
+            views[v_idx][3].backgroundcolor[] = to_color(:black)
+        end
+        empty!(highlighted)
+
+        if !isnothing(hov) && hov in ts
+            v_idx = t_to_pltidx[hov]
+            views[v_idx][3].backgroundcolor[] = to_color(:grey)
+            push!(highlighted, v_idx)
         end
     end
 
