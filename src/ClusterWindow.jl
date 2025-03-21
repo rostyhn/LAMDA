@@ -61,8 +61,10 @@ function build_cluster_window(
         notify(hovered_transition)
     end
 
+    ts = Observable(cluster_data[].ts)
     alignment = @lift begin
-        return calculators["Alignment"]($(cluster_data).ts)
+        ts.val = $(cluster_data).ts
+        return calculators["Alignment"](ts.val)
     end
 
     window[2, 1:2] = hgrid!(
@@ -112,7 +114,7 @@ function build_cluster_window(
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    render_views["SMovement"](centroid_scene, lift(x -> x.ts, cluster_data), time, alignment)
+    render_views["SMovement"](centroid_scene, ts, time, alignment)
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
