@@ -10,8 +10,8 @@ function find_cluster_representatives(distances::Matrix{Float64}, ts, maximumNum
         return ts[R.medoids]
     else
         return ts
-end
     end
+end
 
 function build_cluster_window(clusters,
     ts,

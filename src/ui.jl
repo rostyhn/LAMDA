@@ -139,6 +139,7 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         # colorrange=(2,20),
         # lowclip=:transparent,
         arrowsize=1.2,
+        alpha = 1.0,
         transparency = true,
         # colormap=:seaborn_bright,   
           )

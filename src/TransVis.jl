@@ -25,6 +25,7 @@ using Statistics
 using ProgressMeter
 using Mmap
 using Clustering
+using UMAP
 
 include("io.jl")
 include("data_types.jl")
