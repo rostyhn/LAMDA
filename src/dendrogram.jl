@@ -100,7 +100,7 @@ function dendrogram!(ax,
     hover_callbackfn=(x -> ()),
     colormap=:tab20,
     rootcolor=:black,
-    on_click=((x, y) -> ()),
+    on_click=(x -> ()),
     kwargs...)
 
     ax.xgridvisible = false
@@ -108,8 +108,7 @@ function dendrogram!(ax,
 
     cmap = to_colormap(colormap)
 
-    @time dendrogram = @lift begin
-        println("Calculating dendrogram...")
+    dendrogram = @lift begin
         clusters = $(cluster_info).clusters
         lines = $(cluster_info).lines
         cutoff = $(cluster_info).cutoff
@@ -130,14 +129,18 @@ function dendrogram!(ax,
             return clusters[div(i, 2)]
         end
 
-        cutoff_line = ([0, length($(cluster_info).assignments)], [cutoff, cutoff])
+        all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines))
+        min_x, max_x = extrema(all_x)
+        all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines))
+        min_y, max_y = extrema(all_y)
+        cutoff_line = ([min_x, max_x], [min_y, min_y])
 
         cl_to_idx = Dict{Set{Int},Int}()
         for (i, c) in enumerate(clusters)
             cl_to_idx[c] = i
         end
 
-        return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters
+        return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
     end
 
     highlighted = []
@@ -209,7 +212,7 @@ function dendrogram!(ax,
     end
 
     # add cutoff line
-    #=l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
+    l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
         linestyle=:dash,
         color=:grey)
 
@@ -217,8 +220,9 @@ function dendrogram!(ax,
 
     # add listeners to reset limits whenever something changes
     @lift begin
-        lo, hi = $(cluster_info).h_range
-        ylims!(ax, (lo - 0.1, hi + 0.1))
-        reset_limits!(ax, yauto=false)
-    end=#
+        xlo, xhi = $dendrogram[7]
+        ylo, yhi = $dendrogram[8]
+        xlims!(ax, (xlo - 3), (xhi + 3))
+        ylims!(ax, (0.0, yhi + 0.1))
+    end
 end
