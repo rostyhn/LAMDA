@@ -48,7 +48,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
         m = dms[$selected_dm]
-        rm = zeros(size(m))
+        rm = zeros(Float32, size(m))
 
         # gets the correct idx 
         idx_to_mtx = zeros(Int, size(m)[1])
@@ -130,7 +130,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     # apply reduction
     reduced = @lift begin
         n = length(collect(keys($cluster_groups)))
-        redmat = zeros((n, n))
+        redmat = zeros(Float32, (n, n))
         red_t_list = []
         red_t_to_idx = Dict()
         idxes = zeros(Int, n)
@@ -172,6 +172,8 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
         active_trajectory["selected_dm"] = Observable(reduced[][1])
         active_trajectory["reduced_transitions"] = reduced[][2]
         active_trajectory["selected_dm_name"] = selected_dm[]
+        empty!(window)
+        GC.gc()
         on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 

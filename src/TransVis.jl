@@ -47,6 +47,14 @@ export go
 const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
 const CLUSTER_COLORS = :tab20
 
+const LEFT_KEY = Keyboard.left
+const RIGHT_KEY = Keyboard.right
+const UP_KEY = Keyboard.up
+const DOWN_KEY = Keyboard.down
+
+const LEFT_DOWN = LEFT_KEY & DOWN_KEY
+const RIGHT_DOWN = RIGHT_KEY & DOWN_KEY
+
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
@@ -156,11 +164,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             reps[clusterIdx] = transitionSequence[ref_t_idx]
         end
 
-        lines, clusters = treepositions($(cluster_data).clustering, $h_cutoff)
+        lines, clusters, c_to_parent, parent_to_c = treepositions($(cluster_data).clustering, $h_cutoff)
         return ClusterInfo(groups=groups,
             representatives=reps,
             assignments=assignments,
             lines=lines,
+            c_to_parent=c_to_parent,
+            parent_to_c=parent_to_c,
             clusters=clusters,
             cutoff=$h_cutoff)
     end
@@ -408,6 +418,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time, ts)
+        # atom view could be much faster if we don't create an alignment dictionary for each view
+        # and skip building an entire scalars dict but rather passing references to it 
         t_ap = create_position_alignment_observer(transition, ts)
         return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
     end

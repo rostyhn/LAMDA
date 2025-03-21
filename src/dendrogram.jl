@@ -15,13 +15,21 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
-function treepositions(hc, cutoff)::Tuple{Vector{Any},Vector{Set{Int}}}
+function treepositions(hc, cutoff)::Tuple{
+    Vector{Any},
+    Vector{Set{Int}},
+    Dict{Set{Int},Set{Int}},
+    Dict{Set{Int},Tuple{Set{Int},Set{Int}}}}
+
     clusterIdx = cutree(hc; h=cutoff)
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
 
     lines = []
     clusters = []
+    c_to_parent = Dict{Set{Int},Set{Int}}()
+    parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
+
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
         lt = hc.merges[i, 1] # left subtree
@@ -34,19 +42,26 @@ function treepositions(hc, cutoff)::Tuple{Vector{Any},Vector{Set{Int}}}
         nodepos[i] = (xpos, ypos)
 
         if ypos > cutoff
+            lg = get_st_clusters(hc.merges, lt, clusterIdx)
             push!(lines, (Point2(x1, max(cutoff, y1)), Point2(x1, ypos)))
-            push!(clusters, get_st_clusters(hc.merges, lt, clusterIdx))
+            push!(clusters, lg)
 
+            pg = get_st_clusters(hc.merges, i, clusterIdx)
             # stem
             push!(lines, (Point2(x1, ypos), Point2(x2, ypos)))
-            push!(clusters, get_st_clusters(hc.merges, i, clusterIdx))
+            push!(clusters, pg)
 
+            rg = get_st_clusters(hc.merges, rt, clusterIdx)
             push!(lines, (Point2(x2, max(cutoff, y2)), Point2(x2, ypos)))
-            push!(clusters, get_st_clusters(hc.merges, rt, clusterIdx))
+            push!(clusters, rg)
+
+            c_to_parent[lg] = pg
+            c_to_parent[rg] = pg
+            parent_to_c[pg] = (lg, rg)
         end
     end
 
-    return lines, clusters
+    return lines, clusters, c_to_parent, parent_to_c
 end
 
 function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));

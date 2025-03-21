@@ -72,6 +72,54 @@ function build_selection_window(fig_size,
         end
     end
 
+    # can be more clever
+    function cw_on_up(cc)
+        parent = get_parent(cluster_info[], cc[])
+        if parent != cc[]
+            cc[] = parent
+            notify(cc)
+        end
+    end
+
+    function cw_on_left(cc)
+        n = get_neighbor(cluster_info[], cc[], 1)
+        if n != cc[]
+            cc[] = n
+            notify(cc)
+        end
+    end
+
+    function cw_on_right(cc)
+        n = get_neighbor(cluster_info[], cc[], 2)
+        if n != cc[]
+            cc[] = n
+            notify(cc)
+        end
+    end
+
+    function cw_on_downleft(cc)
+        children = get_children(cluster_info[], cc[])
+        if !isnothing(children)
+            lc, rc = children
+            if lc != cc[]
+                cc[] = lc
+                notify(cc)
+            end
+        end
+    end
+
+    function cw_on_downright(cc)
+        children = get_children(cluster_info[], cc[])
+        if !isnothing(children)
+            lc, rc = children
+            if rc != cc[]
+                cc[] = rc
+                notify(cc)
+            end
+        end
+    end
+
+
     num_open_windows = 0
     open_cluster_windows = Dict{Int,Screen}()
     function on_show_cluster_click(clusters)
@@ -107,7 +155,12 @@ function build_selection_window(fig_size,
             hovered_cluster,
             ds,
             on_window_hover=on_cluster_window_hover,
-            on_cluster_select=on_cluster_select
+            on_cluster_select=on_cluster_select,
+            on_up=cw_on_up,
+            on_left=cw_on_left,
+            on_right=cw_on_right,
+            on_downleft=cw_on_downleft,
+            on_downright=cw_on_downright,
         )
         s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
         display(s, w)
@@ -121,6 +174,7 @@ function build_selection_window(fig_size,
         on(events(w).window_open) do e
             if !e
                 delete!(open_cluster_windows, w_idx)
+                empty!(w)
                 close(s)
             end
         end

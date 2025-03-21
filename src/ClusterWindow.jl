@@ -14,6 +14,11 @@ function build_cluster_window(
     inspector_ref::MaybeObservable{DataInspector};
     on_cluster_select=(x) -> (),
     on_window_hover=(x) -> (),
+    on_up=(x) -> (),
+    on_left=(x) -> (),
+    on_right=(x) -> (),
+    on_downleft=(x) -> (),
+    on_downright=(x) -> (),
     fig_size=(400, 400)
 )
 
@@ -57,12 +62,8 @@ function build_cluster_window(
         scalar_menu,
         t_slider)
 
-    ts = lift(x -> x.ts, cluster_data)
-    vals = lift(x -> x.mat, cluster_data)
-
     umap_graph_view!(window[3, 1:2],
-        ts,
-        vals,
+        lift(x -> (x.ts, x.mat), cluster_data),
         scene_selector,
         scalar_selector,
         time,
@@ -118,7 +119,11 @@ function build_cluster_window(
         bins=bins
     )=#
 
+    vals = lift(x -> x.mat, cluster_data)
     hm_ax, hm = heatmap(mat_grid[2, 1], vals, colorrange=mat_range)
+    on(vals) do v
+        reset_limits!(hm_ax)
+    end
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -137,6 +142,20 @@ function build_cluster_window(
         return Consume(false)
     end
 
+    on(events(window).keyboardbutton) do event
+        if ispressed(window, Exclusively(LEFT_KEY))
+            on_left(clusters)
+        elseif ispressed(window, Exclusively(RIGHT_KEY))
+            on_right(clusters)
+        elseif ispressed(window, Exclusively(UP_KEY))
+            on_up(clusters)
+        elseif ispressed(window, Exclusively(LEFT_DOWN))
+            on_downleft(clusters)
+        elseif ispressed(window, Exclusively(RIGHT_DOWN))
+            on_downright(clusters)
+        end
+    end
+
     on(events(window).entered_window) do entered
         if entered
             on_window_hover(clusters[])
@@ -144,6 +163,5 @@ function build_cluster_window(
             on_window_hover(nothing)
         end
     end
-
     return window
 end

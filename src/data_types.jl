@@ -11,6 +11,22 @@ const MaybeObservable{T} = Observable{Maybe{T}}
     lines
     clusters
     cutoff
+    c_to_parent::Dict{Set{Int},Set{Int}}
+    parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
+end
+
+function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}
+    return get(ci.c_to_parent, cluster, cluster)
+end
+
+function get_children(ci::ClusterInfo, cluster::Set{Int})::Union{Nothing,Tuple{Set{Int},Set{Int}}}
+    return get(ci.parent_to_c, cluster, nothing)
+end
+
+function get_neighbor(ci::ClusterInfo, cluster::Set{Int}, idx)
+    parent = ci.c_to_parent[cluster]
+    children = ci.parent_to_c[parent]
+    return children[idx]
 end
 
 @kwdef mutable struct ClusterData

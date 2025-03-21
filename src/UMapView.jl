@@ -2,8 +2,7 @@ using Observables
 
 function umap_graph_view!(
     loc,
-    ts::Observable{Vector{Tuple{Int,Int}}},
-    matrix::Observable{Matrix{Float32}},
+    data,
     selected_render,
     selected_scalar,
     atom_time,
@@ -30,13 +29,18 @@ function umap_graph_view!(
     campixel!(ax.scene)
 
     embedding = @lift begin
-        if length($ts) > 1
-            em = transpose(umap(transpose($matrix), 2;
+        disable_interactions(ax)
+        if length($data[1]) > 2
+            em = transpose(umap(transpose($data[2]), 2;
                 metric=:precomputed,
-                n_neighbors=min(length($ts) - 1, 15)))
+                n_neighbors=min(length($data[1]) - 1, 15)))
             return map(x -> Point2f(x), eachrow(em))
         else
-            return [Point2f(0.0, 0.0)]
+            points = Point2f[]
+            for (i, t) in enumerate($data[1])
+                push!(points, Point2f((i - 1) * 5, 0.0))
+            end
+            return points
         end
     end
 
@@ -45,70 +49,42 @@ function umap_graph_view!(
         embedding,
         marker=:rect,
         color=:transparent,
-        inspector_label=(ins, idx, pos) -> string(ts[][idx]))
+        inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
 
     ins = DataInspector(umap_nodes)
     center!(ax.scene)
 
-    t_to_pltidx = lift(x -> Dict(reverse.(enumerate(x))), ts)
-
+    t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
     markersize_4d = Point4f(markersize, markersize, 0, 0)
 
-    views = []
-    on(embedding, update=true) do e
-        for (vp, size, ax3d) in views
-            Observables.clear(vp)
-            Observables.clear(size)
-            empty!(ax3d)
-            ax3d.visible[] = false
+    views = Observable([])
+    @lift begin
+        hovered[] = nothing
+        notify(hovered)
+        for (ax3d, rendered) in views[]
+            Makie.free(ax3d)
         end
-        empty!(views)
-        for (i, t) in enumerate(ts[])
-            pos = position_on_plot(umap_nodes, i, apply_transform=false)
+        empty!(views[])
+        GC.gc()
+
+        for (i, t) in enumerate(data.val[1])
+            pos = $embedding[i]
             # x, y is in global pixel coords
             x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
             # calculate shifted size of marker
             ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d))[1]
-            size = Observable((ms, ms))
-
-            vp = Observable(Rect2i(x - (ms / 2), y - (ms / 2),
-                ms,
-                ms))
+            vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
 
             ax3d = Scene(ax.scene,
                 show_axis=false,
                 viewport=vp,
                 backgroundcolor=:black,
                 clear=true,
-                size=size)
+                size=(ms, ms))
 
             cam3d!(ax3d)
 
-            inspector = DataInspector(ax3d)
-
-            rendered = []
-            @lift begin
-                foreach(x -> delete!(ax3d, x), rendered)
-                empty!(rendered)
-                if $selected_render == "Volume"
-                    v_lo, v_hi = render_views[$selected_render](ax3d, Observable(t))
-                    rendered = vcat(rendered, [v_lo, v_hi])
-                elseif $selected_render == "Atom"
-                    s = render_views["Atom"](ax3d,
-                        Observable(t),
-                        selected_scalar,
-                        atom_time,
-                        ts)
-                    rendered = [s]
-                else
-                    il, is, plots = render_views["Superquadric"](ax3d,
-                        Observable(t),
-                        inspector, ts)
-                    rendered = plots
-                end
-                center!(ax3d)
-            end
-
+            rendered = Ref([])
             m_events = addmouseevents!(ax3d)
             on(m_events.obs) do event
                 if event.type === MouseEventTypes.over
@@ -122,41 +98,77 @@ function umap_graph_view!(
                     on_click(t)
                 end
             end
-            push!(views, (vp, size, ax3d))
+            push!(views[], (ax3d, rendered))
         end
+        t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
+    end
+
+    onany(selected_render, views, embedding; update=true) do sr, v, e
+        if length(v) == length(e)
+            for (i, (ax3d, rendered)) in enumerate(v)
+                t = data[][1][i]
+                println("running selector: " * string(t))
+
+                foreach(x -> delete!(ax3d, x), rendered[])
+                empty!(rendered[])
+                if sr == "Volume"
+                    v_lo, v_hi = render_views[sr](ax3d, Observable(t))
+                    rendered[] = [v_lo, v_hi]
+                elseif sr == "Atom"
+                    s = render_views["Atom"](ax3d,
+                        Observable(t),
+                        selected_scalar,
+                        atom_time,
+                        lift(x -> x[1], data))
+                    rendered[] = [s]
+                else
+                    inspector = DataInspector(ax3d)
+                    il, is, plots = render_views["Superquadric"](ax3d,
+                        Observable(t),
+                        inspector,
+                        lift(x -> x[1], data))
+                    rendered[] = plots
+                end
+                center!(ax3d)
+            end
+        end
+        reset_limits!(ax)
+        center!(ax.scene)
+        enable_interactions(ax)
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits) do xlim, ylim
-        ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d))[1]
-        for (i, (vp, size, scene)) in enumerate(views)
-            pos = position_on_plot(umap_nodes, i, apply_transform=false)
-            x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
+        if length(views[]) == length(embedding[])
+            ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d))[1]
+            for (i, (scene, rendered)) in enumerate(views[])
+                pos = position_on_plot(umap_nodes, i, apply_transform=false)
+                x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
 
-            vp.val = Rect2i(x - ms[], y - ms[], ms[], ms[])
-            vp.val = GeometryBasics.intersect(vp.val, ax.scene.viewport[])
-            vw = widths(vp.val)
+                vp = Rect2i(x - ms[], y - ms[], ms[], ms[])
+                vp = GeometryBasics.intersect(vp, ax.scene.viewport[])
+                vw = widths(vp)
 
-            if any(w -> w <= 0, vw)
-                vp.val = Rect2i(0, 0, 0, 0)
+                if any(w -> w <= 0, vw)
+                    vp = Rect2i(0, 0, 0, 0)
+                end
+
+                scene.viewport[] = vp
             end
-
-            notify(vp)
-            notify(size)
         end
     end
 
-    highlighted = []
+    highlighted = Ref([])
     on(hovered) do hov
-        for (v_idx) in highlighted
-            views[v_idx][3].backgroundcolor[] = to_color(:black)
+        for (v_idx) in highlighted[]
+            views[][v_idx][1].backgroundcolor[] = to_color(:black)
         end
-        empty!(highlighted)
+        empty!(highlighted[])
 
-        if !isnothing(hov) && hov in ts[]
+        if !isnothing(hov) && hov in data[][1]
             v_idx = t_to_pltidx[][hov]
-            views[v_idx][3].backgroundcolor[] = to_color(:grey)
-            push!(highlighted, v_idx)
+            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
+            push!(highlighted[], v_idx)
         end
     end
 

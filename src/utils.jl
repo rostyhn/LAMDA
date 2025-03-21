@@ -103,3 +103,15 @@ function snapshot_view(render_fn)
 
     return fn
 end
+
+function disable_interactions(ax)
+    deactivate_interaction!(ax, :limitreset)
+    deactivate_interaction!(ax, :dragpan)
+    deactivate_interaction!(ax, :scrollzoom)
+end
+
+function enable_interactions(ax)
+    activate_interaction!(ax, :limitreset)
+    activate_interaction!(ax, :dragpan)
+    activate_interaction!(ax, :scrollzoom)
+end
