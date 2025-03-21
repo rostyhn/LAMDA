@@ -56,6 +56,11 @@ function build_cluster_window(
     time, t_slider = widgets["Movement"](0.0, window)
     btn_centroid = Button(window, label="Show centroid")
 
+    on(btn_centroid.clicks) do n
+        hovered_transition[] = cluster_data[].ref_t
+        notify(hovered_transition)
+    end
+
     alignment = @lift begin
         return calculators["Alignment"]($(cluster_data).ts)
     end
