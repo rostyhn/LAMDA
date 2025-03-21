@@ -38,16 +38,20 @@ end
     mtx_to_t::Dict{Int,Tuple{Int,Int}}
 end
 
-@kwdef mutable struct SingleClusterData
+@kwdef struct SingleClusterData
     ts::Vector{Tuple{Int,Int}}
     ref_t::Tuple{Int,Int}
     mat::Matrix{Float32}
+    colors
     idx_to_mtx_idx::Vector{Int}# transition index to matrix index
     t_to_mtx::Dict{Tuple{Int,Int},Int}
 end
-
-function buildSingleClusterData(; ts, ref_t, mat, idx_to_mtx_idx)
+function buildSingleClusterData(; ts, ref_t, mat, idx_to_mtx_idx, cluster_info, rel_t_to_idx)
     sortperm!(idx_to_mtx_idx, ts)
+    cmap = to_colormap(CLUSTER_COLORS)
+
+    rel_ts = map(x -> rel_t_to_idx[x], ts)
+    colors = map(x -> cycle_colormap(cluster_info.assignments[x], cmap), rel_ts)
 
     # transition to matrix index dict
     t_to_mtx = Dict{Tuple{Int,Int},Int}()
@@ -58,6 +62,7 @@ function buildSingleClusterData(; ts, ref_t, mat, idx_to_mtx_idx)
     return SingleClusterData(ts=ts,
         ref_t=ref_t,
         mat=mat,
+        colors=colors,
         idx_to_mtx_idx=idx_to_mtx_idx,
         t_to_mtx=t_to_mtx)
 end

@@ -72,7 +72,7 @@ function build_cluster_window(
         clusters)
 
     umap_graph_view!(window[3, 1:2],
-        lift(x -> (x.ts, x.mat), cluster_data),
+        lift(x -> (x.ts, x.mat, x.colors), cluster_data),
         scene_selector,
         scalar_selector,
         time,

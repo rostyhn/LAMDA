@@ -82,8 +82,19 @@ function umap_graph_view!(
                 backgroundcolor=:black,
                 clear=true,
                 size=(ms, ms))
-
             cam3d!(ax3d)
+
+            frame = wireframe!(
+                ax3d,
+                Rect2f(-1, -1, 2, 2),
+                transformation=(:xy, 0),
+                color=data[][3][i],
+                overdraw=true,
+                linewidth=10,
+                space=:clip,
+                depth_shift=1.0e-3,
+                inspectable=false
+            )
 
             rendered = Ref([])
             m_events = addmouseevents!(ax3d)

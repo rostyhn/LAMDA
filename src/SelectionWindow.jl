@@ -132,6 +132,7 @@ function build_selection_window(
             ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect($cc)))
             ts = t_list[ts_idx]
 
+
             ts_idx_to_mtx_idx = map(x -> cluster_data[].idx_to_mtx[x], ts_idx)
             mtx_idx = sort(ts_idx_to_mtx_idx)
             mat = cluster_data[].matrix[mtx_idx, mtx_idx]
@@ -140,6 +141,8 @@ function build_selection_window(
                 ref_t=ref_t,
                 ts=ts,
                 mat=mat,
+                cluster_info=cluster_info[],
+                rel_t_to_idx=rel_t_to_idx,
                 idx_to_mtx_idx=collect(eachindex(ts_idx_to_mtx_idx)))
         end
 
