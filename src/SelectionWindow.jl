@@ -138,6 +138,7 @@ function build_selection_window(
             mat = cluster_data[].matrix[mtx_idx, mtx_idx]
 
             return buildSingleClusterData(
+                cluster=cc[],
                 ref_t=ref_t,
                 ts=ts,
                 mat=mat,
@@ -227,7 +228,6 @@ function build_selection_window(
 
     dendrogram!(graph_ax,
         cluster_info,
-        h_range,
         hovered_cluster;
         on_click=on_dendrogram_click,
         colormap=CLUSTER_COLORS)

@@ -13,6 +13,8 @@ const MaybeObservable{T} = Observable{Maybe{T}}
     cutoff
     c_to_parent::Dict{Set{Int},Set{Int}}
     parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
+    c_to_idx
+    h_range
 end
 
 function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}
@@ -21,6 +23,17 @@ end
 
 function get_children(ci::ClusterInfo, cluster::Set{Int})::Union{Nothing,Tuple{Set{Int},Set{Int}}}
     return get(ci.parent_to_c, cluster, nothing)
+end
+
+function dfs(ci::ClusterInfo, cluster::Set{Int}, acc=Ref([]))
+    push!(acc[], cluster)
+    children = get_children(ci, cluster)
+    if isnothing(children)
+        return
+    end
+    lc, rc = children
+    dfs(ci, lc, acc)
+    dfs(ci, rc, acc)
 end
 
 function get_neighbor(ci::ClusterInfo, cluster::Set{Int}, idx)
@@ -39,19 +52,27 @@ end
 end
 
 @kwdef struct SingleClusterData
+    cluster
     ts::Vector{Tuple{Int,Int}}
     ref_t::Tuple{Int,Int}
     mat::Matrix{Float32}
     colors
     idx_to_mtx_idx::Vector{Int}# transition index to matrix index
     t_to_mtx::Dict{Tuple{Int,Int},Int}
+    cutoff
+    h_range
+    lines
+    assignments
+    clusters
 end
-function buildSingleClusterData(; ts, ref_t, mat, idx_to_mtx_idx, cluster_info, rel_t_to_idx)
+
+function buildSingleClusterData(; cluster, ts, ref_t, mat, idx_to_mtx_idx, cluster_info, rel_t_to_idx)
     sortperm!(idx_to_mtx_idx, ts)
     cmap = to_colormap(CLUSTER_COLORS)
 
     rel_ts = map(x -> rel_t_to_idx[x], ts)
-    colors = map(x -> cycle_colormap(cluster_info.assignments[x], cmap), rel_ts)
+    assignments = map(x -> cluster_info.assignments[x], rel_ts)
+    colors = map(x -> cycle_colormap(x, cmap), assignments)
 
     # transition to matrix index dict
     t_to_mtx = Dict{Tuple{Int,Int},Int}()
@@ -59,10 +80,18 @@ function buildSingleClusterData(; ts, ref_t, mat, idx_to_mtx_idx, cluster_info, 
         t_to_mtx[t] = i
     end
 
-    return SingleClusterData(ts=ts,
+    clusters, lines = branch(cluster_info, cluster)
+
+    return SingleClusterData(cluster=cluster,
+        ts=ts,
         ref_t=ref_t,
         mat=mat,
         colors=colors,
         idx_to_mtx_idx=idx_to_mtx_idx,
-        t_to_mtx=t_to_mtx)
+        t_to_mtx=t_to_mtx,
+        lines=lines,
+        clusters=clusters,
+        assignments=assignments,
+        h_range=cluster_info.h_range,
+        cutoff=cluster_info.cutoff)
 end

@@ -164,7 +164,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             reps[clusterIdx] = transitionSequence[ref_t_idx]
         end
 
-        lines, clusters, c_to_parent, parent_to_c = treepositions($(cluster_data).clustering, $h_cutoff)
+        lines, clusters, c_to_parent, parent_to_c, c_to_idx = treepositions($(cluster_data).clustering, $h_cutoff)
         return ClusterInfo(groups=groups,
             representatives=reps,
             assignments=assignments,
@@ -172,6 +172,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             c_to_parent=c_to_parent,
             parent_to_c=parent_to_c,
             clusters=clusters,
+            c_to_idx=c_to_idx,
+            h_range=$h_range,
             cutoff=$h_cutoff)
     end
 

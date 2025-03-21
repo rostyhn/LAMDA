@@ -119,23 +119,19 @@ function build_cluster_window(
         on_cluster_select(clusters[])
     end
 
-    #=hist_ax = Axis(mat_grid[2, 1], title="Intra-cluster distances",
+    dendrogram_ax = Axis(mat_grid[2, 1],
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
-    deregister_interaction!(hist_ax, :rectanglezoom)
-    hideydecorations!(hist_ax)
+    deregister_interaction!(dendrogram_ax, :rectanglezoom)
+    hidedecorations!(dendrogram_ax)
 
-    hist!(hist_ax,
-        hist_vals,
-        normalization=:density,
-        strokewidth=1,
-        strokecolor=:black,
-        color=cluster_color,
-        bins=bins
-    )=#
+    dendrogram!(dendrogram_ax,
+        cluster_data,
+        hovered_cluster;
+        colormap=CLUSTER_COLORS)
 
     vals = lift(x -> x.mat, cluster_data)
-    hm_ax, hm = heatmap(mat_grid[2, 1], vals, colorrange=mat_range)
+    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
     on(vals) do v
         reset_limits!(hm_ax)
     end

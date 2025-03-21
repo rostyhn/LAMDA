@@ -19,7 +19,8 @@ function treepositions(hc, cutoff)::Tuple{
     Vector{Any},
     Vector{Set{Int}},
     Dict{Set{Int},Set{Int}},
-    Dict{Set{Int},Tuple{Set{Int},Set{Int}}}}
+    Dict{Set{Int},Tuple{Set{Int},Set{Int}}},
+    Dict{Set{Int},Vector{Int}}}
 
     clusterIdx = cutree(hc; h=cutoff)
     order = StatsBase.indexmap(hc.order)
@@ -29,7 +30,8 @@ function treepositions(hc, cutoff)::Tuple{
     clusters = []
     c_to_parent = Dict{Set{Int},Set{Int}}()
     parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
-
+    c_to_idx = Dict{Set{Int},Vector{Int}}()
+    lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
         lt = hc.merges[i, 1] # left subtree
@@ -55,16 +57,46 @@ function treepositions(hc, cutoff)::Tuple{
             push!(lines, (Point2(x2, max(cutoff, y2)), Point2(x2, ypos)))
             push!(clusters, rg)
 
+            lg_ar = get(c_to_idx, lg, [])
+            rg_ar = get(c_to_idx, rg, [])
+            pg_ar = get(c_to_idx, pg, [])
+
+            c_to_idx[lg] = push!(lg_ar, lx - 1)
+            c_to_idx[rg] = push!(rg_ar, lx + 1)
+            c_to_idx[pg] = push!(pg_ar, lx)
+
             c_to_parent[lg] = pg
             c_to_parent[rg] = pg
             parent_to_c[pg] = (lg, rg)
+            lx += 3
         end
     end
 
-    return lines, clusters, c_to_parent, parent_to_c
+    return lines, clusters, c_to_parent, parent_to_c, c_to_idx
 end
 
-function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));
+# gets line positions for a specified branch in the dendrogram 
+function branch(ci::ClusterInfo, root::Set{Int})
+    children = Ref([])
+    dfs(ci, root, children)
+
+    new_lines = []
+    corrected_children = []
+
+    for c in children[]
+        idx = ci.c_to_idx[c]
+        for i in 1:length(idx)
+            push!(corrected_children, c)
+        end
+        append!(new_lines, map(x -> ci.lines[x], idx))
+    end
+
+    return corrected_children, new_lines
+end
+
+function dendrogram!(ax,
+    cluster_info,
+    hovered=Observable(Set{Int}(1));
     hover_callbackfn=(x -> ()),
     colormap=:tab20,
     rootcolor=:black,
@@ -137,10 +169,12 @@ function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));
 
         if !isnothing(hov)
             for c in collect(hov)
-                idx = c_dict[][Set(c)]
-                ogColor = d_colors.val[idx]
-                d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
-                push!(highlighted, (idx, ogColor))
+                if Set(c) in keys(c_dict[])
+                    idx = c_dict[][Set(c)]
+                    ogColor = d_colors.val[idx]
+                    d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
+                    push!(highlighted, (idx, ogColor))
+                end
             end
         end
         d_colors[] = d_colors[]
@@ -175,7 +209,7 @@ function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));
     end
 
     # add cutoff line
-    l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
+    #=l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
         linestyle=:dash,
         color=:grey)
 
@@ -183,8 +217,8 @@ function dendrogram!(ax, cluster_info, h_range, hovered=Observable(Set{Int}(1));
 
     # add listeners to reset limits whenever something changes
     @lift begin
-        lo, hi = $h_range
+        lo, hi = $(cluster_info).h_range
         ylims!(ax, (lo - 0.1, hi + 0.1))
         reset_limits!(ax, yauto=false)
-    end
+    end=#
 end
