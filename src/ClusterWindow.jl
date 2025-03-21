@@ -31,7 +31,7 @@ function build_cluster_window(
     scene_selector = Observable("Volume")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = lift(x -> "Cluster $(str_limit(x; len=25))", clusters)
+    title = lift(x -> "Cluster " * str_limit(x; len=25), clusters)
     menu_bar = top_bar(window, title, 3)
 
     render_menu = Menu(window,
