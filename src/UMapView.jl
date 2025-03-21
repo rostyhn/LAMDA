@@ -7,7 +7,8 @@ function umap_graph_view!(
     selected_scalar,
     atom_time,
     render_views,
-    hovered=MaybeObservable{Tuple{Int,Int}};
+    hovered,
+    alignment;
     highlight_borders=Observable(false),
     on_click=(x) -> (),
     markersize=100,
@@ -107,8 +108,6 @@ function umap_graph_view!(
         if length(v) == length(e)
             for (i, (ax3d, rendered)) in enumerate(v)
                 t = data[][1][i]
-                println("running selector: " * string(t))
-
                 foreach(x -> delete!(ax3d, x), rendered[])
                 empty!(rendered[])
                 if sr == "Volume"
@@ -119,17 +118,20 @@ function umap_graph_view!(
                         Observable(t),
                         selected_scalar,
                         atom_time,
-                        lift(x -> x[1], data))
+                        alignment)
                     rendered[] = [s]
                 else
                     inspector = DataInspector(ax3d)
                     il, is, plots = render_views["Superquadric"](ax3d,
                         Observable(t),
                         inspector,
-                        lift(x -> x[1], data))
+                        alignment)
                     rendered[] = plots
                 end
                 center!(ax3d)
+                # block for a millisecond so makie can catch up
+                # otherwise it seems like the renderer gets overwhelmed & it just goes oom
+                sleep(0.001)
             end
         end
         reset_limits!(ax)

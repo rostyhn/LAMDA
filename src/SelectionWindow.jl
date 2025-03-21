@@ -9,7 +9,7 @@ using Observables
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
-function build_selection_window(fig_size,
+function build_selection_window(
     t_list,
     rel_t_to_idx::Dict{Tuple{Int16,Int16},Int},
     on_click,
@@ -28,7 +28,9 @@ function build_selection_window(fig_size,
     invariantRange,
     matColLabel,
     per_t_scalars,
-    per_t_scalar_ranges
+    per_t_scalar_ranges,
+    calculators;
+    fig_size=(600, 800)
 )
 
     window = Figure(size=fig_size)
@@ -154,6 +156,7 @@ function build_selection_window(fig_size,
             hovered_transition,
             hovered_cluster,
             ds,
+            calculators,
             on_window_hover=on_cluster_window_hover,
             on_cluster_select=on_cluster_select,
             on_up=cw_on_up,
@@ -346,6 +349,7 @@ function build_selection_window(fig_size,
         selected_clusters,
         t_list,
         rel_t_to_idx,
+        calculators,
         on_hover=on_scratchpad_hover,
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,

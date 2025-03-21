@@ -198,19 +198,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return rot
     end
 
-    # convenience function to avoid passing around all the data
-    function calc_alignment(ts)
-        ts_idx = map(x -> rel_t_to_idx[x], ts)
-        features = alignments[selected_alignment[]]
-
-        dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
-        ref_t_idx = argmin(dist_sum)
-
-        ref_t = ts[ref_t_idx]
-
-        return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
-    end
-
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
@@ -408,8 +395,21 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return (absInvMin, absInvMax)
     end
 
-    function create_position_alignment_observer(transition, align_to)
-        alignment = lift(x -> calc_alignment(x), align_to)
+    # convenience function to avoid passing around all the data
+    function calc_alignment(ts)
+        ts_idx = map(x -> rel_t_to_idx[x], ts)
+        features = alignments[selected_alignment[]]
+
+        dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
+        ref_t_idx = argmin(dist_sum)
+
+        ref_t = ts[ref_t_idx]
+
+        return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+    end
+
+
+    function create_position_alignment_observer(transition, alignment)
         return @lift begin
             return apply_alignment($alignment[$transition], $alignedPositionsMatrices[$transition])
         end
@@ -417,10 +417,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene, transition, selected_scalar, time, ts)
-        # atom view could be much faster if we don't create an alignment dictionary for each view
-        # and skip building an entire scalars dict but rather passing references to it 
-        t_ap = create_position_alignment_observer(transition, ts)
+    function render_atom_view(scene, transition, selected_scalar, time, alignment)
+        t_ap = create_position_alignment_observer(transition, alignment)
         return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
     end
 
@@ -430,11 +428,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_movement_view_ts(scene, ts, time)
+    function render_movement_view_ts(scene, ts, time, alignment)
         d = @lift begin
-            alignment = calc_alignment($ts)
             bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], $ts))
-            posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), $ts)
+            posValsTup = map(t -> apply_alignment($alignment[t], alignedPositionsMatrices[t]), $ts)
 
             inits = reduce(vcat, first.(posValsTup))
             fins = reduce(vcat, last.(posValsTup))
@@ -449,16 +446,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             time)
     end
 
-    function render_movement_view_clusters(scene, clusters, time)
-        ts = @lift begin
-            g = reduce(vcat, map(x -> cluster_info[].groups[x], collect($clusters)))
-            return map(x -> transitionSequence[x], g)
-        end
-        return render_movement_view_ts(scene, ts, time)
+    function calc_ts(clusters)
+        g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
+        return map(x -> transitionSequence[x], g)
     end
 
-    function render_superquadrics_view(scene, transition, inspector, ts)
-        t_ap = create_position_alignment_observer(transition, ts)
+    function render_superquadrics_view(scene, transition, inspector, alignment)
+        t_ap = create_position_alignment_observer(transition, alignment)
 
         invariant = lift((x, y) -> active_trajectory[x][y], selected_invariant, transition)
         points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
@@ -537,7 +531,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
     render_views["Superquadric"] = render_superquadrics_view
-    render_views["CMovement"] = render_movement_view_clusters
     render_views["SMovement"] = render_movement_view_ts
 
     widgets = Dict()
@@ -545,6 +538,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     widgets["Movement"] = time_slider
     widgets["Render"] = render_menu
     widgets["Scalar"] = scalar_menu
+
+    calculators = Dict()
+    calculators["Alignment"] = calc_alignment
+    calculators["GetTransitions"] = calc_ts
 
     function on_click(t, on_window_hover)
         t_idx = t_to_idx[t]
@@ -555,8 +552,25 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
 
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, rel_t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, cluster_data, cluster_info, scalars, h_cutoff, h_range, settings_window, render_views, widgets, invariantRange, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
-
+    window = build_selection_window(transitionSequence,
+        rel_t_to_idx,
+        on_click,
+        num_atoms,
+        dm,
+        volRange,
+        volume_cmap,
+        cluster_data,
+        cluster_info,
+        scalars,
+        h_cutoff,
+        h_range,
+        settings_window,
+        render_views,
+        widgets,
+        invariantRange,
+        active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"],
+        active_trajectory["per_t_scalar_ranges"],
+        calculators)
 
     #= 
     # creating screen after the window is built prevents subtle bugs

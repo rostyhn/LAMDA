@@ -11,7 +11,8 @@ function build_cluster_window(
     on_transition_select,
     hovered_transition,
     hovered_cluster,
-    inspector_ref::MaybeObservable{DataInspector};
+    inspector_ref::MaybeObservable{DataInspector},
+    calculators;
     on_cluster_select=(x) -> (),
     on_window_hover=(x) -> (),
     on_up=(x) -> (),
@@ -55,12 +56,20 @@ function build_cluster_window(
     time, t_slider = widgets["Movement"](0.0, window)
     btn_centroid = Button(window, label="Show centroid")
 
+    alignment = @lift begin
+        return calculators["Alignment"]($(cluster_data).ts)
+    end
+
     window[2, 1:2] = hgrid!(
         btn_centroid,
         Label(window, "Render mode"),
         render_menu,
         scalar_menu,
         t_slider)
+
+    hb = lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0,
+        hovered_cluster,
+        clusters)
 
     umap_graph_view!(window[3, 1:2],
         lift(x -> (x.ts, x.mat), cluster_data),
@@ -69,7 +78,8 @@ function build_cluster_window(
         time,
         render_views,
         hovered_transition,
-        highlight_borders=lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0, hovered_cluster, clusters),
+        alignment;
+        highlight_borders=hb,
         on_click=on_transition_select)
 
     mat_grid = GridLayout()
@@ -97,7 +107,7 @@ function build_cluster_window(
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    render_views["CMovement"](centroid_scene, clusters, time)
+    render_views["SMovement"](centroid_scene, lift(x -> x.ts, cluster_data), time, alignment)
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
