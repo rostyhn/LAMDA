@@ -3,4 +3,7 @@ cache/
 .git/
 data/
 
+export/
 .ipynb_checkpoints
+.venv/
+poetry.lock

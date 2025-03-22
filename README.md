@@ -1,7 +1,9 @@
 # TransVis
 
 ## Setup 
-To set up your julia environment, run `julia -t [num_workers],1 -i startup,jl`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
+You need to install the Python environment manager `poetry`([https://python-poetry.org/]); once it is installed, run `poetry install`. 
+
+To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
 
 `go` has some keyword parameters as well. 
 | parameter | type | purpose |
@@ -18,7 +20,8 @@ trajectory_name/ # used as input to go()
     transitions.pickle # list of transitions; Vector{Tuple{Int,Int}}
     connectivity.pickle # atom-atom connectivity per state; Dict{Int, Matrix{Float}}
     aligned_positions.pickle # positions per transition; Dict{Tuple{Int,Int}, Matrix{Float}}
-    
+    t_ase_dict.pickle # ASE data per transition; Dict{Tuple{Int,Int}, Tuple{Atoms, Atoms}}
+
     dms/ 
         - some_distance_metric/
             - dm.pickle # distance matrix defined for all transitions; Matrix{Float}
