@@ -400,15 +400,19 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     # convenience function to avoid passing around all the data
     function calc_alignment(ts)
-        ts_idx = map(x -> rel_t_to_idx[x], ts)
-        features = alignments[selected_alignment[]]
+        if !isempty(ts)
+            ts_idx = map(x -> rel_t_to_idx[x], ts)
+            features = alignments[selected_alignment[]]
 
-        dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
-        ref_t_idx = argmin(dist_sum)
+            dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
+            ref_t_idx = argmin(dist_sum)
 
-        ref_t = ts[ref_t_idx]
+            ref_t = ts[ref_t_idx]
 
-        return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+            return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+        else
+            return Dict()
+        end
     end
 
 
