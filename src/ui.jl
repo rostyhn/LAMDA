@@ -245,3 +245,7 @@ function top_bar(window, title, num_cols)
     return gg
 end
 
+function set_text(txtbox, s)
+    txtbox.displayed_string[] = s
+    txtbox.stored_string[] = s
+end

@@ -34,6 +34,27 @@ function build_cluster_window(
     title = lift(x -> "Cluster " * str_limit(x; len=25), clusters)
     menu_bar = top_bar(window, title, 3)
 
+    btn_notes = Button(window, label="Notes")
+    menu_bar[1, 1] = btn_notes
+
+    function update_annotations(name, val)
+        @show name, val
+    end
+
+    screen = nothing
+    nw = NoteWindow(title, Observable("..."), update_annotations)
+    on(btn_notes.clicks) do n
+
+        if isnothing(screen)
+            screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
+            display(screen, nw)
+        else
+            close(screen)
+            screen = nothing
+        end
+
+    end
+
     render_menu = Menu(window,
         options=SINGLE_TRANSITION_RENDER_OPTIONS,
         default=scene_selector[], tellwidth=false)

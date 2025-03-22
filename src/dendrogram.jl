@@ -222,7 +222,7 @@ function dendrogram!(ax,
     @lift begin
         xlo, xhi = $dendrogram[7]
         ylo, yhi = $dendrogram[8]
-        xlims!(ax, (xlo - 3), (xhi + 3))
+        xlims!(ax, (xlo - 1), (xhi + 1))
         ylims!(ax, (0.0, yhi + 0.1))
     end
 end
