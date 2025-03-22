@@ -66,6 +66,28 @@ end
     clusters
 end
 
+function ClusterAnnotations()
+    d = Dict()
+    d["titles"] = Dict{Set{Int},String}()
+    d["notes"] = Dict{Set{Int},String}()
+    return d
+end
+
+function get_val(ca, property::String, s::Set{Int})
+    v = (property == "titles") ? str_limit(s; len=25) : "..."
+    if s in keys(ca[property])
+        v = ca[property][s]
+    else
+        ca[property][s] = v
+    end
+    return v
+end
+
+function set_val(ca, s::Set{Int}, property::String, val::String)
+    @show ca, s, property, val
+    ca[property][s] = val
+end
+
 function buildSingleClusterData(; cluster, ts, ref_t, mat, idx_to_mtx_idx, cluster_info, rel_t_to_idx)
     sortperm!(idx_to_mtx_idx, ts)
     cmap = to_colormap(CLUSTER_COLORS)

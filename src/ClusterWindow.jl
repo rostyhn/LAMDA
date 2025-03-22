@@ -12,7 +12,8 @@ function build_cluster_window(
     hovered_transition,
     hovered_cluster,
     inspector_ref::MaybeObservable{DataInspector},
-    calculators;
+    calculators,
+    cluster_annotations;
     on_cluster_select=(x) -> (),
     on_window_hover=(x) -> (),
     on_up=(x) -> (),
@@ -31,20 +32,21 @@ function build_cluster_window(
     scene_selector = Observable("Volume")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = lift(x -> "Cluster " * str_limit(x; len=25), clusters)
+    title = lift((x, y) -> get_val(y, "titles", x), clusters, cluster_annotations)
+    notes = lift((x, y) -> get_val(y, "notes", x), clusters, cluster_annotations)
     menu_bar = top_bar(window, title, 3)
 
     btn_notes = Button(window, label="Notes")
     menu_bar[1, 1] = btn_notes
 
-    function update_annotations(name, val)
-        @show name, val
+    function update_cluster(name, val)
+        set_val(cluster_annotations[], clusters[], name, val)
+        notify(cluster_annotations)
     end
 
     screen = nothing
-    nw = NoteWindow(title, Observable("..."), update_annotations)
+    nw = NoteWindow(title, notes, update_cluster)
     on(btn_notes.clicks) do n
-
         if isnothing(screen)
             screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
             display(screen, nw)

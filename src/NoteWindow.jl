@@ -23,11 +23,11 @@ function NoteWindow(title::Observable{String}, input::Observable{String}, on_sub
     rowsize!(cg, 2, Relative(0.95))
 
     on(txtbox_title.stored_string) do s
-        on_submit(:title, s)
+        on_submit("titles", s)
     end
 
     on(txtbox_notes.stored_string) do s
-        on_submit(:notes, s)
+        on_submit("notes", s)
     end
 
     on(window.scene.viewport) do vp
@@ -37,7 +37,7 @@ function NoteWindow(title::Observable{String}, input::Observable{String}, on_sub
     #TODO: add newlines, need to dig around in makie source to do this
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/makielayout/blocks/textbox.jl
     # might make sense to just copy this code and add newline functionality
-    on(events(window.scene).keyboardbutton; priority=100) do event
+    #=on(events(window.scene).keyboardbutton; priority=100) do event
         if txtbox_notes.focused[]
             if event.action != Keyboard.release
                 key = event.key
@@ -52,7 +52,7 @@ function NoteWindow(title::Observable{String}, input::Observable{String}, on_sub
             end
         end
         return Consume(false)
-    end
+    end=#
 
     return window
 end

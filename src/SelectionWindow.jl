@@ -40,6 +40,8 @@ function build_selection_window(
     selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
     hovered_transition = MaybeObservable{Tuple{Int,Int}}()
 
+    cluster_annotations = Observable(ClusterAnnotations())
+
     init_clusters = Set{Set{Int}}()
     selected_clusters = Observable{Set{Set{Int}}}(init_clusters)
 
@@ -161,6 +163,7 @@ function build_selection_window(
             hovered_cluster,
             ds,
             calculators,
+            cluster_annotations,
             on_window_hover=on_cluster_window_hover,
             on_cluster_select=on_cluster_select,
             on_up=cw_on_up,
