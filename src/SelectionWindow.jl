@@ -324,7 +324,7 @@ function build_selection_window(
 
     on(export_btn.clicks) do n
         # export all clusters on screen
-        export_all(cluster_info[], cluster_data[], cluster_annotations[], "export")
+        export_all(cluster_info[], cluster_data[], cluster_annotations[], "export"; overwrite=true)
     end
 
     menu_bar[1, 3] = export_btn

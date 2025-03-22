@@ -272,12 +272,17 @@ function export_transitions(path, ts)
 
 end
 
-function export_all(ci::ClusterInfo, cd::ClusterData, ca, folder::String)
+function export_all(ci::ClusterInfo, cd::ClusterData, ca, folder::String; overwrite=false)
     rootPath = dirname(dirname(@__FILE__))
     exportPath = joinpath(rootPath, folder)
 
     if !isdir(exportPath)
         mkdir(exportPath)
+    else
+        if overwrite
+            rm(exportPath, force=true, recursive=true)
+            mkdir(exportPath)
+        end
     end
 
     root = get_root(ci)
