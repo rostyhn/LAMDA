@@ -96,7 +96,8 @@ end
 
 function dendrogram!(ax,
     cluster_info,
-    hovered=Observable(Set{Int}(1));
+    hovered::MaybeObservable{Set{Int}},
+    cluster_annotations;
     hover_callbackfn=(x -> ()),
     colormap=:tab20,
     rootcolor=:black,
@@ -158,10 +159,13 @@ function dendrogram!(ax,
         end
         hover_callbackfn(cl)
 
-        hovered[] = cl
-        notify(hovered)
+        if hovered[] != cl
+            hovered[] = cl
+            notify(hovered)
+        end
 
-        return str_limit(cl)
+        s = get_val(cluster_annotations[], "titles", cl)
+        return str_limit(s)
     end
 
     on(hovered) do hov

@@ -152,7 +152,8 @@ function build_cluster_window(
 
     dendrogram!(dendrogram_ax,
         cluster_data,
-        hovered_cluster;
+        hovered_cluster,
+        cluster_annotations;
         colormap=CLUSTER_COLORS)
 
     vals = lift(x -> x.mat, cluster_data)

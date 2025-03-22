@@ -231,7 +231,8 @@ function build_selection_window(
 
     dendrogram!(graph_ax,
         cluster_info,
-        hovered_cluster;
+        hovered_cluster,
+        cluster_annotations;
         on_click=on_dendrogram_click,
         colormap=CLUSTER_COLORS)
 

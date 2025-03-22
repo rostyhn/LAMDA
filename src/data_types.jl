@@ -74,17 +74,11 @@ function ClusterAnnotations()
 end
 
 function get_val(ca, property::String, s::Set{Int})
-    v = (property == "titles") ? str_limit(s; len=25) : "..."
-    if s in keys(ca[property])
-        v = ca[property][s]
-    else
-        ca[property][s] = v
-    end
-    return v
+    dv = (property == "titles") ? str_limit(s; len=25) : "..."
+    return get(ca[property], s, dv)
 end
 
 function set_val(ca, s::Set{Int}, property::String, val::String)
-    @show ca, s, property, val
     ca[property][s] = val
 end
 

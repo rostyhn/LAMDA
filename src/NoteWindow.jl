@@ -14,7 +14,7 @@ function NoteWindow(title::Observable{String}, input::Observable{String}, on_sub
     cg = GridLayout()
     window[3, 1:end] = cg
 
-    notes_label = Label(cg[1, 1:2], "Notes", font=:bold)
+    Label(cg[1, 1:2], "Notes", font=:bold)
     txtbox_notes = Textbox(cg[2, 1:2])
     set_text(txtbox_notes, input[])
 
