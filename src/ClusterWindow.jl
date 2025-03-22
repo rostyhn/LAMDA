@@ -1,23 +1,8 @@
 using Makie
 
-function find_cluster_representatives(distances::Matrix{Float64}, ts, maximumNumber::Int=5)
-    # @show size(distances)
-    # @show typeof(ts)
-    if length(distances[1,:]) > maximumNumber
-        R = kmedoids(distances, maximumNumber)
-    end
-    if length(ts) > maximumNumber
-        return ts[R.medoids]
-    else
-        return ts
-    end
-end
-
-function build_cluster_window(clusters,
-    ts,
-    ref_t,
-    idx_to_mtx_idx,
-    vals,
+function build_cluster_window(
+    clusters::Observable{Set{Int}},
+    cluster_data::Observable{SingleClusterData},
     scalars,
     mat_range,
     render_views,
@@ -26,9 +11,16 @@ function build_cluster_window(clusters,
     on_transition_select,
     hovered_transition,
     hovered_cluster,
-    inspector_ref::MaybeObservable{DataInspector};
+    inspector_ref::MaybeObservable{DataInspector},
+    calculators,
+    cluster_annotations;
     on_cluster_select=(x) -> (),
     on_window_hover=(x) -> (),
+    on_up=(x) -> (),
+    on_left=(x) -> (),
+    on_right=(x) -> (),
+    on_downleft=(x) -> (),
+    on_downright=(x) -> (),
     fig_size=(400, 400)
 )
 
@@ -40,8 +32,30 @@ function build_cluster_window(clusters,
     scene_selector = Observable("Volume")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = "Cluster $(str_limit(clusters; len=25))"
+    title = lift((x, y) -> get_val(y, "titles", x), clusters, cluster_annotations)
+    notes = lift((x, y) -> get_val(y, "notes", x), clusters, cluster_annotations)
     menu_bar = top_bar(window, title, 3)
+
+    btn_notes = Button(window, label="Notes")
+    menu_bar[1, 1] = btn_notes
+
+    function update_cluster(name, val)
+        set_val(cluster_annotations[], clusters[], name, val)
+        notify(cluster_annotations)
+    end
+
+    screen = nothing
+    nw = NoteWindow(title, notes, update_cluster)
+    on(btn_notes.clicks) do n
+        if isnothing(screen)
+            screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
+            display(screen, nw)
+        else
+            close(screen)
+            screen = nothing
+        end
+
+    end
 
     render_menu = Menu(window,
         options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -65,6 +79,17 @@ function build_cluster_window(clusters,
     time, t_slider = widgets["Movement"](0.0, window)
     btn_centroid = Button(window, label="Show centroid")
 
+    on(btn_centroid.clicks) do n
+        hovered_transition[] = cluster_data[].ref_t
+        notify(hovered_transition)
+    end
+
+    ts = Observable(cluster_data[].ts)
+    alignment = @lift begin
+        ts.val = $(cluster_data).ts
+        return calculators["Alignment"](ts.val)
+    end
+
     window[2, 1:2] = hgrid!(
         btn_centroid,
         Label(window, "Render mode"),
@@ -72,37 +97,35 @@ function build_cluster_window(clusters,
         scalar_menu,
         t_slider)
 
-    sortperm!(idx_to_mtx_idx, ts)
-
-    # transition to matrix index dict
-    t_to_mtx = Dict()
-    for (t, i) in zip(ts, idx_to_mtx_idx)
-        t_to_mtx[t] = i
-    end
+    hb = lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0,
+        hovered_cluster,
+        clusters)
 
     umap_graph_view!(window[3, 1:2],
-        ts,
-        vals,
+        lift(x -> (x.ts, x.mat, x.colors), cluster_data),
         scene_selector,
         scalar_selector,
         time,
         render_views,
         hovered_transition,
-        highlight_borders=lift(x -> !isnothing(x) && length(collect(intersect(clusters, x))) > 0, hovered_cluster),
+        alignment;
+        highlight_borders=hb,
         on_click=on_transition_select)
 
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
 
-    utri = triu!(trues(size(vals)))
-    hist_vals = vec(vals[utri])
+    #=hist_vals = @lift begin
+        utri = triu!(trues(size(vals)))
+        return vec(vals[utri])
+    end
 
     cluster_cmap = to_colormap(CLUSTER_COLORS)
     cluster_color = to_color(:grey)
     cl = collect(clusters)
     if length(cl) == 1
         cluster_color = cluster_cmap[mod1(first(cl), length(cluster_cmap))]
-    end
+    end=#
 
     centroid_grid = GridLayout()
     mat_grid[1, 1] = centroid_grid
@@ -114,29 +137,30 @@ function build_cluster_window(clusters,
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    render_views["SMovement"](centroid_scene, find_cluster_representatives(vals,ts), time) # precalculate distances based on ts
+    render_views["SMovement"](centroid_scene, ts, time, alignment)
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
-        on_cluster_select(clusters)
+        on_cluster_select(clusters[])
     end
 
-    hist_ax = Axis(mat_grid[2, 1], title="Intra-cluster distances",
+    dendrogram_ax = Axis(mat_grid[2, 1],
         backgroundcolor=:transparent, tellwidth=false, tellheight=false)
 
-    deregister_interaction!(hist_ax, :rectanglezoom)
-    hideydecorations!(hist_ax)
+    deregister_interaction!(dendrogram_ax, :rectanglezoom)
+    hidedecorations!(dendrogram_ax)
 
-    hist!(hist_ax,
-        hist_vals,
-        normalization=:density,
-        strokewidth=1,
-        strokecolor=:black,
-        color=cluster_color,
-        bins=bins
-    )
+    dendrogram!(dendrogram_ax,
+        cluster_data,
+        hovered_cluster,
+        cluster_annotations;
+        colormap=CLUSTER_COLORS)
 
+    vals = lift(x -> x.mat, cluster_data)
     hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
+    on(vals) do v
+        reset_limits!(hm_ax)
+    end
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -155,13 +179,26 @@ function build_cluster_window(clusters,
         return Consume(false)
     end
 
+    on(events(window).keyboardbutton) do event
+        if ispressed(window, Exclusively(LEFT_KEY))
+            on_left(clusters)
+        elseif ispressed(window, Exclusively(RIGHT_KEY))
+            on_right(clusters)
+        elseif ispressed(window, Exclusively(UP_KEY))
+            on_up(clusters)
+        elseif ispressed(window, Exclusively(LEFT_DOWN))
+            on_downleft(clusters)
+        elseif ispressed(window, Exclusively(RIGHT_DOWN))
+            on_downright(clusters)
+        end
+    end
+
     on(events(window).entered_window) do entered
         if entered
-            on_window_hover(clusters)
+            on_window_hover(clusters[])
         else
             on_window_hover(nothing)
         end
     end
-
     return window
 end

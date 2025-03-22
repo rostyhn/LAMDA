@@ -246,3 +246,46 @@ function get_mmap_file(key)
     cache_file = joinpath(cachePath, "$(h).bin")
     return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end
+
+function export_cluster(path, cluster, ca, ci)
+    cluster_name = get_val(ca, "titles", cluster)
+    dirname = filesafestr(cluster_name)
+    cp = joinpath(path, dirname)
+    if !isdir(cp)
+        mkdir(cp)
+    end
+
+    children = get_children(ci, cluster)
+    if !isnothing(children)
+        lc, rc = children
+        export_cluster(cp, lc, ca, ci)
+        export_cluster(cp, rc, ca, ci)
+    else
+        # at bottom of hierarchy
+        return
+    end
+
+    return
+end
+
+function export_transitions(path, ts)
+
+end
+
+function export_all(ci::ClusterInfo, cd::ClusterData, ca, folder::String; overwrite=false)
+    rootPath = dirname(dirname(@__FILE__))
+    exportPath = joinpath(rootPath, folder)
+
+    if !isdir(exportPath)
+        mkdir(exportPath)
+    else
+        if overwrite
+            rm(exportPath, force=true, recursive=true)
+            mkdir(exportPath)
+        end
+    end
+
+    root = get_root(ci)
+    export_cluster(exportPath, root, ca, ci)
+
+end

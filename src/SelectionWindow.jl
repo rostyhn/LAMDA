@@ -8,7 +8,7 @@ using Observables
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
-function build_selection_window(fig_size,
+function build_selection_window(
     t_list,
     rel_t_to_idx::Dict{Tuple{Int16,Int16},Int},
     on_click,
@@ -27,7 +27,9 @@ function build_selection_window(fig_size,
     invariantRange,
     matColLabel,
     per_t_scalars,
-    per_t_scalar_ranges
+    per_t_scalar_ranges,
+    calculators;
+    fig_size=(600, 800)
 )
 
     window = Figure(size=fig_size)
@@ -36,6 +38,8 @@ function build_selection_window(fig_size,
     init_transitions = Set{Tuple{Int,Int}}()
     selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
     hovered_transition = MaybeObservable{Tuple{Int,Int}}()
+
+    cluster_annotations = Observable(ClusterAnnotations())
 
     init_clusters = Set{Set{Int}}()
     selected_clusters = Observable{Set{Set{Int}}}(init_clusters)
@@ -71,53 +75,116 @@ function build_selection_window(fig_size,
         end
     end
 
-    open_cluster_windows = Dict{Set{Int},Screen}()
+    # can be more clever
+    function cw_on_up(cc)
+        parent = get_parent(cluster_info[], cc[])
+        if parent != cc[]
+            cc[] = parent
+            notify(cc)
+        end
+    end
+
+    function cw_on_left(cc)
+        n = get_neighbor(cluster_info[], cc[], 1)
+        if n != cc[]
+            cc[] = n
+            notify(cc)
+        end
+    end
+
+    function cw_on_right(cc)
+        n = get_neighbor(cluster_info[], cc[], 2)
+        if n != cc[]
+            cc[] = n
+            notify(cc)
+        end
+    end
+
+    function cw_on_downleft(cc)
+        children = get_children(cluster_info[], cc[])
+        if !isnothing(children)
+            lc, rc = children
+            if lc != cc[]
+                cc[] = lc
+                notify(cc)
+            end
+        end
+    end
+
+    function cw_on_downright(cc)
+        children = get_children(cluster_info[], cc[])
+        if !isnothing(children)
+            lc, rc = children
+            if rc != cc[]
+                cc[] = rc
+                notify(cc)
+            end
+        end
+    end
+
+
+    num_open_windows = 0
+    open_cluster_windows = Dict{Int,Screen}()
     function on_show_cluster_click(clusters)
-        if !(clusters in keys(open_cluster_windows))
+        cc = Observable(clusters)
+        scd = @lift begin
+            ref_t = find_group_centroid($cc, cluster_data[], cluster_info[], t_list)
 
-            ref_t = find_group_centroid(clusters, cluster_data[], cluster_info[], t_list)
-
-            ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
+            ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect($cc)))
             ts = t_list[ts_idx]
+
 
             ts_idx_to_mtx_idx = map(x -> cluster_data[].idx_to_mtx[x], ts_idx)
             mtx_idx = sort(ts_idx_to_mtx_idx)
-            mat = cluster_data[].matrix
-            vals = mat[mtx_idx, mtx_idx]
+            mat = cluster_data[].matrix[mtx_idx, mtx_idx]
 
-            # want to update volume data in case user messes with volume params
-            # but we keep atom positions consistent with the alignment that existed at the time of creation
-            ds::MaybeObservable{DataInspector} = Observable(nothing)
-            w = build_cluster_window(
-                clusters,
-                ts,
-                ref_t,
-                collect(eachindex(ts_idx_to_mtx_idx)),
-                vals,
-                scalars,
-                cluster_data[].m_extrema,
-                render_views,
-                widgets,
-                bins,
-                on_transition_select,
-                hovered_transition,
-                hovered_cluster,
-                ds,
-                on_window_hover=on_cluster_window_hover,
-                on_cluster_select=on_cluster_select
-            )
-            s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
-            display(s, w)
+            return buildSingleClusterData(
+                cluster=cc[],
+                ref_t=ref_t,
+                ts=ts,
+                mat=mat,
+                cluster_info=cluster_info[],
+                rel_t_to_idx=rel_t_to_idx,
+                idx_to_mtx_idx=collect(eachindex(ts_idx_to_mtx_idx)))
+        end
 
-            # create inspector after render to avoid bugs
-            ds[] = DataInspector(w)
-            open_cluster_windows[clusters] = s
+        ds::MaybeObservable{DataInspector} = Observable(nothing)
+        w = build_cluster_window(
+            cc,
+            scd,
+            scalars,
+            cluster_data[].m_extrema,
+            render_views,
+            widgets,
+            bins,
+            on_transition_select,
+            hovered_transition,
+            hovered_cluster,
+            ds,
+            calculators,
+            cluster_annotations,
+            on_window_hover=on_cluster_window_hover,
+            on_cluster_select=on_cluster_select,
+            on_up=cw_on_up,
+            on_left=cw_on_left,
+            on_right=cw_on_right,
+            on_downleft=cw_on_downleft,
+            on_downright=cw_on_downright,
+        )
+        s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
+        display(s, w)
 
-            on(events(w).window_open) do e
-                if !e
-                    delete!(open_cluster_windows, clusters)
-                    close(s)
-                end
+        num_open_windows += 1
+        w_idx = num_open_windows
+        # create inspector after render to avoid bugs
+        ds[] = DataInspector(w)
+        open_cluster_windows[w_idx] = s
+
+        on(events(w).window_open) do e
+            if !e
+                delete!(open_cluster_windows, w_idx)
+                empty!(w)
+                close(s)
             end
         end
     end
@@ -153,7 +220,7 @@ function build_selection_window(fig_size,
 
     hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
 
-    rowsize!(dGrid, 2, Relative(0.25))
+    rowsize!(dGrid, 2, Relative(0.40))
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
 
@@ -163,8 +230,8 @@ function build_selection_window(fig_size,
 
     dendrogram!(graph_ax,
         cluster_info,
-        h_range,
-        hovered_cluster;
+        hovered_cluster,
+        cluster_annotations;
         on_click=on_dendrogram_click,
         colormap=CLUSTER_COLORS)
 
@@ -244,16 +311,25 @@ function build_selection_window(fig_size,
     on(settings_btn.clicks) do n
         # n has how many times the button's been clicked
         if isnothing(screen)
-            screen = GLMakie.Screen(title="TransVis Settings")
+            screen = GLMakie.Screen(title="LAMDA Settings")
             display(screen, settings_window)
         else
             close(screen)
             screen = nothing
         end
     end
-    menu_bar[1, 3] = settings_btn
+
+    export_btn = Button(window, label="Export", halign=:right)
+
+    on(export_btn.clicks) do n
+        # export all clusters on screen
+        export_all(cluster_info[], cluster_data[], cluster_annotations[], "export"; overwrite=true)
+    end
+
+    menu_bar[1, 3] = export_btn
+    menu_bar[1, 4] = settings_btn
     dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
-    rowsize!(dGrid, 3, Relative(0.65))
+    rowsize!(dGrid, 3, Relative(0.55))
     linkxaxes!(hm_ax, graph_ax)
 
     tGrid = GridLayout()
@@ -288,6 +364,8 @@ function build_selection_window(fig_size,
         selected_clusters,
         t_list,
         rel_t_to_idx,
+        calculators,
+        cluster_annotations,
         on_hover=on_scratchpad_hover,
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,

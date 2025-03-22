@@ -12,7 +12,9 @@ function scratchpad!(
     atom_time,
     selected_clusters,
     t_list,
-    rel_t_to_idx;
+    rel_t_to_idx,
+    calculators,
+    cluster_annotations;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_hover,
@@ -33,6 +35,7 @@ function scratchpad!(
 
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
+    # could be a dictionary, helps with tracking and don't have to worry about setting idx
     idx_to_obj = Observable{Vector{Union{Set{Int},Tuple{Int,Int}}}}(Union{Set{Int},Tuple{Int,Int}}[]) # gets transition from plotted idx
     obj_to_idx = Ref(Dict{Union{Set{Int},Tuple{Int,Int}},Int}())
     rendered_idxes = Ref(Set{Int}())
@@ -103,7 +106,7 @@ function scratchpad!(
         obj = idx_to_obj[][idx-1]
         s = string(obj)
         if obj isa Set{Int}
-            s = str_limit(obj)
+            s = get_val(cluster_annotations[], "titles", obj)
         end
         return s
     end
@@ -113,6 +116,8 @@ function scratchpad!(
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
     on(idx_to_obj) do idxes
+        ts = collect(selected_transitions[])
+        s_alignment = Observable(calculators["Alignment"](ts))
         for (idx, obj) in enumerate(idxes)
             plt_idx = idx + 1
             if !(plt_idx in rendered_idxes[])
@@ -205,20 +210,22 @@ function scratchpad!(
                             s = render_views["Atom"](ax3d, Observable(obj),
                                 scalar_selection,
                                 atom_time,
-                                lift(x -> collect(x), selected_transitions))
+                                s_alignment)
                             plt_rendered = [s]
                         else
                             il, is, plots = render_views["Superquadric"](ax3d,
                                 Observable(obj),
                                 inspector,
-                                lift(x -> collect(x), selected_transitions)
+                                s_alignment
                             )
                             plt_rendered = plots
                         end
                         center!(ax3d)
                     end
                 else
-                    render_views["CMovement"](ax3d, obj, atom_time)
+                    ts = calculators["GetTransitions"](obj)
+                    alignment = calculators["Alignment"](ts)
+                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
                     center!(ax3d)
                 end
                 push!(views[], (ax3d, vp, size, listener, mouse_listener, scene_color))
