@@ -115,3 +115,10 @@ function enable_interactions(ax)
     activate_interaction!(ax, :dragpan)
     activate_interaction!(ax, :scrollzoom)
 end
+
+function filesafestr(s::String)
+    # https://stackoverflow.com/questions/42210199/remove-illegal-characters-from-a-file-name-but-leave-spaces
+    re = r"[\\\\/:*?\"<>|\[\]\(\) ]"
+    cre = r"[\,\.]"
+    return replace(s, re => "", cre => "_")
+end

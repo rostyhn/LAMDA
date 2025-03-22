@@ -221,7 +221,7 @@ function build_selection_window(
 
     hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
 
-    rowsize!(dGrid, 2, Relative(0.25))
+    rowsize!(dGrid, 2, Relative(0.40))
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
 
@@ -319,9 +319,18 @@ function build_selection_window(
             screen = nothing
         end
     end
-    menu_bar[1, 3] = settings_btn
+
+    export_btn = Button(window, label="Export", halign=:right)
+
+    on(export_btn.clicks) do n
+        # export all clusters on screen
+        export_all(cluster_info[], cluster_data[], cluster_annotations[], "export")
+    end
+
+    menu_bar[1, 3] = export_btn
+    menu_bar[1, 4] = settings_btn
     dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
-    rowsize!(dGrid, 3, Relative(0.65))
+    rowsize!(dGrid, 3, Relative(0.55))
     linkxaxes!(hm_ax, graph_ax)
 
     tGrid = GridLayout()

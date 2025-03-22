@@ -25,6 +25,16 @@ function get_children(ci::ClusterInfo, cluster::Set{Int})::Union{Nothing,Tuple{S
     return get(ci.parent_to_c, cluster, nothing)
 end
 
+function get_root(ci::ClusterInfo)
+    c = first(ci.clusters)
+    p = ci.c_to_parent[c]
+    while length(intersect(p, c)) != length(p)
+        c = p
+        p = get_parent(ci, c)
+    end
+    return p
+end
+
 function dfs(ci::ClusterInfo, cluster::Set{Int}, acc=Ref([]))
     push!(acc[], cluster)
     children = get_children(ci, cluster)
