@@ -223,7 +223,7 @@ function scratchpad!(
                         center!(ax3d)
                     end
                 else
-                    ts = calculators["GetTransitions"](obj)
+                    ts = get_transitions(cluster_info[], obj)
                     alignment = calculators["Alignment"](ts)
                     render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
                     center!(ax3d)
@@ -342,4 +342,6 @@ function scratchpad!(
             push!(highlighted_clusters, v_idx)
         end
     end
+
+    return ax
 end

@@ -291,10 +291,7 @@ function export_transitions(path, ts)
 
 end
 
-function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, ca, folder::String; overwrite=false)
-    rootPath = dirname(dirname(@__FILE__))
-    exportPath = joinpath(rootPath, folder)
-
+function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, ca, exportPath; overwrite=false)
     if !isdir(exportPath)
         mkdir(exportPath)
     else

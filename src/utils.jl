@@ -122,3 +122,9 @@ function filesafestr(s::String)
     cre = r"[\,\.]"
     return str_limit(replace(s, re => "", cre => "_"), len=250, ending="")
 end
+
+function relative_path(s::String)
+    rootPath = dirname(dirname(@__FILE__))
+    p = joinpath(rootPath, s)
+    return p
+end
