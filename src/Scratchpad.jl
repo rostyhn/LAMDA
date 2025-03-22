@@ -13,7 +13,8 @@ function scratchpad!(
     selected_clusters,
     t_list,
     rel_t_to_idx,
-    calculators;
+    calculators,
+    cluster_annotations;
     hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_hover,
@@ -105,7 +106,7 @@ function scratchpad!(
         obj = idx_to_obj[][idx-1]
         s = string(obj)
         if obj isa Set{Int}
-            s = str_limit(obj)
+            s = get_val(cluster_annotations[], "titles", obj)
         end
         return s
     end

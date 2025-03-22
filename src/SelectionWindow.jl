@@ -357,6 +357,7 @@ function build_selection_window(
         t_list,
         rel_t_to_idx,
         calculators,
+        cluster_annotations,
         on_hover=on_scratchpad_hover,
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,
