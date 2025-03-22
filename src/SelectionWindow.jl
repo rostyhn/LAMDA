@@ -11,7 +11,7 @@ const MAX_NODE_SIZE = 100.0
 
 function build_selection_window(
     t_list,
-    rel_t_to_idx::Dict{Tuple{Int16,Int16},Int},
+    rel_t_to_idx::Dict{Transition,Int},
     on_click,
     num_atoms,
     dm,
@@ -29,16 +29,17 @@ function build_selection_window(
     matColLabel,
     per_t_scalars,
     per_t_scalar_ranges,
-    calculators;
+    calculators,
+    trajectory_name;
     fig_size=(600, 800)
 )
 
     window = Figure(size=fig_size)
     menu_bar = top_bar(window, "Overview", 2)
 
-    init_transitions = Set{Tuple{Int,Int}}()
-    selected_transitions = Observable{Set{Tuple{Int,Int}}}(init_transitions)
-    hovered_transition = MaybeObservable{Tuple{Int,Int}}()
+    init_transitions = Set{Transition}()
+    selected_transitions = Observable{Set{Transition}}(init_transitions)
+    hovered_transition = MaybeObservable{Transition}()
 
     cluster_annotations = Observable(ClusterAnnotations())
 
@@ -46,7 +47,7 @@ function build_selection_window(
     selected_clusters = Observable{Set{Set{Int}}}(init_clusters)
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    hovered_cluster = MaybeObservable{Set{Int}}(Set{Int}(1))
+    hovered_cluster = MaybeObservable{Set{Int}}(Set{Int}())
 
     # used to place transitions into scratchpad
     function on_transition_select(t)
@@ -131,12 +132,11 @@ function build_selection_window(
         scd = @lift begin
             ref_t = find_group_centroid($cc, cluster_data[], cluster_info[], t_list)
 
-            ts_idx = reduce(vcat, map(x -> cluster_info[].groups[x], collect($cc)))
-            ts = t_list[ts_idx]
+            ts = get_transitions($cluster_info, $cc)
 
-
-            ts_idx_to_mtx_idx = map(x -> cluster_data[].idx_to_mtx[x], ts_idx)
-            mtx_idx = sort(ts_idx_to_mtx_idx)
+            mtx_idx = map(x -> cluster_data[].t_to_mtx[x], ts)
+            t_to_mtx = Dict(zip(ts, mtx_idx))
+            sort!(mtx_idx)
             mat = cluster_data[].matrix[mtx_idx, mtx_idx]
 
             return buildSingleClusterData(
@@ -146,7 +146,7 @@ function build_selection_window(
                 mat=mat,
                 cluster_info=cluster_info[],
                 rel_t_to_idx=rel_t_to_idx,
-                idx_to_mtx_idx=collect(eachindex(ts_idx_to_mtx_idx)))
+                t_to_mtx=t_to_mtx)
         end
 
         ds::MaybeObservable{DataInspector} = Observable(nothing)
@@ -263,9 +263,9 @@ function build_selection_window(
     rendered_clusters = []
     @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        for (c, ts_idx) in $(cluster_info).groups
-            idx_to_mtx = $(cluster_data).idx_to_mtx
-            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+        for (c, ts) in $(cluster_info).groups
+            t_to_mtx = $(cluster_data).t_to_mtx
+            m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
@@ -276,15 +276,13 @@ function build_selection_window(
         end
     end
 
-    function calc_cluster_bounding_box(hc, cg, idx_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
+    function calc_cluster_bounding_box(hc, ts, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        if !isnothing(hc) && intersect(hc, Set(collect(keys(cg)))) == hc && length(hc) > 0
-            ts_idx = reduce(vcat, map(x -> cg[x], collect(hc)))
-
-            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+        if !isnothing(hc) && length(hc) > 0
+            m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
@@ -303,8 +301,11 @@ function build_selection_window(
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     hm_last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = nothing
     @lift begin
-        res = calc_cluster_bounding_box($hovered_cluster, cluster_info[].groups, cluster_data[].idx_to_mtx, hm_last_bBox)
-        hm_last_bBox = res
+        ts = get(cluster_info[].groups, $hovered_cluster, nothing)
+        if !isnothing(ts)
+            res = calc_cluster_bounding_box($hovered_cluster, ts, cluster_data[].t_to_mtx, hm_last_bBox)
+            hm_last_bBox = res
+        end
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -324,7 +325,7 @@ function build_selection_window(
 
     on(export_btn.clicks) do n
         # export all clusters on screen
-        export_all(cluster_info[], cluster_data[], cluster_annotations[], "export"; overwrite=true)
+        export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], "export"; overwrite=true)
     end
 
     menu_bar[1, 3] = export_btn
@@ -343,7 +344,7 @@ function build_selection_window(
     time, scratchpad_t_slider = widgets["Movement"](0.0, window)
 
     function on_scratchpad_hover(t)
-        if t isa Tuple{Int,Int}
+        if t isa Transition
             t_idx = rel_t_to_idx[t]
             hovered_cluster[] = Set(cluster_info[].assignments[t_idx])
         else

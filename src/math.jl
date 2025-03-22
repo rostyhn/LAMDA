@@ -191,7 +191,7 @@ function find_group_centroid(clusters, cd::ClusterData, ci::ClusterInfo, t_list)
 end
 
 function calculate_alignment(ref_t, ts, posMats, features)
-    rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool,Tuple{Int,Int}}}()
+    rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
     ref_s1_pos = posMats[ref_t][1]
     ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t][1])))
     ref_s1_shift = mean(ref_s1_com, dims=1)

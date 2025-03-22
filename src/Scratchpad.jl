@@ -3,7 +3,7 @@ using Observables
 function scratchpad!(
     window,
     loc,
-    selected_transitions::Observable{Set{Tuple{Int,Int}}},
+    selected_transitions::Observable{Set{Transition}},
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
     render_views,
@@ -15,7 +15,7 @@ function scratchpad!(
     rel_t_to_idx,
     calculators,
     cluster_annotations;
-    hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
+    hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_hover,
     on_click=(x) -> (),
@@ -36,8 +36,8 @@ function scratchpad!(
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
-    idx_to_obj = Observable{Vector{Union{Set{Int},Tuple{Int,Int}}}}(Union{Set{Int},Tuple{Int,Int}}[]) # gets transition from plotted idx
-    obj_to_idx = Ref(Dict{Union{Set{Int},Tuple{Int,Int}},Int}())
+    idx_to_obj = Observable{Vector{Union{Set{Int},Transition}}}(Union{Set{Int},Transition}[]) # gets transition from plotted idx
+    obj_to_idx = Ref(Dict{Union{Set{Int},Transition},Int}())
     rendered_idxes = Ref(Set{Int}())
     num_objs = Ref(1)
     views = Ref([])
@@ -106,7 +106,7 @@ function scratchpad!(
         obj = idx_to_obj[][idx-1]
         s = string(obj)
         if obj isa Set{Int}
-            s = get_val(cluster_annotations[], "titles", obj)
+            s = str_limit(get_val(cluster_annotations[], "titles", obj))
         end
         return s
     end
@@ -157,7 +157,7 @@ function scratchpad!(
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
                         show_data(ins, nodes, i)
-                        if obj isa Tuple{Int,Int}
+                        if obj isa Transition
                             hovered[] = obj
                             t_idx = rel_t_to_idx[obj]
                             cluster = Set(cluster_info[].assignments[t_idx])
@@ -176,7 +176,7 @@ function scratchpad!(
 
                         hovered[] = nothing
                         notify(hovered)
-                        if obj isa Tuple{Int,Int}
+                        if obj isa Transition
                             delete!(selected_transitions[], obj)
                             notify(selected_transitions)
                         else
@@ -190,7 +190,7 @@ function scratchpad!(
 
                     elseif event.type === MouseEventTypes.leftdoubleclick
                         cluster = obj
-                        if obj isa Tuple{Int,Int}
+                        if obj isa Transition
                             t_idx = rel_t_to_idx[obj]
                             cluster = Set(cluster_info[].assignments[t_idx])
                         end
@@ -198,7 +198,7 @@ function scratchpad!(
                     end
                 end
 
-                if obj isa Tuple{Int,Int}
+                if obj isa Transition
                     plt_rendered = []
                     listener = on(render_selection, update=true) do rs
                         foreach(x -> delete!(ax3d, x), plt_rendered)

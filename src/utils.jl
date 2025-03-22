@@ -49,7 +49,7 @@ function normalize_matrices(data)
     max_val = maximum(map((x) -> maximum(x), d))
     min_val = minimum(map((x) -> minimum(x), d))
 
-    norm = Dict{Tuple{Int,Int},Matrix}()
+    norm = Dict{Transition,Matrix}()
 
     for (transition, val) in data
         norm[transition] = (val .- min_val) / (max_val - min_val)
@@ -61,8 +61,8 @@ end
 splitobs(o::Observable{Tuple{}}) = ()
 splitobs(o::Observable{<:Tuple}) = (lift(first, o), splitobs(lift(Base.tail, o))...)
 
-function str_limit(s; len=40)
-    return "$(string(s)[1:min(end, len)])$(length(string(s)) > len ? "..." : "")"
+function str_limit(s; len=25, ending="...")
+    return "$(string(s)[1:min(end, len)])$(length(string(s)) > len ? ending : "")"
 end
 
 function set_color_alpha(c, a)
@@ -120,5 +120,5 @@ function filesafestr(s::String)
     # https://stackoverflow.com/questions/42210199/remove-illegal-characters-from-a-file-name-but-leave-spaces
     re = r"[\\\\/:*?\"<>|\[\]\(\) ]"
     cre = r"[\,\.]"
-    return replace(s, re => "", cre => "_")
+    return str_limit(replace(s, re => "", cre => "_"), len=250, ending="")
 end

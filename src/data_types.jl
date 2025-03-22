@@ -2,9 +2,10 @@
 const ColorMatrix = Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}} # stored as mat of ints from 0 to 255
 const Maybe{T} = Union{Nothing,T}
 const MaybeObservable{T} = Observable{Maybe{T}}
+const Transition = Tuple{Int16,Int16}
 
 @kwdef mutable struct ClusterInfo
-    groups
+    groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx
     assignments::Vector{Int}
     representatives
     # dendrogram info
@@ -15,6 +16,10 @@ const MaybeObservable{T} = Observable{Maybe{T}}
     parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
     c_to_idx
     h_range
+end
+
+function get_transitions(ci::ClusterInfo, cluster::Set{Int})::Vector{Transition}
+    return reduce(vcat, map(x -> ci.groups[x], collect(cluster)))
 end
 
 function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}
@@ -55,20 +60,18 @@ end
 @kwdef mutable struct ClusterData
     clustering
     matrix
-    idx_to_mtx::Vector{Int}
     m_extrema
-    t_to_mtx::Dict{Tuple{Int,Int},Int}
-    mtx_to_t::Dict{Int,Tuple{Int,Int}}
+    t_to_mtx::Dict{Transition,Int}
+    mtx_to_t::Dict{Int,Transition}
 end
 
 @kwdef struct SingleClusterData
     cluster
-    ts::Vector{Tuple{Int,Int}}
-    ref_t::Tuple{Int,Int}
+    ts::Vector{Transition}
+    ref_t::Transition
     mat::Matrix{Float32}
     colors
-    idx_to_mtx_idx::Vector{Int}# transition index to matrix index
-    t_to_mtx::Dict{Tuple{Int,Int},Int}
+    t_to_mtx::Dict{Transition,Int}
     cutoff
     h_range
     lines
@@ -84,7 +87,7 @@ function ClusterAnnotations()
 end
 
 function get_val(ca, property::String, s::Set{Int})
-    dv = (property == "titles") ? str_limit(s; len=25) : "..."
+    dv = (property == "titles") ? string(s) : "..."
     return get(ca[property], s, dv)
 end
 
@@ -92,8 +95,7 @@ function set_val(ca, s::Set{Int}, property::String, val::String)
     ca[property][s] = val
 end
 
-function buildSingleClusterData(; cluster, ts, ref_t, mat, idx_to_mtx_idx, cluster_info, rel_t_to_idx)
-    sortperm!(idx_to_mtx_idx, ts)
+function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_info, rel_t_to_idx)
     cmap = to_colormap(CLUSTER_COLORS)
 
     rel_ts = map(x -> rel_t_to_idx[x], ts)
@@ -101,11 +103,6 @@ function buildSingleClusterData(; cluster, ts, ref_t, mat, idx_to_mtx_idx, clust
     colors = map(x -> cycle_colormap(x, cmap), assignments)
 
     # transition to matrix index dict
-    t_to_mtx = Dict{Tuple{Int,Int},Int}()
-    for (t, i) in zip(ts, idx_to_mtx_idx)
-        t_to_mtx[t] = i
-    end
-
     clusters, lines = branch(cluster_info, cluster)
 
     return SingleClusterData(cluster=cluster,
@@ -113,7 +110,6 @@ function buildSingleClusterData(; cluster, ts, ref_t, mat, idx_to_mtx_idx, clust
         ref_t=ref_t,
         mat=mat,
         colors=colors,
-        idx_to_mtx_idx=idx_to_mtx_idx,
         t_to_mtx=t_to_mtx,
         lines=lines,
         clusters=clusters,

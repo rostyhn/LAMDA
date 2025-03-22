@@ -59,76 +59,17 @@ function moment_map(diagram, max_level)
     return vcat(M0, M1, M2)
 end
 
-function computeMoment(values::Vector{Float64}, moment::Int64)
-    meanValue = mean(values)
-
-    if moment == 1
-        return meanValue
-    end
-
-    valAboutMean = values .- meanValue
-    return sum(valAboutMean .^ moment) / length(values)
-end
-
-function computeInvariantDistributionInNeighborhood(data::Vector{Float64}, positions::Vector{Point3f}, binEdges::Vector{Float64}, neighborCount::Int64, atomKDTree::NearestNeighbors.KDTree)::Vector{SparseVector{Float64}}
-    distributionsAtPositions = Vector{SparseVector{Float64}}()
-    for position in positions
-        nns, dists = knn(atomKDTree, position, neighborCount)
-        #add minimum distance
-        vals = data[nns]
-        histo = fit(Histogram, vals, binEdges; closed=:right)
-        pd = StatsBase.normalize(histo; mode=:probability)
-        push!(distributionsAtPositions, sparse(pd.weights))
-    end
-    return distributionsAtPositions
-end
-
-function computeLNCD(distributions::Dict{Tuple{Int,Int},Vector{SparseVector{Float64}}}, a::Tuple{Int,Int}, b::Tuple{Int,Int}, selected_atoms)::Float64 #local neighborhood cummulative diverge score
-
-    informationScore = 0.0
-    distA = distributions[a]
-    distB = distributions[b]
-
-    vals = Dict()
-    for i in selected_atoms
-        informationScore = informationScore + JSDivergence()(distA[i], distB[i])
-        minDiv = floatmax(Float64)
-        minIdx = i
-        for j in eachindex(distB)
-            div = JSDivergence()(distA[i], distB[j])
-            if minDiv > div
-                minDiv = div
-                minIdx = j
-            end
-        end
-        vals[i] = (minIdx, minDiv)
-    end
-
-    return informationScore
-end
-
-function computeDistances(invariants::Vector{Float64})::Matrix{Float64}
-    out = zeros(length(invariants), length(invariants))
-    Threads.@threads for k in 1:length(invariants)
-        @inbounds out[k, k] = 0.0
-        for j in 1:(k-1)
-            @inbounds out[j, k] = abs(invariants[j] - invariants[k])
-        end
-    end
-    return Symmetric(out)
-end
-
 function computeTransitionInvariants(
-    transitions::Vector{Tuple{Int16,Int16}},
-    alignedPositions::Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}},
+    transitions::Vector{Transition},
+    alignedPositions::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}},
     distances::Dict{Int16,Matrix{Float32}}
-)::Tuple{Dict{Tuple{Int16,Int16},Vector{Float32}},Dict{Tuple{Int16,Int16},Vector{Float32}},
-    Dict{Tuple{Int16,Int16},Vector{Float32}},Dict{Tuple{Int16,Int16},Vector{Vector{Vec3f}}}}
+)::Tuple{Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Float32}},
+    Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Vector{Vec3f}}}}
 
-    transitionInvariants1 = Dict{Tuple{Int16,Int16},Vector}()
-    transitionInvariants2 = Dict{Tuple{Int16,Int16},Vector}()
-    transitionInvariants3 = Dict{Tuple{Int16,Int16},Vector}()
-    stretchedPrincipalAxes = Dict{Tuple{Int16,Int16},Vector{Vector{Vec3f}}}()
+    transitionInvariants1 = Dict{Transition,Vector}()
+    transitionInvariants2 = Dict{Transition,Vector}()
+    transitionInvariants3 = Dict{Transition,Vector}()
+    stretchedPrincipalAxes = Dict{Transition,Vector{Vector{Vec3f}}}()
 
     @showprogress for t in transitions
         s1, s2 = t
@@ -195,7 +136,7 @@ sort_transitions(rel, seq, dm)
 sorts transitions relative to their distance to the specified transition using
 distance matrix dm
 """
-function sort_transitions(rel::Tuple{Int,Int}, seq::Vector{Tuple{Int,Int}}, dm::Matrix{Float32})
+function sort_transitions(rel::Transition, seq::Vector{Transition}, dm::Matrix{Float32})
     # get row of rel
     idx = findfirst(item -> item == rel, seq)
     row = dm[idx, :]
