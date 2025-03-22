@@ -42,6 +42,32 @@ function scratchpad!(
     num_objs = Ref(1)
     views = Ref([])
 
+    d_start = Point2f(0.0)
+    d_end = Point2f(0.0)
+    c_bbox = Observable(BBox(0, 0, 0, 0))
+    boxes = []
+    register_interaction!(ax, :create_group) do e::MouseEvent, axis
+        if e.type === MouseEventTypes.leftdragstart
+            d_start = mouseposition(ax.scene)
+            w = wireframe!(ax.scene, c_bbox, color=:red)
+            w.inspectable[] = false
+        elseif e.type === MouseEventTypes.leftdrag
+            d_end = mouseposition(ax.scene)
+            l = (d_start[1] < d_end[1]) ? d_start[1] : d_end[1]
+            r = (l == d_start[1]) ? d_end[1] : d_start[1]
+
+            b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
+            t = (b == d_start[2]) ? d_end[2] : d_start[2]
+            c_bbox[] = BBox(l, r, b, t)
+        elseif e.type === MouseEventTypes.leftdragstop
+            # finish placing box
+            wireframe!(ax.scene, c_bbox[], color=:red)
+            w.inspectable[] = false
+            push!(boxes, c_bbox[])
+            bbox = Observable(BBox(0, 0, 0, 0))
+        end
+    end
+
     function delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
@@ -156,6 +182,7 @@ function scratchpad!(
                 mouse_listener = on(m_events.obs) do event
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
+                        deactivate_interaction!(ax, :create_group)
                         show_data(ins, nodes, i)
                         if obj isa Transition
                             hovered[] = obj
@@ -167,6 +194,8 @@ function scratchpad!(
                         end
                         hovered_cluster[] = cluster
                         notify(hovered_cluster)
+                    elseif event.type === MouseEventTypes.out
+                        activate_interaction!(ax, :create_group)
                     elseif event.type === MouseEventTypes.middledrag
                         points[][i] = mouseposition(ax)
                         notify(points)
@@ -198,6 +227,7 @@ function scratchpad!(
                     end
                 end
 
+                # move to outside loop, will be far more efficient
                 if obj isa Transition
                     plt_rendered = []
                     listener = on(render_selection, update=true) do rs
@@ -254,11 +284,7 @@ function scratchpad!(
         end
     end
 
-    d_start = Point2f(0.0)
-    d_end = Point2f(0.0)
-    bbox = Observable(BBox(0, 0, 0, 0))
     m_events = addmouseevents!(ax.scene)
-    boxes = []
     on(m_events.obs) do e
         if e.type == MouseEventTypes.over
             plt, idx = pick(ax.scene)
@@ -275,21 +301,6 @@ function scratchpad!(
                 #elseif plt isa Makie.Text
                 #    @show plt
             end
-        elseif e.type === MouseEventTypes.leftdragstart
-            d_start = mouseposition(ax.scene)
-            w = wireframe!(ax.scene, bbox, color=:red)
-            w.inspectable[] = false
-        elseif e.type === MouseEventTypes.leftdrag
-            d_end = mouseposition(ax.scene)
-            l = (d_start[1] < d_end[1]) ? d_start[1] : d_end[1]
-            r = (l == d_start[1]) ? d_end[1] : d_start[1]
-
-            b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
-            t = (b == d_start[2]) ? d_end[2] : d_start[2]
-            bbox[] = BBox(l, r, b, t)
-        elseif e.type === MouseEventTypes.leftdragstop
-            push!(boxes, bbox[])
-            bbox = Observable(BBox(0, 0, 0, 0))
         elseif e.type == MouseEventTypes.leftdoubleclick
             plt, idx = pick(ax.scene)
             if isnothing(plt)
