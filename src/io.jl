@@ -1,3 +1,5 @@
+using PyCall
+
 function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
     #s2 changes s1 stays
     s = mean(x, dims=1)
@@ -97,17 +99,17 @@ function get_data_alt(trajectory_name)
 
             distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
             connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
-            transitions = Vector{Tuple{Int16,Int16}}(Pickle.npyload(transitions_pickle))
-            rawAlignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
+            transitions = Vector{Transition}(Pickle.npyload(transitions_pickle))
+            rawAlignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
 
             # convert to point3fs & generate kd trees
             println("Computing KDTrees.")
-            alignedPositions = Dict{Tuple{Int16,Int16},Tuple{Vector{Point3f},Vector{Point3f}}}()
-            alignedPositionsMatrices = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}()
+            alignedPositions = Dict{Transition,Tuple{Vector{Point3f},Vector{Point3f}}}()
+            alignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}()
             # https://github.com/KristofferC/NearestNeighbors.jl
             # can store kdTrees as indices only, relinking positions when needed
             # no need to cache this data, it computes really quickly
-            kdTrees = Dict{Tuple{Int16,Int16},Tuple{KDTree,KDTree}}()
+            kdTrees = Dict{Transition,Tuple{KDTree,KDTree}}()
             for (t, m) in rawAlignedPositionsMatrices
                 # center atom positions first
                 cm1 = mean(m[1], dims=1)
@@ -175,7 +177,7 @@ function get_data_alt(trajectory_name)
                 for sf in readdir(scalarf, join=true)
                     fname, ext = splitext(sf)
                     if isfile(sf) && ext == ".pickle"
-                        d = Dict{Tuple{Int16,Int16},Array{Float32}}(Pickle.npyload(sf))
+                        d = Dict{Transition,Array{Float32}}(Pickle.npyload(sf))
                         totExtrema = extrema.(values(d))
                         totMin = minimum(first.(totExtrema))
                         totMax = maximum(last.(totExtrema))
@@ -197,7 +199,7 @@ function get_data_alt(trajectory_name)
                 for sf in readdir(tscalarf, join=true)
                     fname, ext = splitext(sf)
                     if isfile(sf) && ext == ".pickle"
-                        d = Dict{Tuple{Int16,Int16},Float32}(Pickle.npyload(sf))
+                        d = Dict{Transition,Float32}(Pickle.npyload(sf))
                         per_t_scalars[basename(fname)] = d
                         per_t_scalar_ranges[basename(fname)] = extrema(collect(values(d)))
                     end
@@ -215,7 +217,7 @@ function get_data_alt(trajectory_name)
                     fname, ext = splitext(af)
                     if isfile(af) && ext == ".pickle"
                         alignment_name = basename(fname)
-                        alignments[alignment_name] = Dict{Tuple{Int16,Int16},Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(af))
+                        alignments[alignment_name] = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(af))
                     end
                 end
             else
@@ -247,35 +249,61 @@ function get_mmap_file(key)
     return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end
 
-function export_cluster(path, cluster, ca, ci)
+function export_cluster(trajectory_name, path, cluster, ca, ci)
     cluster_name = get_val(ca, "titles", cluster)
-    dirname = filesafestr(cluster_name)
-    cp = joinpath(path, dirname)
+    cluster_notes = get(ca["notes"], cluster, nothing)
+
+    dname = filesafestr(cluster_name)
+    cp = joinpath(path, dname)
     if !isdir(cp)
         mkdir(cp)
+    end
+
+    if !isnothing(cluster_notes)
+        nf = joinpath(cp, "notes.txt")
+        write(nf, cluster_notes)
     end
 
     children = get_children(ci, cluster)
     if !isnothing(children)
         lc, rc = children
-        export_cluster(cp, lc, ca, ci)
-        export_cluster(cp, rc, ca, ci)
+        export_cluster(trajectory_name, cp, lc, ca, ci)
+        export_cluster(trajectory_name, cp, rc, ca, ci)
     else
-        # at bottom of hierarchy
-        return
+
+        # get children of cluster
+        ts = get_transitions(ci, cluster)
+        dpath = get_ase_dict_path(trajectory_name)
+        export_t = export_transitions()
+        export_t(dpath, cp, ts)
     end
-
-    return
 end
 
-function export_transitions(path, ts)
-
+function get_ase_dict_path(trajectory_name)
+    dir = dirname(dirname(@__FILE__))
+    ddir = joinpath(dir, "data")
+    # need to get name of trajectory
+    tdpath = joinpath(ddir, trajectory_name)
+    return joinpath(tdpath, "t_ase_dict.pickle")
 end
 
-function export_all(ci::ClusterInfo, cd::ClusterData, ca, folder::String; overwrite=false)
-    rootPath = dirname(dirname(@__FILE__))
-    exportPath = joinpath(rootPath, folder)
+function export_transitions()
+    py"""
+    import pickle
+    from ase.io import extxyz
 
+    def export_transitions(dpath, cp, ts): 
+        with open(dpath, "rb") as f:
+            d = pickle.load(f)
+        for t in ts:
+            s1, s2 = t
+            s1a, s2a = d[t]
+            extxyz.write_extxyz(open(f"{cp}/%i-%i.xyz"%(s1,s2),'w'), [s1a,s2a], columns=['symbols', 'positions', 'tags'])
+    """
+    return py"export_transitions"
+end
+
+function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, ca, exportPath; overwrite=false)
     if !isdir(exportPath)
         mkdir(exportPath)
     else
@@ -286,6 +314,6 @@ function export_all(ci::ClusterInfo, cd::ClusterData, ca, folder::String; overwr
     end
 
     root = get_root(ci)
-    export_cluster(exportPath, root, ca, ci)
+    export_cluster(trajectory_name, exportPath, root, ca, ci)
 
 end

@@ -27,8 +27,10 @@ using Mmap
 using Clustering
 using UMAP
 
-include("io.jl")
+using PyCall
+
 include("data_types.jl")
+include("io.jl")
 # unfortunately is used as part of the main module
 include("multiprocess.jl")
 include("processing.jl")
@@ -96,7 +98,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     per_t_scalars = active_trajectory["per_t_scalars"]
 
     # absolute index for volume data
-    t_to_idx = Dict{Tuple{Int,Int},Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
+    t_to_idx = Dict{Transition,Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
     rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
 
     per_t_scalars["t_to_idx"] = t_to_idx
@@ -110,12 +112,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
         rm = zeros(Float32, size($dm))
         # gets the correct idx 
-        idx_to_mtx = zeros(Int, size($dm)[1])
-        t_to_mtx = Dict{Tuple{Int,Int},Int}()
-        mtx_to_t = Dict{Int,Tuple{Int,Int}}()
+        t_to_mtx = Dict{Transition,Int}()
+        mtx_to_t = Dict{Int,Transition}()
         for (i, r) in enumerate(clustering.order)
             rm[i, :] .= $dm[r, :][clustering.order]
-            idx_to_mtx[r] = i
             t_to_mtx[transitionSequence[r]] = i
             mtx_to_t[i] = transitionSequence[r]
         end
@@ -126,7 +126,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         notify(h_range)
         return ClusterData(clustering=clustering,
             matrix=rm,
-            idx_to_mtx=idx_to_mtx,
             m_extrema=(extrema(fl)),
             t_to_mtx=t_to_mtx,
             mtx_to_t=mtx_to_t)
@@ -135,19 +134,19 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
     cluster_info = @lift begin
         assignments = cutree($(cluster_data).clustering, h=$h_cutoff)
-        groups = Dict{Int,Vector{Int}}()
+        groups = Dict{Int,Vector{Transition}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
                 g = groups[c]
             else
-                g = Vector{Int}()
+                g = Vector{Transition}()
             end
-            push!(g, i)
+            push!(g, transitionSequence[i])
             groups[c] = g
         end
 
         #=
-        pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
+        pickled_groups = Dict{Int,Vector{Transition}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
             pickled_groups[clusterIdx] = ts
@@ -156,14 +155,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
         =#
 
-        reps = Dict{Int,Tuple{Int,Int}}()
+        reps = Dict{Int,Transition}()
         for (clusterIdx, g) in groups
             # find reference t
             m = $dm
-            dist_sum = map(x -> sum(m[x, :][g]), g)
-            ref_t_idx = g[argmin(dist_sum)]
-
-            reps[clusterIdx] = transitionSequence[ref_t_idx]
+            gi = map(x -> $(cluster_data).t_to_mtx[x], g)
+            dist_sum = map(x -> sum(m[x, :][gi]), gi)
+            reps[clusterIdx] = g[argmin(dist_sum)]
         end
 
         lines, clusters, c_to_parent, parent_to_c, c_to_idx = treepositions($(cluster_data).clustering, $h_cutoff)
@@ -187,14 +185,12 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         println("Calculating alignment with $($selected_alignment)")
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
-        rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool,Tuple{Int,Int}}}()
-        for (clusterIdx, g) in $(cluster_info).groups
+        rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
+        for (clusterIdx, ts) in $(cluster_info).groups
             # find reference t
-            dist_sum = map(x -> sum($dm[x, :][g]), g)
-            ref_t_idx = argmin(dist_sum)
-
-            ts = map(x -> transitionSequence[x], g)
-            ref_t = ts[ref_t_idx]
+            gi = map(x -> $(cluster_data).t_to_mtx[x], ts)
+            dist_sum = map(x -> sum($dm[x, :][gi]), gi)
+            ref_t = ts[argmin(dist_sum)]
 
             g_rot = calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
             merge!(rot, g_rot)
@@ -238,8 +234,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     end
 
     # should be cached
-    bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
-    absAvgBonds = Dict{Tuple{Int16,Int16},Array{Float32}}()
+    bondDeltas = Dict{Transition,Matrix{Float32}}()
+    absAvgBonds = Dict{Transition,Array{Float32}}()
     bonds = Dict()
     bdMin = floatmax(Float32)
     bdMax = floatmin(Float32)
@@ -454,11 +450,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             time)
     end
 
-    function calc_ts(clusters)
-        g = reduce(vcat, map(x -> cluster_info[].groups[x], collect(clusters)))
-        return map(x -> transitionSequence[x], g)
-    end
-
     function render_superquadrics_view(scene, transition, inspector, alignment)
         t_ap = create_position_alignment_observer(transition, alignment)
 
@@ -549,7 +540,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     calculators = Dict()
     calculators["Alignment"] = calc_alignment
-    calculators["GetTransitions"] = calc_ts
+    calculators["GetTransitions"] = get_transitions
 
     function on_click(t, on_window_hover)
         t_idx = t_to_idx[t]
@@ -576,9 +567,12 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         render_views,
         widgets,
         invariantRange,
-        active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"],
+        active_trajectory["selected_dm_name"],
+        active_trajectory["per_t_scalars"],
         active_trajectory["per_t_scalar_ranges"],
-        calculators)
+        calculators,
+        active_trajectory["name"],
+    )
 
     #= 
     # creating screen after the window is built prevents subtle bugs

@@ -3,7 +3,7 @@ using Observables
 function scratchpad!(
     window,
     loc,
-    selected_transitions::Observable{Set{Tuple{Int,Int}}},
+    selected_transitions::Observable{Set{Transition}},
     cluster_info::Observable{ClusterInfo},
     cluster_data::Observable{ClusterData},
     render_views,
@@ -15,9 +15,10 @@ function scratchpad!(
     rel_t_to_idx,
     calculators,
     cluster_annotations;
-    hovered::MaybeObservable{Tuple{Int,Int}}=MaybeObservable{Tuple{Int,Int}}(nothing),
+    hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_hover,
+    on_export=(x, y, z, w) -> (),
     on_click=(x) -> (),
     markersize=150
 )
@@ -36,11 +37,85 @@ function scratchpad!(
     cluster_cmap = to_colormap(CLUSTER_COLORS)
 
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
-    idx_to_obj = Observable{Vector{Union{Set{Int},Tuple{Int,Int}}}}(Union{Set{Int},Tuple{Int,Int}}[]) # gets transition from plotted idx
-    obj_to_idx = Ref(Dict{Union{Set{Int},Tuple{Int,Int}},Int}())
+    idx_to_obj = Observable{Vector{Union{Set{Int},Transition}}}(Union{Set{Int},Transition}[]) # gets transition from plotted idx
+    obj_to_idx = Ref(Dict{Union{Set{Int},Transition},Int}())
     rendered_idxes = Ref(Set{Int}())
     num_objs = Ref(1)
     views = Ref([])
+
+    d_start = Point2f(0.0)
+    d_end = Point2f(0.0)
+    c_bbox = Observable(BBox(0, 0, 0, 0))
+    boxes = Ref([])
+    register_interaction!(ax, :create_group) do e::MouseEvent, axis
+        if e.type === MouseEventTypes.leftdragstart
+            d_start = mouseposition(ax.scene)
+            w = wireframe!(ax.scene, c_bbox, color=:black)
+            w.inspectable[] = false
+        elseif e.type === MouseEventTypes.leftdrag
+            d_end = mouseposition(ax.scene)
+            l = (d_start[1] < d_end[1]) ? d_start[1] : d_end[1]
+            r = (l == d_start[1]) ? d_end[1] : d_start[1]
+
+            b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
+            t = (b == d_start[2]) ? d_end[2] : d_start[2]
+            c_bbox[] = BBox(l, r, b, t)
+        elseif e.type === MouseEventTypes.leftdragstop
+            # finish placing box
+            w = wireframe!(ax.scene, c_bbox[], color=:black)
+            w.inspectable[] = false
+            push!(boxes[], c_bbox[])
+            bbox = Observable(BBox(0, 0, 0, 0))
+        end
+    end
+
+    notes = Ref([])
+    register_interaction!(ax, :create_text) do e::MouseEvent, axis
+        if e.type == MouseEventTypes.leftdoubleclick
+            plt, idx = pick(ax.scene)
+            if isnothing(plt)
+                # add textbox at point if empty space was clicked
+                x, y = mouseposition_px(window.scene)
+
+                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50),
+                    placeholder=" ",
+                    textcolor=:black,
+                    focused=true)
+
+                px, py = mouseposition(ax)
+                on(txt.stored_string) do s
+                    text!(ax.scene, px, py; text=s, color=:black)
+                    push!(notes[], (Point2f(px, py), s))
+                end
+
+                on(txt.focused) do is_focused
+                    if !is_focused
+                        delete!(txt)
+                    end
+                end
+            end
+        end
+    end
+
+    ax_m_events = addmouseevents!(ax.scene)
+    on(ax_m_events.obs) do e
+        if e.type == MouseEventTypes.over
+            plt, idx = pick(ax.scene)
+            if plt isa Makie.Text
+                plt.color[] = to_color(:grey)
+            end
+        elseif e.type == MouseEventTypes.rightclick
+            plt, idx = pick(ax.scene)
+            if plt isa Makie.Text
+                delete!(ax.scene, plt)
+                # have to also remove from notes array
+            elseif plt isa Makie.Wireframe
+                delete!(ax.scene, plt)
+                # remove from boxes array
+            end
+        end
+        return Consume(false)
+    end
 
     function delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
         plt_idx = obj_to_idx[][obj]
@@ -106,7 +181,7 @@ function scratchpad!(
         obj = idx_to_obj[][idx-1]
         s = string(obj)
         if obj isa Set{Int}
-            s = get_val(cluster_annotations[], "titles", obj)
+            s = str_limit(get_val(cluster_annotations[], "titles", obj))
         end
         return s
     end
@@ -115,6 +190,7 @@ function scratchpad!(
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
+    viewports = Ref([])
     on(idx_to_obj) do idxes
         ts = collect(selected_transitions[])
         s_alignment = Observable(calculators["Alignment"](ts))
@@ -126,23 +202,16 @@ function scratchpad!(
                 x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
                 # calculate shifted size of marker
                 ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
-                size = Observable((ms, ms))
+                vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
 
-                vp = Observable(Rect2i(x - (ms / 2), y - (ms / 2),
-                    ms,
-                    ms))
-
-                scene_color = Observable(:black)
+                # viewports need to be in data space
+                push!(viewports[], pos)
 
                 ax3d = Scene(ax.scene, show_axis=false,
                     viewport=vp,
-                    backgroundcolor=scene_color,
+                    backgroundcolor=:black,
                     clear=true,
-                    size=size)
-
-                on(scene_color) do sc
-                    ax3d.backgroundcolor[] = to_color(sc)
-                end
+                    size=(ms, ms))
 
                 cam3d!(ax3d)
                 translate!(ax3d, 0, 0, 100)
@@ -156,8 +225,10 @@ function scratchpad!(
                 mouse_listener = on(m_events.obs) do event
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
+                        deactivate_interaction!(ax, :create_group)
+                        deactivate_interaction!(ax, :create_text)
                         show_data(ins, nodes, i)
-                        if obj isa Tuple{Int,Int}
+                        if obj isa Transition
                             hovered[] = obj
                             t_idx = rel_t_to_idx[obj]
                             cluster = Set(cluster_info[].assignments[t_idx])
@@ -167,6 +238,16 @@ function scratchpad!(
                         end
                         hovered_cluster[] = cluster
                         notify(hovered_cluster)
+                    elseif event.type === MouseEventTypes.out
+                        if obj isa Transition
+                            hovered[] = nothing
+                            notify(hovered)
+                        else
+                            hovered_cluster[] = nothing
+                            notify(hovered_cluster)
+                        end
+                        activate_interaction!(ax, :create_group)
+                        activate_interaction!(ax, :create_text)
                     elseif event.type === MouseEventTypes.middledrag
                         points[][i] = mouseposition(ax)
                         notify(points)
@@ -176,7 +257,7 @@ function scratchpad!(
 
                         hovered[] = nothing
                         notify(hovered)
-                        if obj isa Tuple{Int,Int}
+                        if obj isa Transition
                             delete!(selected_transitions[], obj)
                             notify(selected_transitions)
                         else
@@ -187,10 +268,9 @@ function scratchpad!(
                         delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
                         notify(idx_to_obj)
                         notify(points)
-
                     elseif event.type === MouseEventTypes.leftdoubleclick
                         cluster = obj
-                        if obj isa Tuple{Int,Int}
+                        if obj isa Transition
                             t_idx = rel_t_to_idx[obj]
                             cluster = Set(cluster_info[].assignments[t_idx])
                         end
@@ -198,7 +278,8 @@ function scratchpad!(
                     end
                 end
 
-                if obj isa Tuple{Int,Int}
+                # move to outside loop, will be far more efficient
+                if obj isa Transition
                     plt_rendered = []
                     listener = on(render_selection, update=true) do rs
                         foreach(x -> delete!(ax3d, x), plt_rendered)
@@ -223,108 +304,47 @@ function scratchpad!(
                         center!(ax3d)
                     end
                 else
-                    ts = calculators["GetTransitions"](obj)
+                    ts = get_transitions(cluster_info[], obj)
                     alignment = calculators["Alignment"](ts)
                     render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
                     center!(ax3d)
                 end
-                push!(views[], (ax3d, vp, size, listener, mouse_listener, scene_color))
+                push!(views[], (ax3d, listener, mouse_listener))
                 push!(rendered_idxes[], plt_idx)
             end
         end
     end
 
-    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points) do xlim, ylim, pp
+    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport) do xlim, ylim, pp, svp
         ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
-        for (i, (ax3d, vp, size, listener, mouse_listener)) in enumerate(views[])
+        for (i, (scene, listener, mouse_listener)) in enumerate(views[])
             plt_idx = i + 1
             pos = position_on_plot(nodes, plt_idx, apply_transform=false)
             x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
 
-            vp.val = Rect2i(x - ms[], y - ms[], ms[], ms[])
-            vp.val = GeometryBasics.intersect(vp.val, ax.scene.viewport[])
-            vw = widths(vp.val)
+            vp = Rect2i(x - ms[], y - ms[], ms[], ms[])
+            vp = GeometryBasics.intersect(vp, svp)
+            vw = widths(vp)
 
             if any(w -> w <= 0, vw)
-                vp.val = Rect2i(0, 0, 0, 0)
+                vp = Rect2i(0, 0, 0, 0)
             end
 
-            notify(vp)
-            notify(size)
-        end
-    end
-
-    d_start = Point2f(0.0)
-    d_end = Point2f(0.0)
-    bbox = Observable(BBox(0, 0, 0, 0))
-    m_events = addmouseevents!(ax.scene)
-    boxes = []
-    on(m_events.obs) do e
-        if e.type == MouseEventTypes.over
-            plt, idx = pick(ax.scene)
-            if isnothing(plt)
-                if !isnothing(hovered[])
-                    hovered[] = nothing
-                    notify(hovered)
-                end
-                if !isnothing(hovered_cluster[])
-                    hovered_cluster[] = nothing
-                    notify(hovered_cluster)
-                end
-                # can use this to select the text and do stuff
-                #elseif plt isa Makie.Text
-                #    @show plt
-            end
-        elseif e.type === MouseEventTypes.leftdragstart
-            d_start = mouseposition(ax.scene)
-            w = wireframe!(ax.scene, bbox, color=:red)
-            w.inspectable[] = false
-        elseif e.type === MouseEventTypes.leftdrag
-            d_end = mouseposition(ax.scene)
-            l = (d_start[1] < d_end[1]) ? d_start[1] : d_end[1]
-            r = (l == d_start[1]) ? d_end[1] : d_start[1]
-
-            b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
-            t = (b == d_start[2]) ? d_end[2] : d_start[2]
-            bbox[] = BBox(l, r, b, t)
-        elseif e.type === MouseEventTypes.leftdragstop
-            push!(boxes, bbox[])
-            bbox = Observable(BBox(0, 0, 0, 0))
-        elseif e.type == MouseEventTypes.leftdoubleclick
-            plt, idx = pick(ax.scene)
-            if isnothing(plt)
-                # add textbox at point if empty space was clicked
-                x, y = mouseposition_px(window.scene)
-
-                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50),
-                    placeholder="...",
-                    textcolor=:black,
-                    focused=true)
-
-                px, py = mouseposition(ax)
-                on(txt.stored_string) do s
-                    text!(ax.scene, px, py; text=s, color=:black)
-                end
-
-                on(txt.focused) do is_focused
-                    if !is_focused
-                        delete!(txt)
-                    end
-                end
-            end
+            viewports[][i] = pos
+            scene.viewport[] = vp
         end
     end
 
     highlighted = []
     on(hovered) do hov
         for (v_idx) in highlighted
-            views[][v_idx][6][] = :black
+            views[][v_idx][1].backgroundcolor[] = to_color(:black)
         end
         empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx][6][] = :grey
+            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
             push!(highlighted, v_idx)
         end
     end
@@ -332,14 +352,125 @@ function scratchpad!(
     highlighted_clusters = []
     on(hovered_cluster) do hov
         for (v_idx) in highlighted_clusters
-            views[][v_idx][6][] = :black
+            views[][v_idx][1].backgroundcolor[] = to_color(:black)
         end
         empty!(highlighted_clusters)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx][6][] = :grey
+            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
             push!(highlighted_clusters, v_idx)
         end
+    end
+
+    return ax, Scratchpad(boxes=boxes, views=viewports, notes=notes, objs=idx_to_obj)
+end
+
+@kwdef mutable struct Scratchpad
+    boxes
+    views
+    notes
+    objs
+end
+
+# returns a dictionary of box indices to their children and the top level boxes in the hierarchy
+# any "loose" children are returned separately
+function group_scratchpad(s::Scratchpad)
+    # start with the smallest boxes and work outwards for points
+    sort!(s.boxes[], by=x -> area(x))
+    seen_boxes = Set()
+    seen_text = Set()
+    seen = Set()
+    hierarchy = Dict()
+    for (bIdx, box) in enumerate(s.boxes[])
+        # get name
+        children = Union{Set{Int},Transition,String,Int}[]
+        for (idx, vp) in enumerate(s.views[])
+            # seen lets us place things at bottom level
+            if vp in box && !(idx in seen)
+                push!(children, s.objs[][idx])
+                push!(seen, idx)
+            end
+        end
+
+        for (i, (pos, text)) in enumerate(s.notes[])
+            if pos in box && !(i in seen_text)
+                push!(children, text)
+                push!(seen_text, i)
+            end
+        end
+
+        for (c_bIdx, c_box) in enumerate(s.boxes[])
+            if bIdx != c_bIdx
+                if c_box in box
+                    push!(children, c_bIdx)
+                    push!(seen_boxes, c_bIdx)
+                end
+            end
+        end
+        hierarchy[bIdx] = children
+    end
+
+    top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
+
+    loose = Union{Set{Int},Transition,String}[]
+    for (i, c) in enumerate(s.objs[])
+        if !(i in seen)
+            push!(loose, c)
+        end
+    end
+
+    for (i, n) in enumerate(s.notes[])
+        if !(i in seen_text)
+            push!(loose, n)
+        end
+    end
+
+    return top_level, hierarchy, loose
+end
+
+function export_scratchpad(s, ci, ep, dpath)
+    # export loose data in top folder
+    top_level, hierarchy, loose = group_scratchpad(s)
+    @show top_level, hierarchy, loose
+    if !isempty(loose)
+        export_scratchpad_children(dpath, ep, loose, ci)
+    end
+
+    for b in top_level
+        export_scratchpad_children_recurse(b, hierarchy, ci, ep, dpath)
+    end
+end
+
+function export_scratchpad_children_recurse(bIdx, hierarchy, ci, parent_dir, dpath)
+    cf = joinpath(parent_dir, string(bIdx))
+    if !isdir(cf)
+        mkdir(cf)
+    end
+    children = hierarchy[bIdx]
+    export_scratchpad_children(dpath, cf, children, ci)
+    bChildren = filter(x -> x isa Int, children)
+    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, ci, cf, dpath), bChildren)
+end
+
+function export_scratchpad_children(dpath, p, children, ci)
+    # write notes in folder
+    notes = filter(x -> x isa String, children)
+    if !isempty(notes)
+        foreach(x -> x * "\n", notes)
+        note = reduce(*, notes)
+        nf = joinpath(p, "notes.txt")
+        write(nf, note)
+    end
+
+    # concat all children
+    clusters = filter(x -> x isa Set{Int}, children)
+    transitions = filter(x -> x isa Transition, children)
+
+    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(ci, x), clusters), init=[]))
+
+    if !isempty(ts)
+        export_t = export_transitions()
+        export_t(dpath, p, ts)
     end
 end
