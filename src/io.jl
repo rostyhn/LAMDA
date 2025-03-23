@@ -251,10 +251,17 @@ end
 
 function export_cluster(trajectory_name, path, cluster, ca, ci)
     cluster_name = get_val(ca, "titles", cluster)
+    cluster_notes = get(ca["notes"], cluster, nothing)
+
     dname = filesafestr(cluster_name)
     cp = joinpath(path, dname)
     if !isdir(cp)
         mkdir(cp)
+    end
+
+    if !isnothing(cluster_notes)
+        nf = joinpath(cp, "notes.txt")
+        write(nf, cluster_notes)
     end
 
     children = get_children(ci, cluster)

@@ -322,8 +322,10 @@ function build_selection_window(
     end
 
     export_btn = Button(window, label="Export", halign=:right)
+    export_menu = Menu(window, options=["Scratchpad", "All"], default="All", tellwidth=false, halign=:right)
     menu_bar[1, 3] = export_btn
-    menu_bar[1, 4] = settings_btn
+    menu_bar[1, 4] = export_menu
+    menu_bar[1, 5] = settings_btn
 
     dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
     rowsize!(dGrid, 3, Relative(0.55))
@@ -374,13 +376,16 @@ function build_selection_window(
         if !isdir(ep)
             mkdir(ep)
         end
-        # export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], ep; overwrite=true)
-        dpath = get_ase_dict_path(trajectory_name)
-        export_scratchpad(scratchpad, cluster_info[], ep, dpath)
-        # thought we could do pdfs?
-        # rp = joinpath(ep, "report.png")
-        # save(rp, ax.scene)
+        if export_menu.selection[] == "All"
+            export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], ep; overwrite=true)
+        else
+            dpath = get_ase_dict_path(trajectory_name)
+            export_scratchpad(scratchpad, cluster_info[], ep, dpath)
+        end
 
+        # thought we could do pdfs?
+        rp = joinpath(ep, "report.png")
+        save(rp, ax.scene)
     end
 
     scg[1, 1] = scratchpad_render_menu
