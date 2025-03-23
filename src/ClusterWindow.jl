@@ -1,5 +1,11 @@
 using Makie
 
+function find_cluster_representatives(distances::Matrix{Float32})
+    @show R = kmedoids(distances, 1)
+    @show R.medoids
+    return R.medoids[1]
+end
+
 function build_cluster_window(
     clusters::Observable{Set{Int}},
     cluster_data::Observable{SingleClusterData},
@@ -137,7 +143,9 @@ function build_cluster_window(
         scenekw=(backgroundcolor=:black, clear=true),
     )
 
-    render_views["SMovement"](centroid_scene, ts, time, alignment)
+    vals = lift(x -> x.mat, cluster_data)
+
+    render_views["SMovement"](centroid_scene, ts, time, alignment, find_cluster_representatives(vals[]))
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n
@@ -156,7 +164,6 @@ function build_cluster_window(
         cluster_annotations;
         colormap=CLUSTER_COLORS)
 
-    vals = lift(x -> x.mat, cluster_data)
     hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
     on(vals) do v
         reset_limits!(hm_ax)

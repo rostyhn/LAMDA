@@ -81,10 +81,12 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
     return s
 end
 
-function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64}, mobilityClusters::Observable{Vector{Float32}}, vel::Observable{Matrix{Float32}})
+function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64},cmap, vel::Observable{Vector{GeometryBasics.Point{3, Float32}}}, mobilityClusters::Observable{Vector{Float32}})
     int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
-    int_vel = lift(x -> 2.0*x, vel)
+    velocities = lift(x -> 20.0*x, vel)
 
+    velocityMagnitudes = lift(x->norm.(x),velocities)
+    magnitudeRange = lift(x-> extrema(x), velocityMagnitudes)
     # @show "Simple Arrow View Called"
     # @show length(int_pos[])
     # @show length(int_vel[])
@@ -93,19 +95,19 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
     # @show length(velocities[])
 
     # makes it so the atom view can handle points changing
-    colors = Observable(scalars[])
+    # colors = Observable(scalars[])
     points = Observable(Point3f.(eachrow(int_pos[])))
-    velocities = Observable(Point3f.(eachrow(int_vel[])))
+    # velocities = Observable(Point3f.(eachrow(int_vel[])))
 
-    colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(scalars[])))
+    colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(velocities[])))
 
     
 
     on(int_pos) do ip
-        points.val = Point3f.(eachrow(ip))
-        colors.val = scalars[]
-        velocities.val = Point3f.(eachrow(int_vel[]))
-        colors[] = scalars[]
+         points.val = Point3f.(eachrow(ip))
+        # colors.val = scalars[]
+        #  velocities.val = Point3f.(eachrow(int_vel[]))
+        # colors[] = scalars[]
         points[] = points[]
         velocities[] = velocities[]
 
@@ -127,21 +129,24 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:r),
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:g),       
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32,mobilityClusters[])],:b),
-        getAlpha.(colors[], trunc.(Int32,mobilityClusters[]), Ref(scalar_range))) # ugliest solution i could think of....
-    #  colorVector[].alpha = getAlpha.(colors[], Ref(scalar_range))
+        getAlpha.(velocityMagnitudes[], trunc.(Int32,mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
+    
+        #  colorVector[].alpha = getAlpha.(colors[], Ref(scalar_range))
     #  @show unique(mobilityClusters[])
     #  mobilityClusterTransparencies = 
     # atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright, 20, alpha=[getAlpha.(colors, Ref(scalar_range))])
 
 
     s = arrows!(scene, points, velocities;
-        color=colorVector,
+         color=colorVector,
         # colorrange=(2,20),
         # lowclip=:transparent,
+        # color = :blue,
         arrowsize=1.2,
-        alpha = 1.0,
-        transparency = true,
+        # alpha = 1.0,
+         transparency = true,
         # colormap=:seaborn_bright,   
+        inspectable = false,
           )
 
     h = meshscatter!(scene, points;
@@ -152,17 +157,19 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         lowclip=:transparent,
         highclip=:transparent,
         transparency = true,
-        inspector_label=(self, i, p) -> "Atom $(i); weight: $(colors[][i])",
+        inspectable = false,
+        # inspector_label=(self, i, p) -> "Atom $(i); weight: $(colors[][i])",
         markersize=0.2)
 
     h = meshscatter!(scene, points;
-        color=colorVector,
+         color=colorVector,
         # colorrange=(2,20),
         marker=:Sphere,
         transparency = true,
         # lowclip=:transparent,
         # colormap=:seaborn_bright,
-        inspector_label=(self, i, p) -> "Atom $(i); weight: $(colors[][i])",
+        # inspector_label=(self, i, p) -> "Atom $(i); weight: $(colors[][i])",
+        inspectable = false,
         markersize=0.7)
 
     # s = scatter!(scene, points;
