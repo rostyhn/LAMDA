@@ -50,7 +50,7 @@ function scratchpad!(
     register_interaction!(ax, :create_group) do e::MouseEvent, axis
         if e.type === MouseEventTypes.leftdragstart
             d_start = mouseposition(ax.scene)
-            w = wireframe!(ax.scene, c_bbox, color=:red)
+            w = wireframe!(ax.scene, c_bbox, color=:black)
             w.inspectable[] = false
         elseif e.type === MouseEventTypes.leftdrag
             d_end = mouseposition(ax.scene)
@@ -62,11 +62,59 @@ function scratchpad!(
             c_bbox[] = BBox(l, r, b, t)
         elseif e.type === MouseEventTypes.leftdragstop
             # finish placing box
-            w = wireframe!(ax.scene, c_bbox[], color=:red)
+            w = wireframe!(ax.scene, c_bbox[], color=:black)
             w.inspectable[] = false
             push!(boxes[], c_bbox[])
             bbox = Observable(BBox(0, 0, 0, 0))
         end
+    end
+
+    notes = Ref([])
+    register_interaction!(ax, :create_text) do e::MouseEvent, axis
+        if e.type == MouseEventTypes.leftdoubleclick
+            plt, idx = pick(ax.scene)
+            if isnothing(plt)
+                # add textbox at point if empty space was clicked
+                x, y = mouseposition_px(window.scene)
+
+                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50),
+                    placeholder=" ",
+                    textcolor=:black,
+                    focused=true)
+
+                px, py = mouseposition(ax)
+                on(txt.stored_string) do s
+                    text!(ax.scene, px, py; text=s, color=:black)
+                    push!(notes[], (Point2f(px, py), s))
+                end
+
+                on(txt.focused) do is_focused
+                    if !is_focused
+                        delete!(txt)
+                    end
+                end
+            end
+        end
+    end
+
+    ax_m_events = addmouseevents!(ax.scene)
+    on(ax_m_events.obs) do e
+        if e.type == MouseEventTypes.over
+            plt, idx = pick(ax.scene)
+            if plt isa Makie.Text
+                plt.color[] = to_color(:grey)
+            end
+        elseif e.type == MouseEventTypes.rightclick
+            plt, idx = pick(ax.scene)
+            if plt isa Makie.Text
+                delete!(ax.scene, plt)
+                # have to also remove from notes array
+            elseif plt isa Makie.Wireframe
+                delete!(ax.scene, plt)
+                # remove from boxes array
+            end
+        end
+        return Consume(false)
     end
 
     function delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
@@ -178,6 +226,7 @@ function scratchpad!(
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
+                        deactivate_interaction!(ax, :create_text)
                         show_data(ins, nodes, i)
                         if obj isa Transition
                             hovered[] = obj
@@ -198,6 +247,7 @@ function scratchpad!(
                             notify(hovered_cluster)
                         end
                         activate_interaction!(ax, :create_group)
+                        activate_interaction!(ax, :create_text)
                     elseif event.type === MouseEventTypes.middledrag
                         points[][i] = mouseposition(ax)
                         notify(points)
@@ -218,7 +268,6 @@ function scratchpad!(
                         delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
                         notify(idx_to_obj)
                         notify(points)
-
                     elseif event.type === MouseEventTypes.leftdoubleclick
                         cluster = obj
                         if obj isa Transition
@@ -283,50 +332,6 @@ function scratchpad!(
 
             viewports[][i] = pos
             scene.viewport[] = vp
-        end
-    end
-
-    notes = Ref([])
-    m_events = addmouseevents!(ax.scene)
-    on(m_events.obs) do e
-        if e.type == MouseEventTypes.over
-            plt, idx = pick(ax.scene)
-            if isnothing(plt)
-                if !isnothing(hovered[])
-                    hovered[] = nothing
-                    notify(hovered)
-                end
-                if !isnothing(hovered_cluster[])
-                    hovered_cluster[] = nothing
-                    notify(hovered_cluster)
-                end
-                # can use this to select the text and do stuff
-                #elseif plt isa Makie.Text
-                #    @show plt
-            end
-        elseif e.type == MouseEventTypes.leftdoubleclick
-            plt, idx = pick(ax.scene)
-            if isnothing(plt)
-                # add textbox at point if empty space was clicked
-                x, y = mouseposition_px(window.scene)
-
-                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50),
-                    placeholder=" ",
-                    textcolor=:black,
-                    focused=true)
-
-                px, py = mouseposition(ax)
-                on(txt.stored_string) do s
-                    t = text!(ax.scene, px, py; text=s, color=:black)
-                    push!(notes[], (Point2f(px, py), s))
-                end
-
-                on(txt.focused) do is_focused
-                    if !is_focused
-                        delete!(txt)
-                    end
-                end
-            end
         end
     end
 
