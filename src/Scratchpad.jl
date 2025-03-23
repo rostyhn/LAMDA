@@ -18,6 +18,7 @@ function scratchpad!(
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_hover,
+    on_export=(x, y, z, w) -> (),
     on_click=(x) -> (),
     markersize=150
 )
@@ -45,7 +46,7 @@ function scratchpad!(
     d_start = Point2f(0.0)
     d_end = Point2f(0.0)
     c_bbox = Observable(BBox(0, 0, 0, 0))
-    boxes = []
+    boxes = Ref([])
     register_interaction!(ax, :create_group) do e::MouseEvent, axis
         if e.type === MouseEventTypes.leftdragstart
             d_start = mouseposition(ax.scene)
@@ -63,7 +64,7 @@ function scratchpad!(
             # finish placing box
             w = wireframe!(ax.scene, c_bbox[], color=:red)
             w.inspectable[] = false
-            push!(boxes, c_bbox[])
+            push!(boxes[], c_bbox[])
             bbox = Observable(BBox(0, 0, 0, 0))
         end
     end
@@ -141,6 +142,7 @@ function scratchpad!(
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
+    viewports = Ref([])
     on(idx_to_obj) do idxes
         ts = collect(selected_transitions[])
         s_alignment = Observable(calculators["Alignment"](ts))
@@ -152,23 +154,16 @@ function scratchpad!(
                 x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
                 # calculate shifted size of marker
                 ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
-                size = Observable((ms, ms))
+                vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
 
-                vp = Observable(Rect2i(x - (ms / 2), y - (ms / 2),
-                    ms,
-                    ms))
-
-                scene_color = Observable(:black)
+                # viewports need to be in data space
+                push!(viewports[], pos)
 
                 ax3d = Scene(ax.scene, show_axis=false,
                     viewport=vp,
-                    backgroundcolor=scene_color,
+                    backgroundcolor=:black,
                     clear=true,
-                    size=size)
-
-                on(scene_color) do sc
-                    ax3d.backgroundcolor[] = to_color(sc)
-                end
+                    size=(ms, ms))
 
                 cam3d!(ax3d)
                 translate!(ax3d, 0, 0, 100)
@@ -265,32 +260,33 @@ function scratchpad!(
                     render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
                     center!(ax3d)
                 end
-                push!(views[], (ax3d, vp, size, listener, mouse_listener, scene_color))
+                push!(views[], (ax3d, listener, mouse_listener))
                 push!(rendered_idxes[], plt_idx)
             end
         end
     end
 
-    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points) do xlim, ylim, pp
+    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport) do xlim, ylim, pp, svp
         ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
-        for (i, (ax3d, vp, size, listener, mouse_listener)) in enumerate(views[])
+        for (i, (scene, listener, mouse_listener)) in enumerate(views[])
             plt_idx = i + 1
             pos = position_on_plot(nodes, plt_idx, apply_transform=false)
             x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
 
-            vp.val = Rect2i(x - ms[], y - ms[], ms[], ms[])
-            vp.val = GeometryBasics.intersect(vp.val, ax.scene.viewport[])
-            vw = widths(vp.val)
+            vp = Rect2i(x - ms[], y - ms[], ms[], ms[])
+            vp = GeometryBasics.intersect(vp, svp)
+            vw = widths(vp)
 
             if any(w -> w <= 0, vw)
-                vp.val = Rect2i(0, 0, 0, 0)
+                vp = Rect2i(0, 0, 0, 0)
             end
 
-            notify(vp)
-            notify(size)
+            viewports[][i] = pos
+            scene.viewport[] = vp
         end
     end
 
+    notes = Ref([])
     m_events = addmouseevents!(ax.scene)
     on(m_events.obs) do e
         if e.type == MouseEventTypes.over
@@ -315,13 +311,14 @@ function scratchpad!(
                 x, y = mouseposition_px(window.scene)
 
                 txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50),
-                    placeholder="...",
+                    placeholder=" ",
                     textcolor=:black,
                     focused=true)
 
                 px, py = mouseposition(ax)
                 on(txt.stored_string) do s
-                    text!(ax.scene, px, py; text=s, color=:black)
+                    t = text!(ax.scene, px, py; text=s, color=:black)
+                    push!(notes[], (Point2f(px, py), s))
                 end
 
                 on(txt.focused) do is_focused
@@ -336,13 +333,13 @@ function scratchpad!(
     highlighted = []
     on(hovered) do hov
         for (v_idx) in highlighted
-            views[][v_idx][6][] = :black
+            views[][v_idx][1].backgroundcolor[] = to_color(:black)
         end
         empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx][6][] = :grey
+            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
             push!(highlighted, v_idx)
         end
     end
@@ -350,16 +347,125 @@ function scratchpad!(
     highlighted_clusters = []
     on(hovered_cluster) do hov
         for (v_idx) in highlighted_clusters
-            views[][v_idx][6][] = :black
+            views[][v_idx][1].backgroundcolor[] = to_color(:black)
         end
         empty!(highlighted_clusters)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx][6][] = :grey
+            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
             push!(highlighted_clusters, v_idx)
         end
     end
 
-    return ax
+    return ax, Scratchpad(boxes=boxes, views=viewports, notes=notes, objs=idx_to_obj)
+end
+
+@kwdef mutable struct Scratchpad
+    boxes
+    views
+    notes
+    objs
+end
+
+# returns a dictionary of box indices to their children and the top level boxes in the hierarchy
+# any "loose" children are returned separately
+function group_scratchpad(s::Scratchpad)
+    # start with the smallest boxes and work outwards for points
+    sort!(s.boxes[], by=x -> area(x))
+    seen_boxes = Set()
+    seen_text = Set()
+    seen = Set()
+    hierarchy = Dict()
+    for (bIdx, box) in enumerate(s.boxes[])
+        # get name
+        children = Union{Set{Int},Transition,String,Int}[]
+        for (idx, vp) in enumerate(s.views[])
+            # seen lets us place things at bottom level
+            if vp in box && !(idx in seen)
+                push!(children, s.objs[][idx])
+                push!(seen, idx)
+            end
+        end
+
+        for (i, (pos, text)) in enumerate(s.notes[])
+            if pos in box && !(i in seen_text)
+                push!(children, text)
+                push!(seen_text, i)
+            end
+        end
+
+        for (c_bIdx, c_box) in enumerate(s.boxes[])
+            if bIdx != c_bIdx
+                if c_box in box
+                    push!(children, c_bIdx)
+                    push!(seen_boxes, c_bIdx)
+                end
+            end
+        end
+        hierarchy[bIdx] = children
+    end
+
+    top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
+
+    loose = Union{Set{Int},Transition,String}[]
+    for (i, c) in enumerate(s.objs[])
+        if !(i in seen)
+            push!(loose, c)
+        end
+    end
+
+    for (i, n) in enumerate(s.notes[])
+        if !(i in seen_text)
+            push!(loose, n)
+        end
+    end
+
+    return top_level, hierarchy, loose
+end
+
+function export_scratchpad(s, ci, ep, dpath)
+    # export loose data in top folder
+    top_level, hierarchy, loose = group_scratchpad(s)
+    @show top_level, hierarchy, loose
+    if !isempty(loose)
+        export_scratchpad_children(dpath, ep, loose, ci)
+    end
+
+    for b in top_level
+        export_scratchpad_children_recurse(b, hierarchy, ci, ep, dpath)
+    end
+end
+
+function export_scratchpad_children_recurse(bIdx, hierarchy, ci, parent_dir, dpath)
+    cf = joinpath(parent_dir, string(bIdx))
+    if !isdir(cf)
+        mkdir(cf)
+    end
+    children = hierarchy[bIdx]
+    export_scratchpad_children(dpath, cf, children, ci)
+    bChildren = filter(x -> x isa Int, children)
+    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, ci, cf, dpath), bChildren)
+end
+
+function export_scratchpad_children(dpath, p, children, ci)
+    # write notes in folder
+    notes = filter(x -> x isa String, children)
+    if !isempty(notes)
+        foreach(x -> x * "\n", notes)
+        note = reduce(*, notes)
+        nf = joinpath(p, "notes.txt")
+        write(nf, note)
+    end
+
+    # concat all children
+    clusters = filter(x -> x isa Set{Int}, children)
+    transitions = filter(x -> x isa Transition, children)
+
+    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(ci, x), clusters), init=[]))
+
+    if !isempty(ts)
+        export_t = export_transitions()
+        export_t(dpath, p, ts)
+    end
 end

@@ -348,7 +348,7 @@ function build_selection_window(
         notify(hovered_cluster)
     end
 
-    ax = scratchpad!(
+    ax, scratchpad = scratchpad!(
         window,
         tGrid[1, 1],
         selected_transitions,
@@ -374,11 +374,13 @@ function build_selection_window(
         if !isdir(ep)
             mkdir(ep)
         end
-        export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], ep; overwrite=true)
-
+        # export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], ep; overwrite=true)
+        dpath = get_ase_dict_path(trajectory_name)
+        export_scratchpad(scratchpad, cluster_info[], ep, dpath)
         # thought we could do pdfs?
-        rp = joinpath(ep, "report.png")
-        save(rp, ax.scene)
+        # rp = joinpath(ep, "report.png")
+        # save(rp, ax.scene)
+
     end
 
     scg[1, 1] = scratchpad_render_menu

@@ -263,32 +263,37 @@ function export_cluster(trajectory_name, path, cluster, ca, ci)
         export_cluster(trajectory_name, cp, lc, ca, ci)
         export_cluster(trajectory_name, cp, rc, ca, ci)
     else
-        dir = dirname(dirname(@__FILE__))
-        ddir = joinpath(dir, "data")
-        # need to get name of trajectory
-        tdpath = joinpath(ddir, trajectory_name)
-        dpath = joinpath(tdpath, "t_ase_dict.pickle")
+
         # get children of cluster
         ts = get_transitions(ci, cluster)
-        py"""
-        import pickle
-        from ase.io import extxyz
-
-        def export_transitions(dpath, cp, ts): 
-            with open(dpath, "rb") as f:
-                d = pickle.load(f)
-            for t in ts:
-                s1, s2 = t
-                s1a, s2a = d[t]
-                extxyz.write_extxyz(open(f"{cp}/%i-%i.xyz"%(s1,s2),'w'), [s1a,s2a], columns=['symbols', 'positions', 'tags'])
-        """
-        export_t = py"export_transitions"
+        dpath = get_ase_dict_path(trajectory_name)
+        export_t = export_transitions()
         export_t(dpath, cp, ts)
     end
 end
 
-function export_transitions(path, ts)
+function get_ase_dict_path(trajectory_name)
+    dir = dirname(dirname(@__FILE__))
+    ddir = joinpath(dir, "data")
+    # need to get name of trajectory
+    tdpath = joinpath(ddir, trajectory_name)
+    return joinpath(tdpath, "t_ase_dict.pickle")
+end
 
+function export_transitions()
+    py"""
+    import pickle
+    from ase.io import extxyz
+
+    def export_transitions(dpath, cp, ts): 
+        with open(dpath, "rb") as f:
+            d = pickle.load(f)
+        for t in ts:
+            s1, s2 = t
+            s1a, s2a = d[t]
+            extxyz.write_extxyz(open(f"{cp}/%i-%i.xyz"%(s1,s2),'w'), [s1a,s2a], columns=['symbols', 'positions', 'tags'])
+    """
+    return py"export_transitions"
 end
 
 function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, ca, exportPath; overwrite=false)
