@@ -61,7 +61,7 @@ function scratchpad!(
             c_bbox[] = BBox(l, r, b, t)
         elseif e.type === MouseEventTypes.leftdragstop
             # finish placing box
-            wireframe!(ax.scene, c_bbox[], color=:red)
+            w = wireframe!(ax.scene, c_bbox[], color=:red)
             w.inspectable[] = false
             push!(boxes, c_bbox[])
             bbox = Observable(BBox(0, 0, 0, 0))
@@ -195,6 +195,13 @@ function scratchpad!(
                         hovered_cluster[] = cluster
                         notify(hovered_cluster)
                     elseif event.type === MouseEventTypes.out
+                        if obj isa Transition
+                            hovered[] = nothing
+                            notify(hovered)
+                        else
+                            hovered_cluster[] = nothing
+                            notify(hovered_cluster)
+                        end
                         activate_interaction!(ax, :create_group)
                     elseif event.type === MouseEventTypes.middledrag
                         points[][i] = mouseposition(ax)
