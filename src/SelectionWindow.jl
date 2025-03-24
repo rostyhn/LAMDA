@@ -29,7 +29,8 @@ function build_selection_window(
     per_t_scalars,
     per_t_scalar_ranges,
     calculators,
-    trajectory_name;
+    trajectory_name,
+    inspector;
     fig_size=(600, 800)
 )
 
@@ -333,16 +334,6 @@ function build_selection_window(
     scalar_selection, scalar_menu = widgets["Scalar"](window)
     time, scratchpad_t_slider = widgets["Movement"](0.0, window)
 
-    function on_scratchpad_hover(t)
-        if t isa Transition
-            t_idx = rel_t_to_idx[t]
-            hovered_cluster[] = Set(cluster_info[].assignments[t_idx])
-        else
-            hovered_cluster[] = t
-        end
-        notify(hovered_cluster)
-    end
-
     ax, scratchpad = scratchpad!(
         window,
         tGrid[1, 1],
@@ -358,7 +349,7 @@ function build_selection_window(
         rel_t_to_idx,
         calculators,
         cluster_annotations,
-        on_hover=on_scratchpad_hover,
+        inspector;
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,
         on_click=on_show_cluster_click)

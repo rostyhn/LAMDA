@@ -73,9 +73,10 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
         lowclip=:transparent,
         colormap=cmap,
         depthsorting=true, # depth sorting slows things down a lot... what if we passed the points sorted by z order?
-        inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
+        #inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
         markersize=30)
 
+    s.inspectable[] = false
     update_cam!(parent_scene(s))
 
     return s

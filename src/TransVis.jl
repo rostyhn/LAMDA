@@ -622,6 +622,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
 
+    ds::MaybeObservable{DataInspector} = Observable(nothing)
     # atomPositions, stateKDTree, numAtoms, firstTransition 
     window = build_selection_window(transitionSequence,
         rel_t_to_idx,
@@ -644,6 +645,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         active_trajectory["per_t_scalar_ranges"],
         calculators,
         active_trajectory["name"],
+        ds
     )
 
     #= 
@@ -654,7 +656,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     display(screen, window)
 
     # create inspector after render to avoid bugs
-    DataInspector(window)
+    ds[] = DataInspector(window)
 
     # close reduction window
     close(screen_ref[])

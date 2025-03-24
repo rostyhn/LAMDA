@@ -15,11 +15,10 @@ function scratchpad!(
     t_list,
     rel_t_to_idx,
     calculators,
-    cluster_annotations;
+    cluster_annotations,
+    window_inspector;
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
-    on_hover,
-    on_export=(x, y, z, w) -> (),
     on_click=(x) -> (),
     markersize=150
 )
@@ -180,16 +179,9 @@ function scratchpad!(
         selected_clusters[] = selected_clusters[]
     end
 
-    function on_hit(plt, idx, pos)
-        obj = idx_to_obj[][idx-1]
-        s = string(obj)
-        if obj isa Set{Int}
-            s = str_limit(get_val(cluster_annotations[], "titles", obj))
-        end
-        return s
-    end
 
-    nodes = scatter!(ax, points, marker=:rect, visible=false, inspector_label=on_hit)
+    nodes = scatter!(ax, points, marker=:rect, visible=false)
+    nodes.inspectable[] = false
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
@@ -199,6 +191,30 @@ function scratchpad!(
         xval = x[]
         Observables.clear(x)
         return xval
+    end
+
+    function obj_to_str(obj)
+        s = string(obj)
+        if obj isa Set{Int}
+            s = str_limit(get_val(cluster_annotations[], "titles", obj))
+        end
+        return s
+    end
+
+    function show_inspector(obj)
+        tt = window_inspector[].plot
+        s = obj_to_str(obj)
+        mp = mouseposition(ax.scene)
+        smp = shift_project(ax.scene, apply_transform_and_model(nodes, mp))
+        update_tooltip_alignment!(window_inspector[], smp)
+
+        tt.text[] = s
+        tt.visible[] = true
+    end
+
+    function hide_inspector()
+        tt = window_inspector[].plot
+        tt.visible[] = false
     end
 
     viewports = Ref([])
@@ -235,7 +251,8 @@ function scratchpad!(
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
                         deactivate_interaction!(ax, :create_text)
-                        show_data(ins, nodes, i)
+                        show_inspector(obj)
+
                         if obj isa Transition
                             hovered[] = obj
                             t_idx = rel_t_to_idx[obj]
@@ -249,7 +266,7 @@ function scratchpad!(
                     elseif event.type === MouseEventTypes.out
                         hovered[] = nothing
                         notify(hovered)
-
+                        hide_inspector()
                         hovered_cluster[] = nothing
                         notify(hovered_cluster)
 
