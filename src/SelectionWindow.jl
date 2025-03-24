@@ -130,13 +130,8 @@ function build_selection_window(
         cc = Observable(clusters)
         scd = @lift begin
             ref_t = find_group_centroid($cc, cluster_data[], cluster_info[], t_list)
-
             ts = get_transitions($cluster_info, $cc)
-
-            mtx_idx = map(x -> cluster_data[].t_to_mtx[x], ts)
-            t_to_mtx = Dict(zip(ts, mtx_idx))
-            sort!(mtx_idx)
-            mat = cluster_data[].matrix[mtx_idx, mtx_idx]
+            mat, t_to_mtx = get_local_matrix(cluster_data[], ts)
 
             return buildSingleClusterData(
                 cluster=cc[],

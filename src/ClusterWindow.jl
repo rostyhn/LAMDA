@@ -1,11 +1,5 @@
 using Makie
 
-function find_cluster_representatives(distances::Matrix{Float32})
-    @show R = kmedoids(distances, 1)
-    @show R.medoids
-    return R.medoids[1]
-end
-
 function build_cluster_window(
     clusters::Observable{Set{Int}},
     cluster_data::Observable{SingleClusterData},
@@ -121,11 +115,7 @@ function build_cluster_window(
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
 
-    #=hist_vals = @lift begin
-        utri = triu!(trues(size(vals)))
-        return vec(vals[utri])
-    end
-
+    #=
     cluster_cmap = to_colormap(CLUSTER_COLORS)
     cluster_color = to_color(:grey)
     cl = collect(clusters)
@@ -145,7 +135,7 @@ function build_cluster_window(
 
     vals = lift(x -> x.mat, cluster_data)
 
-    render_views["SMovement"](centroid_scene, ts, time, alignment, find_cluster_representatives(vals[]))
+    render_views["SMovement"](centroid_scene, ts, time, alignment)
     btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
 
     on(btn_centroid_to_scratchpad.clicks) do n

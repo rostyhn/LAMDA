@@ -432,111 +432,52 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_movement_view_ts(scene, ts, time, alignment, representativeIdx)
-        
+    function render_movement_view_ts(scene, ts, time, alignment)
         d = @lift begin
-
-            # bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], $ts))
             posValsTup = map(t -> apply_alignment($alignment[t], alignedPositionsMatrices[t]), $ts)
 
-            positions = [Point3f.(eachrow(p)) for p in first.(posValsTup)] 
-            @show length(positions)
-            refPositions = positions[representativeIdx] #chose the median in the future
-            @show length(refPositions)
+            distances, t_to_mtx = get_local_matrix(cluster_data[], $ts)
+            R = kmedoids(distances, 1)
+            representativeIdx = first(R.medoids)
 
-
+            positions = [Point3f.(eachrow(p)) for p in first.(posValsTup)]
+            refPositions = positions[representativeIdx] # chose the median in the future
             velocities = last.(posValsTup) .- first.(posValsTup)
 
-            vd = fill(Point3f(0.0,0.0,0.0), length(refPositions))
+            vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
 
-            # velocityMagnitudes =  [norm.(eachrow(v)) for v in velocities]
-            
-            # @show stdDeviation = std(reduce(vcat,velocityMagnitudes))
-            # zMagnitudes = zscore.(velocityMagnitudes, 0.0, Ref(stdDeviation))
-
-            # distanceMatrices = pairwise.(Ref(Cityblock()), transpose.(zMagnitudes), ; dims=2) # equivalent to Euclidean in 1D
-            # @show "starting fuzzy comp"
-            # @time R = kmeans.(distanceMatrices, 2)
-            # groupOne = Vector{Vector{Int32}}(undef, length(velocities))
-            # groupTwo = Vector{Vector{Int32}}(undef, length(velocities))
-
-            # for trans in 1:length(velocities)
-            #     assigns = assignments(R[trans])
-            #     groupOne[trans] = Vector{Int32}()
-            #     groupTwo[trans] = Vector{Int32}()
-            #     for index in eachindex(assigns)
-            #         if assigns[index] == 1 #if probaility is higher than 30% (performs better than a hard cut between clusters)
-            #             push!(groupOne[trans], index)
-            #         end
-            #         if assigns[index] == 2
-            #             push!(groupTwo[trans], index)
-            #         end
-            #     end
-            # end
-
-            # @show meanOne = mean.( getindex.(velocityMagnitudes, groupOne))
-            # @show meanTwo = mean.( getindex.(velocityMagnitudes, groupTwo))
-    
-            # groupMobile = Vector{Vector{Int32}}(undef, length(meanOne))
-            # groupStatic = Vector{Vector{Int32}}(undef, length(meanOne))
-            # for i in eachindex(meanOne)
-            #     if meanOne[i] > meanTwo[i] # which of the two groups is the static one: seems random
-            #         groupMobile[i] = groupOne[i]
-            #         groupStatic[i] = groupTwo[i]
-            #     else
-            #         groupStatic[i] = groupOne[i]
-            #         groupMobile[i] = groupTwo[i]
-            #     end
-            # end
-
-         
-            # vd = Array{Point3f,3}(undef ,length(sampleRanges[1]),length(sampleRanges[2]),length(sampleRanges[3]))
-            #fill!(vd,Point3f(0.0,0.0,0.0))
-
-     
-            @show length(positions)
-
-            @show kernelWidth[]
-            @show "calulating density"
             num_neighbors = 10
             clusterKd = KDTree.(positions)
-            for trans in eachindex(clusterKd)
-                # @show trans
+            for t in eachindex(clusterKd)
                 for pId in eachindex(refPositions)
-                    knn, dists = NearestNeighbors.knn(clusterKd[trans], refPositions[pId], num_neighbors)
-                    uValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[trans][knn,:], kernelWidth[]) .* velocities[trans][knn,1])
-                    vValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[trans][knn,:], kernelWidth[]) .* velocities[trans][knn,2])
-                    wValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[trans][knn,:], kernelWidth[]) .* velocities[trans][knn,3])
-                    vd[pId] += Point3f(uValue,vValue,wValue) * 1.0/(length(clusterKd))
-
-                    # volMax = max(volMax, kValue)
-                    # volMin = min(volMin, kValue)
-                    # absVolMin = min(absVolMin, abs(kValue))
+                    knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
+                    uValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
+                    vValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
+                    wValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
+                    vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
                 end
             end
 
-            @show "done"
-
             velocityMagnitudes = norm.(vd)
-            @show stdDeviation = std(velocityMagnitudes)
+            stdDeviation = std(velocityMagnitudes)
             zMagnitudes = zscore(velocityMagnitudes, 0.0, stdDeviation)
             distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
-            @time R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
+            R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
             groupOne = Vector{Int32}()
             groupTwo = Vector{Int32}()
-    
-            for index in eachindex(R.weights[:,1])
-                if R.weights[index,1] > 0.3 #if probaility is higher than 30% (performs better than a hard cut between clusters)
+
+            for index in eachindex(R.weights[:, 1])
+                if R.weights[index, 1] > 0.3 #if probability is higher than 30% (performs better than a hard cut between clusters)
                     push!(groupOne, index)
                 end
-                if R.weights[index,2] > 0.3
+                if R.weights[index, 2] > 0.3
                     push!(groupTwo, index)
                 end
             end
-            
-            meanOne = mean( velocityMagnitudes[groupOne])
-            meanTwo = mean( velocityMagnitudes[groupTwo])
-    
+
+            meanOne = mean(velocityMagnitudes[groupOne])
+            meanTwo = mean(velocityMagnitudes[groupTwo])
+
             groupMobile = Vector{Int32}()
             groupStatic = Vector{Int32}()
             if meanOne > meanTwo # which of the two groups is the static one: seems random
@@ -547,81 +488,23 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 groupMobile = groupTwo
             end
             distanceMatrixMobile = pairwise(Euclidean(), vd[groupMobile]) # cluster only the moving atoms again
-            
-            mobileResult = kmedoids(distanceMatrixMobile, 5) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
 
-            clusters = ones(Float32,length(refPositions))
+            mobileResult = kmedoids(distanceMatrixMobile, min(length($ts), 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
+
+            clusters = ones(Float32, length(refPositions))
 
             for i in eachindex(groupMobile)
-                clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left fore immobile atoms
+                clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left for immobile atoms
             end
 
-            vels = fill(Point3f(0.0,0.0,0.0), length(refPositions))
-            vels[groupMobile[mobileResult.medoids]] = vd[groupMobile[mobileResult.medoids]] 
-    
+            vels = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
+            vels[groupMobile[mobileResult.medoids]] = vd[groupMobile[mobileResult.medoids]]
 
-            # @show typeof(p)
-            @show typeof(vd)
-            @show vd
-            # vels = zeros(Float32, size(velocities[1]))
-            # vels[groupMobile[mobileResult.medoids],:] = velocities[groupMobile[mobileResult.medoids],:] 
-
-            # pos = Vector{Point3f}()
-            # vec = Vector{Point3f}()
-            # @show size(p)
-            # flattened_p = p[:]
-            # flattened_v = vd[:]
-            # @show length(flattened_p)
-            # @show mean( norm.(flattened_v) )
-            # @show maximum( norm.(flattened_v) )
-
-            # for i in eachindex(flattened_p)
-            #     if norm(flattened_v[i]) > 0.06
-            #         push!(pos, flattened_p[i])
-            #         push!(vec, flattened_v[i])
-            #     end
-            # end
-            
-             inits = first.(posValsTup)[representativeIdx]
-             fins = last.(posValsTup)[representativeIdx]
-            return (inits,fins), vd, clusters
+            inits = first.(posValsTup)[representativeIdx]
+            fins = last.(posValsTup)[representativeIdx]
+            return (inits, fins), vd, clusters
         end
-
-
-        # distanceMatrixMobile = pairwise(Euclidean(), velocities[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
-        
-        # positions = reduce(vcat,first.(posValsTup))
-        # distanceMatrixLocation = pairwise(Euclidean(), positions[groupMobile,:]', ; dims=2) # cluster only the moving atoms again
-        
-        # mobileResult = kmedoids(distanceMatrixMobile, 5) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
-
-        # @show numberOfAtoms = trunc(Int32,length(groupMobile)/length(posValsTup))
-        # atomMedians = kmedoids(distanceMatrixLocation, numberOfAtoms) #number of atoms 
-        # @show assignments(atomMedians)
-
-        
-        # clusters = ones(Float32,length(bondVals))
-
-        # for i in eachindex(groupMobile)
-        #     clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left fore immobile atoms
-        # end
-        
-        # vels = zeros(Float32, size(velocities))
-        # vels[groupMobile[mobileResult.medoids],:] = velocities[groupMobile[mobileResult.medoids],:] 
-
-        # # pos = zeros(Float32, size(velocities))
-        # # pos[groupMobile[mobileResult.medoids],:] = positions[groupMobile[mobileResult.medoids],:] 
-
-
-        # inits = reduce(vcat, first.(posValsTup))
-        # fins = reduce(vcat, last.(posValsTup))
-
-        # # inits[assignments(atomMedians)]
-
-
-        return simple_arrow_view!(scene, lift(x -> x[1], d), time , atom_cmap,lift(x -> x[2], d), lift(x -> x[3], d))
-
-        # return simple_atom_view!(scene, Observable((inits, fins)), Observable(bondVals), (0.5, 2.0), atom_cmap, time)
+        return simple_arrow_view!(scene, lift(x -> x[1], d), time, atom_cmap, lift(x -> x[2], d), lift(x -> x[3], d))
     end
 
     function render_superquadrics_view(scene, transition, inspector, alignment)
