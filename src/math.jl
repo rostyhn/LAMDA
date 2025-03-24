@@ -176,3 +176,50 @@ function pure_align(r1, r2)
 
     return R, norm(r1 - r2 * R)
 end
+
+# finds the centroid between a group of clusters
+function find_group_centroid(clusters, cd::ClusterData, ci::ClusterInfo, t_list)
+    cluster_list = collect(clusters)
+
+    reps = map(x -> ci.representatives[x], cluster_list)
+    mtx_idx = map(x -> cd.t_to_mtx[x], reps)
+
+    dist_sum = map(x -> sum(cd.matrix[x, :][mtx_idx]), mtx_idx)
+    ref_t_idx = mtx_idx[argmin(dist_sum)]
+
+    return t_list[cd.clustering.order[ref_t_idx]]
+end
+
+function calculate_alignment(ref_t, ts, posMats, features)
+    rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
+    ref_s1_pos = posMats[ref_t][1]
+    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t][1])))
+    ref_s1_shift = mean(ref_s1_com, dims=1)
+
+    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(features[ref_t][1])))
+
+    rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false, ref_t)
+
+    for t in ts
+        if t != ref_t
+            t_s1_pos = posMats[t][1]
+            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(features[t][1])))
+            t_s1_shift = mean(t_s1_com, dims=1)
+            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos .- t_s1_shift, x), eachcol(features[t][1])))
+
+            t_s2_pos = posMats[t][2]
+            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(features[t][2])))
+            t_s2_shift = mean(t_s2_com, dims=1)
+            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos .- t_s2_shift, x), eachcol(features[t][2])))
+
+            R1, res1 = pure_align(ref_s1_com, t_s1_com)
+            R2, res2 = pure_align(ref_s1_com, t_s2_com)
+
+            R = (res1 < res2) ? R1 : R2
+            shift = (res1 < res2) ? t_s1_shift : t_s2_shift
+            rot[t] = (shift, R, res1 > res2, ref_t)
+        end
+    end
+
+    return rot
+end

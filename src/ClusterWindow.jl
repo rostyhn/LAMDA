@@ -1,22 +1,61 @@
 using Makie
 
-const GRID_SIZE = 16
-const GRID_X = Int(sqrt(GRID_SIZE))
-const GRID_Y = Int(sqrt(GRID_SIZE))
-const SCENE_SELECTED = to_color(:grey)
-const BLACK = to_color(:black)
+function build_cluster_window(
+    clusters::Observable{Set{Int}},
+    cluster_data::Observable{SingleClusterData},
+    scalars,
+    mat_range,
+    render_views,
+    widgets,
+    bins,
+    on_transition_select,
+    hovered_transition,
+    hovered_cluster,
+    inspector_ref::MaybeObservable{DataInspector},
+    calculators,
+    cluster_annotations;
+    on_cluster_select=(x) -> (),
+    on_window_hover=(x) -> (),
+    on_up=(x) -> (),
+    on_left=(x) -> (),
+    on_right=(x) -> (),
+    on_downleft=(x) -> (),
+    on_downright=(x) -> (),
+    fig_size=(400, 400)
+)
 
-function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_idx, mat_range, render_views, widgets; fig_size=(400, 400))
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
     mat_hovered = Observable((0, 0))
 
-    scene_selector = Observable("Atom")
+    scene_selector = Observable("Volume")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = "Cluster $(str_limit(clusters; len=25))"
+    title = lift((x, y) -> get_val(y, "titles", x), clusters, cluster_annotations)
+    notes = lift((x, y) -> get_val(y, "notes", x), clusters, cluster_annotations)
     menu_bar = top_bar(window, title, 3)
+
+    btn_notes = Button(window, label="Notes")
+    menu_bar[1, 1] = btn_notes
+
+    function update_cluster(name, val)
+        set_val(cluster_annotations[], clusters[], name, val)
+        notify(cluster_annotations)
+    end
+
+    screen = nothing
+    nw = NoteWindow(title, notes, update_cluster)
+    on(btn_notes.clicks) do n
+        if isnothing(screen)
+            screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
+            display(screen, nw)
+        else
+            close(screen)
+            screen = nothing
+        end
+
+    end
 
     render_menu = Menu(window,
         options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -38,63 +77,87 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
     end
 
     time, t_slider = widgets["Movement"](0.0, window)
+    btn_centroid = Button(window, label="Show centroid")
+
+    on(btn_centroid.clicks) do n
+        hovered_transition[] = cluster_data[].ref_t
+        notify(hovered_transition)
+    end
+
+    ts = Observable(cluster_data[].ts)
+    alignment = @lift begin
+        ts.val = $(cluster_data).ts
+        return calculators["Alignment"](ts.val)
+    end
 
     window[2, 1:2] = hgrid!(
+        btn_centroid,
         Label(window, "Render mode"),
         render_menu,
         scalar_menu,
         t_slider)
 
+    hb = lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0,
+        hovered_cluster,
+        clusters)
 
-    l_btn = Button(window, label="◀", tellwidth=false)
-    r_btn = Button(window, label="▶", tellwidth=false)
+    umap_graph_view!(window[3, 1:2],
+        lift(x -> (x.ts, x.mat, x.colors), cluster_data),
+        scene_selector,
+        scalar_selector,
+        time,
+        render_views,
+        hovered_transition,
+        alignment;
+        highlight_borders=hb,
+        on_click=on_transition_select)
 
-    # transition coupled with matrix coords
-    ts_pairs = sort(collect(zip(ts, idx_to_mtx_idx)), by=x -> x[2])
+    mat_grid = GridLayout()
+    window[2:3, 3] = mat_grid
 
-    curr_page = Observable(1)
-    ts_chunks = collect(Iterators.partition(ts_pairs, GRID_SIZE))
-    num_pages = length(ts_chunks)
+    #=
+    cluster_cmap = to_colormap(CLUSTER_COLORS)
+    cluster_color = to_color(:grey)
+    cl = collect(clusters)
+    if length(cl) == 1
+        cluster_color = cluster_cmap[mod1(first(cl), length(cluster_cmap))]
+    end=#
 
-    on(l_btn.clicks) do n
-        if curr_page[] > 1
-            curr_page[] -= 1
-        end
+    centroid_grid = GridLayout()
+    mat_grid[1, 1] = centroid_grid
+
+    Label(centroid_grid[1, 1], "Cluster average", font=:bold, tellwidth=false)
+    centroid_scene = LScene(
+        centroid_grid[2, 1],
+        show_axis=false,
+        scenekw=(backgroundcolor=:black, clear=true),
+    )
+
+    vals = lift(x -> x.mat, cluster_data)
+
+    render_views["SMovement"](centroid_scene, ts, time, alignment)
+    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
+
+    on(btn_centroid_to_scratchpad.clicks) do n
+        on_cluster_select(clusters[])
     end
 
-    on(r_btn.clicks) do n
-        if curr_page[] < length(ts_chunks)
-            curr_page[] += 1
-        end
+    dendrogram_ax = Axis(mat_grid[2, 1],
+        backgroundcolor=:transparent, tellwidth=false, tellheight=false)
+
+    deregister_interaction!(dendrogram_ax, :rectanglezoom)
+    hidedecorations!(dendrogram_ax)
+
+    dendrogram!(dendrogram_ax,
+        cluster_data,
+        hovered_cluster,
+        cluster_annotations;
+        colormap=CLUSTER_COLORS)
+
+    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
+    on(vals) do v
+        reset_limits!(hm_ax)
     end
-
-    pg_label = Label(window, lift(x -> "Page $(x) of $(num_pages)", curr_page), tellwidth=false)
-
-    tGrid = GridLayout()
-    window[3, 1:2] = vgrid!(tGrid, hgrid!(l_btn, pg_label, r_btn))
-
-    hm_ax, hm = heatmap(window[3, 3], vals, colorrange=mat_range)
-    DataInspector(hm)
-
-    # draw boxes around pages
-    page_boxes = []
-    for ts_p in ts_chunks
-        idxs = last.(ts_p)
-        lo = minimum(idxs)
-        hi = maximum(idxs)
-        p = draw_bbox_pixel_space!(hm_ax, lo, hi; color=:grey)
-        push!(page_boxes, p)
-    end
-
-    last_cp = 0
-    on(curr_page, update=true) do cp
-        page_boxes[cp].color[] = :red
-        if last_cp > 0
-            page_boxes[last_cp].color[] = :grey
-        end
-        last_cp = cp
-    end
-
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
@@ -112,160 +175,27 @@ function build_cluster_window(clusters, ts, idx_to_mtx_idx, vals, scalars, t_to_
         notify(mat_hovered)
         return Consume(false)
     end
-    scenes = []
-    scene_info = []
-    for i in 1:GRID_X
-        for j in 1:GRID_Y
-            rootScene = LScene(
-                tGrid[i, j],
-                show_axis=false,
-                scenekw=(backgroundcolor=:black, clear=true),
-            )
-            DataInspector(rootScene)
 
-            idx = (i - 1) * 4 + j
-            init_t = nothing
-            init_mtx = nothing
-            if idx <= length(ts_pairs)
-                init_t = ts_pairs[idx][1]
-                init_mtx = ts_pairs[idx][2]
-            end
-
-            t = Observable{Union{Nothing,Tuple{Int,Int}}}(init_t)
-            mtx_idx = Observable{Union{Nothing,Int}}(init_mtx)
-
-            is_visible = Observable(false)
-            # could be more efficient if this gets updated per page instead of per transition
-            on(curr_page, update=true) do cp
-                curr_chunk = ts_chunks[cp]
-
-                if idx <= length(curr_chunk)
-                    t[] = curr_chunk[idx][1]
-                    mtx_idx[] = curr_chunk[idx][2]
-                    is_visible[] = true
-                else
-                    t.val = nothing
-                    mtx_idx.val = nothing
-                    is_visible[] = false
-                end
-            end
-
-            linked_transition_view(rootScene, window, tGrid, (i, j), t, scene_selector, scalar_selector, scalars, t_to_idx, time, is_visible, render_views)
-
-            push!(scenes, rootScene.scene)
-            push!(scene_info, mtx_idx)
+    on(events(window).keyboardbutton) do event
+        if ispressed(window, Exclusively(LEFT_KEY))
+            on_left(clusters)
+        elseif ispressed(window, Exclusively(RIGHT_KEY))
+            on_right(clusters)
+        elseif ispressed(window, Exclusively(UP_KEY))
+            on_up(clusters)
+        elseif ispressed(window, Exclusively(LEFT_DOWN))
+            on_downleft(clusters)
+        elseif ispressed(window, Exclusively(RIGHT_DOWN))
+            on_downright(clusters)
         end
     end
 
-    # draws rectangle on matrix whenever a transition is hovered over
-    # not elegant, but it works and is relatively efficient
-    bBox = nothing
-    last_bBox = 0
-    on(events(window).mouseposition) do mp
-        if is_mouseinside(window)
-            found = false
-            for (i, s) in enumerate(scenes)
-                if mp in viewport(s)[]
-                    if last_bBox != i
-                        if !isnothing(bBox)
-                            delete!(parent_scene(bBox), bBox)
-                        end
-                        if !isnothing(scene_info[i][])
-                            bBox = draw_bbox_pixel_space!(hm_ax, scene_info[i][], scene_info[i][])
-                            last_bBox = i
-                        end
-                    end
-                    found = true
-                    break
-                end
-            end
-            if !found
-                if !isnothing(bBox)
-                    last_bBox = 0
-                    delete!(parent_scene(bBox), bBox)
-                    bBox = nothing
-                end
-            end
+    on(events(window).entered_window) do entered
+        if entered
+            on_window_hover(clusters[])
         else
-            if !isnothing(bBox)
-                last_bBox = 0
-                delete!(parent_scene(bBox), bBox)
-                bBox = nothing
-            end
+            on_window_hover(nothing)
         end
     end
-
-    function color_scene!(idx, color)
-        if idx != 0
-            s = scenes[mod1(idx, length(scenes))]
-            s.backgroundcolor[] = color
-        end
-    end
-
-
-    last_lh = 0
-    last_rh = 0
-    on(mat_hovered, update=true) do h
-        lh, rh = h
-
-        curr_chunk = last.(ts_chunks[curr_page[]])
-
-        if lh != last_lh
-            if lh in curr_chunk
-                color_scene!(lh, SCENE_SELECTED)
-            end
-            color_scene!(last_lh, BLACK)
-            last_lh = lh
-        end
-
-        if rh != last_rh
-            if rh in curr_chunk
-                color_scene!(rh, SCENE_SELECTED)
-            end
-            color_scene!(last_rh, BLACK)
-            last_rh = rh
-        end
-    end
-
     return window
-end
-
-
-function linked_transition_view(rootScene, fig, parentGrid, loc, t, scene_selection, scalar_selection, scalars, t_to_idx, time, is_visible, render_views)
-    t_idx::Observable{Union{Nothing,Int}} = lift(x -> get(t_to_idx, x, nothing), t)
-    is_empty = lift((x, y) -> isnothing(x) || isnothing(y), t, t_idx)
-
-    l = Label(fig, lift(x -> "$(x)", t), tellwidth=false, visible=lift(x -> x, is_visible))
-    i, j = loc
-
-    g = vgrid!(rootScene, l)
-    parentGrid[i, j] = g
-
-    inspector = DataInspector(rootScene)
-    function select_fn(selection)
-        #band-aid solution for now, will break if user goes to last page and then switches selection
-        if is_empty[]
-            return [], []
-        end
-
-        @lift begin
-            parent_scene(rootScene).visible[] = $is_visible
-            notify(parent_scene(rootScene).visible)
-        end
-
-        if selection == "Volume"
-            render_views[selection](rootScene, t_idx, t)
-            return [], []
-        elseif selection == "Atom"
-            render_views[selection](rootScene, t, lift(x -> scalars[x], scalar_selection), time)
-            return [], []
-        elseif selection == "Superquadric"
-            return render_views[selection](rootScene, inspector, t)
-        else
-            return render_views[selection](rootScene, t, time)
-        end
-    end
-
-
-    scene_switcher(rootScene, g, scene_selection, select_fn)
 end

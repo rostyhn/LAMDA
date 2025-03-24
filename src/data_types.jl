@@ -1,0 +1,127 @@
+# contents of colorbuffer returned by show(), used for rendering scenes to images 
+const ColorMatrix = Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}} # stored as mat of ints from 0 to 255
+const Maybe{T} = Union{Nothing,T}
+const MaybeObservable{T} = Observable{Maybe{T}}
+const Transition = Tuple{Int16,Int16}
+
+@kwdef mutable struct ClusterInfo
+    groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx
+    assignments::Vector{Int}
+    representatives
+    # dendrogram info
+    lines
+    clusters
+    cutoff
+    c_to_parent::Dict{Set{Int},Set{Int}}
+    parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
+    c_to_idx
+    h_range
+end
+
+function get_transitions(ci::ClusterInfo, cluster::Set{Int})::Vector{Transition}
+    return reduce(vcat, map(x -> ci.groups[x], collect(cluster)), init=[])
+end
+
+function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}
+    return get(ci.c_to_parent, cluster, cluster)
+end
+
+function get_children(ci::ClusterInfo, cluster::Set{Int})::Union{Nothing,Tuple{Set{Int},Set{Int}}}
+    return get(ci.parent_to_c, cluster, nothing)
+end
+
+function get_root(ci::ClusterInfo)
+    c = first(ci.clusters)
+    p = ci.c_to_parent[c]
+    while length(intersect(p, c)) != length(p)
+        c = p
+        p = get_parent(ci, c)
+    end
+    return p
+end
+
+function dfs(ci::ClusterInfo, cluster::Set{Int}, acc=Ref([]))
+    push!(acc[], cluster)
+    children = get_children(ci, cluster)
+    if isnothing(children)
+        return
+    end
+    lc, rc = children
+    dfs(ci, lc, acc)
+    dfs(ci, rc, acc)
+end
+
+function get_neighbor(ci::ClusterInfo, cluster::Set{Int}, idx)
+    parent = ci.c_to_parent[cluster]
+    children = ci.parent_to_c[parent]
+    return children[idx]
+end
+
+@kwdef mutable struct ClusterData
+    clustering
+    matrix
+    m_extrema
+    t_to_mtx::Dict{Transition,Int}
+    mtx_to_t::Dict{Int,Transition}
+end
+
+function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
+    mtx_idx = map(x -> cd.t_to_mtx[x], ts)
+    t_to_mtx = Dict(zip(ts, mtx_idx))
+    sort!(mtx_idx)
+    return cd.matrix[mtx_idx, mtx_idx], t_to_mtx
+end
+
+
+@kwdef struct SingleClusterData
+    cluster
+    ts::Vector{Transition}
+    ref_t::Transition
+    mat::Matrix{Float32}
+    colors
+    t_to_mtx::Dict{Transition,Int}
+    cutoff
+    h_range
+    lines
+    assignments
+    clusters
+end
+
+function ClusterAnnotations()
+    d = Dict()
+    d["titles"] = Dict{Set{Int},String}()
+    d["notes"] = Dict{Set{Int},String}()
+    return d
+end
+
+function get_val(ca, property::String, s::Set{Int})
+    dv = (property == "titles") ? string(s) : "..."
+    return get(ca[property], s, dv)
+end
+
+function set_val(ca, s::Set{Int}, property::String, val::String)
+    ca[property][s] = val
+end
+
+function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_info, rel_t_to_idx)
+    cmap = to_colormap(CLUSTER_COLORS)
+
+    rel_ts = map(x -> rel_t_to_idx[x], ts)
+    assignments = map(x -> cluster_info.assignments[x], rel_ts)
+    colors = map(x -> cycle_colormap(x, cmap), assignments)
+
+    # transition to matrix index dict
+    clusters, lines = branch(cluster_info, cluster)
+
+    return SingleClusterData(cluster=cluster,
+        ts=ts,
+        ref_t=ref_t,
+        mat=mat,
+        colors=colors,
+        t_to_mtx=t_to_mtx,
+        lines=lines,
+        clusters=clusters,
+        assignments=assignments,
+        h_range=cluster_info.h_range,
+        cutoff=cluster_info.cutoff)
+end

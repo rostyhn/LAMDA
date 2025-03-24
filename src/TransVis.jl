@@ -7,6 +7,10 @@ using Pickle
 using JLD2
 using CodecZlib
 using Clustering: hclust, cutree
+using FileIO
+using ColorTypes
+using FixedPointNumbers
+
 #Vis
 using GLMakie
 using Makie
@@ -19,10 +23,13 @@ using LinearAlgebra
 using Base.Threads
 using Statistics
 using ProgressMeter
-using Ripserer
 using Mmap
+using Clustering
+using UMAP
 
+using PyCall
 
+include("data_types.jl")
 include("io.jl")
 # unfortunately is used as part of the main module
 include("multiprocess.jl")
@@ -32,34 +39,46 @@ include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
 include("dendrogram.jl")
+include("UMapView.jl")
+include("Scratchpad.jl")
+include("NoteWindow.jl")
 include("SettingsWindow.jl")
 include("ClusterWindow.jl")
 include("ReductionWindow.jl")
 include("ui.jl")
 
 export go
-
 const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
+const CLUSTER_COLORS = :tab20
 
+const LEFT_KEY = Keyboard.left
+const RIGHT_KEY = Keyboard.right
+const UP_KEY = Keyboard.up
+const DOWN_KEY = Keyboard.down
+
+const LEFT_DOWN = LEFT_KEY & DOWN_KEY
+const RIGHT_DOWN = RIGHT_KEY & DOWN_KEY
 
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(theme_latexfonts(); fontsize=18.0)
-    window = build_reduction_window(active_trajectory, main_window; kwargs...)
+
+    screen_ref = Ref{Maybe{Screen}}(nothing)
+    window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
     screen = GLMakie.Screen()
+    screen_ref[] = screen
     display(screen, window)
 end
 
-
-function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
+function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
     # GLMakie.closeall() # close reduction window 
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     scalars = active_trajectory["scalars"]
-    scalar_range = active_trajectory["scalar_range"]
+    scalar_ranges = active_trajectory["scalar_ranges"]
 
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
@@ -79,10 +98,8 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     per_t_scalars = active_trajectory["per_t_scalars"]
 
     # absolute index for volume data
-    t_to_idx = Dict()
-    for (i, t) in enumerate(active_trajectory["transitions"])
-        t_to_idx[t] = i
-    end
+    t_to_idx = Dict{Transition,Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
+    rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
 
     per_t_scalars["t_to_idx"] = t_to_idx
     per_t_scalar_ranges["t_to_idx"] = (1, length(active_trajectory["transitions"]))
@@ -90,30 +107,46 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-    clustering = @lift begin
-        res = hclust($dm, linkage=:ward, branchorder=:barjoseph)
+    cluster_data = @lift begin
+        clustering = hclust($dm, linkage=:ward, branchorder=:barjoseph)
 
-        h_range[] = extrema(res.heights)
+        rm = zeros(Float32, size($dm))
+        # gets the correct idx 
+        t_to_mtx = Dict{Transition,Int}()
+        mtx_to_t = Dict{Int,Transition}()
+        for (i, r) in enumerate(clustering.order)
+            rm[i, :] .= $dm[r, :][clustering.order]
+            t_to_mtx[transitionSequence[r]] = i
+            mtx_to_t[i] = transitionSequence[r]
+        end
+
+        # get minimum and maximum of entire matrix for cmap
+        fl = vec($dm)
+        h_range[] = extrema(clustering.heights)
         notify(h_range)
-        return res
+        return ClusterData(clustering=clustering,
+            matrix=rm,
+            m_extrema=(extrema(fl)),
+            t_to_mtx=t_to_mtx,
+            mtx_to_t=mtx_to_t)
     end
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
-    cluster_groups = @lift begin
-        assignments = cutree($clustering, h=$h_cutoff)
-        groups = Dict{Int,Vector{Int}}()
+    cluster_info = @lift begin
+        assignments = cutree($(cluster_data).clustering, h=$h_cutoff)
+        groups = Dict{Int,Vector{Transition}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
                 g = groups[c]
             else
-                g = Vector{Int}()
+                g = Vector{Transition}()
             end
-            push!(g, i)
+            push!(g, transitionSequence[i])
             groups[c] = g
         end
 
         #=
-        pickled_groups = Dict{Int,Vector{Tuple{Int,Int}}}()
+        pickled_groups = Dict{Int,Vector{Transition}}()
         for (clusterIdx, g) in groups
             ts = map(x -> transitionSequence[x], g)
             pickled_groups[clusterIdx] = ts
@@ -122,20 +155,26 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         Pickle.store("clustering_$($h_cutoff).pickle", pickled_groups)
         =#
 
-        return groups
-    end
-
-    cluster_representatives = @lift begin
-        reps = Dict{Int,Tuple{Int,Int}}()
-        for (clusterIdx, g) in $cluster_groups
+        reps = Dict{Int,Transition}()
+        for (clusterIdx, g) in groups
             # find reference t
             m = $dm
-            dist_sum = map(x -> sum(m[x, :][g]), g)
-            ref_t_idx = g[argmin(dist_sum)]
-
-            reps[clusterIdx] = transitionSequence[ref_t_idx]
+            gi = map(x -> $(cluster_data).t_to_mtx[x], g)
+            dist_sum = map(x -> sum(m[x, :][gi]), gi)
+            reps[clusterIdx] = g[argmin(dist_sum)]
         end
-        return reps
+
+        lines, clusters, c_to_parent, parent_to_c, c_to_idx = treepositions($(cluster_data).clustering, $h_cutoff)
+        return ClusterInfo(groups=groups,
+            representatives=reps,
+            assignments=assignments,
+            lines=lines,
+            c_to_parent=c_to_parent,
+            parent_to_c=parent_to_c,
+            clusters=clusters,
+            c_to_idx=c_to_idx,
+            h_range=$h_range,
+            cutoff=$h_cutoff)
     end
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
@@ -146,47 +185,16 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         println("Calculating alignment with $($selected_alignment)")
         # figure out what transitions are grouped together
         features = alignments[$selected_alignment]
-
-        rot = Dict{Tuple{Int16,Int16},Tuple{Array{Float32},Matrix{Float32},Bool,Tuple{Int,Int}}}()
-        for (clusterIdx, g) in $cluster_groups
+        rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
+        for (clusterIdx, ts) in $(cluster_info).groups
             # find reference t
-            m = $dm
-            dist_sum = map(x -> sum(m[x, :][g]), g)
-            ref_t_idx = argmin(dist_sum)
+            gi = map(x -> $(cluster_data).t_to_mtx[x], ts)
+            dist_sum = map(x -> sum($dm[x, :][gi]), gi)
+            ref_t = ts[argmin(dist_sum)]
 
-            ts = map(x -> transitionSequence[x], g)
-
-            # for now, use first t as reference 
-            ref_t = popat!(ts, ref_t_idx)
-
-            ref_s1_pos = alignedPositionsMatrices[ref_t][1]
-            ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t][1])))
-            ref_s1_shift = mean(ref_s1_com, dims=1)
-
-            ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(features[ref_t][1])))
-
-            rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false, ref_t)
-
-            for t in ts
-                t_s1_pos = alignedPositionsMatrices[t][1]
-                t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(features[t][1])))
-                t_s1_shift = mean(t_s1_com, dims=1)
-                t_s1_com = reduce(vcat, map(x -> com(t_s1_pos .- t_s1_shift, x), eachcol(features[t][1])))
-
-                t_s2_pos = alignedPositionsMatrices[t][2]
-                t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(features[t][2])))
-                t_s2_shift = mean(t_s2_com, dims=1)
-                t_s2_com = reduce(vcat, map(x -> com(t_s2_pos .- t_s2_shift, x), eachcol(features[t][2])))
-
-                R1, res1 = pure_align(ref_s1_com, t_s1_com)
-                R2, res2 = pure_align(ref_s1_com, t_s2_com)
-
-                R = (res1 < res2) ? R1 : R2
-                shift = (res1 < res2) ? t_s1_shift : t_s2_shift
-                rot[t] = (shift, R, res1 > res2, ref_t)
-            end
+            g_rot = calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+            merge!(rot, g_rot)
         end
-
         return rot
     end
 
@@ -226,11 +234,14 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     end
 
     # should be cached
-    bondDeltas = Dict{Tuple{Int16,Int16},Matrix{Float32}}()
-    absAvgBonds = Dict{Tuple{Int16,Int16},Array{Float32}}()
+    bondDeltas = Dict{Transition,Matrix{Float32}}()
+    absAvgBonds = Dict{Transition,Array{Float32}}()
     bonds = Dict()
     bdMin = floatmax(Float32)
     bdMax = floatmin(Float32)
+    avgMin = floatmax(Float32)
+    avgMax = floatmin(Float32)
+
     println("Calculating bonds...")
     @showprogress for t in transitionSequence
         s1, s2 = t
@@ -249,12 +260,16 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             cartesians = length(findall(!iszero, r))
             avgs[i] = sum(abs.(r)) / cartesians
         end
+        avgMin = min(avgMin, minimum(avgs))
+        avgMax = max(avgMax, maximum(avgs))
+
         absAvgBonds[t] = avgs
         bondDeltas[t] = bd
         bonds[t] = calc_bonds(connectivity[t[1]])
     end
 
     scalars["absAvgBonds"] = absAvgBonds
+    scalar_ranges["absAvgBonds"] = (avgMin, avgMax)
 
     lsExtrema = (bdMin, bdMax)
     ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
@@ -387,68 +402,124 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return (absInvMin, absInvMax)
     end
 
-    function create_position_alignment_observer(transition)
+    # convenience function to avoid passing around all the data
+    function calc_alignment(ts)
+        if !isempty(ts)
+            ts_idx = map(x -> rel_t_to_idx[x], ts)
+            features = alignments[selected_alignment[]]
+
+            dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
+            ref_t_idx = argmin(dist_sum)
+
+            ref_t = ts[ref_t_idx]
+
+            return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+        else
+            return Dict()
+        end
+    end
+
+
+    function create_position_alignment_observer(transition, alignment)
         return @lift begin
-            return apply_alignment($alignment_rotations[$transition], $alignedPositionsMatrices[$transition])
+            return apply_alignment($alignment[$transition], $alignedPositionsMatrices[$transition])
         end
     end
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene, transition, scalar_vals, time)
-        t_ap = create_position_alignment_observer(transition)
-        return simple_atom_view!(scene, t_ap, lift((x, y) -> x[y], scalar_vals, transition), scalar_range, atom_cmap, time)
+    function render_atom_view(scene, transition, selected_scalar, time, alignment)
+        t_ap = create_position_alignment_observer(transition, alignment)
+        return simple_atom_view!(scene, t_ap,
+            lift((x, y) -> scalars[x][y], selected_scalar, transition),
+            lift(x -> scalar_ranges[x], selected_scalar),
+            atom_cmap,
+            time)
     end
 
-    function render_volume_view(scene, t_idx, transition)
+    function render_volume_view(scene, transition)
         vd = lift((x, y, z) ->
-                reshape(x[:, y], (length(z[1]), length(z[2]), length(z[3]))), volumeData, t_idx, sampleRanges)
-
+                reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, transition, sampleRanges)
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_movement_view(scene, clusters, time)
-        # first attempt, this is really dependent on the quality of the alignment
-        t_ap = @lift begin
-            g = reduce(vcat, map(x -> $cluster_groups[x], collect($clusters)))
-            ts = map(x -> transitionSequence[x], g)
-            bondVals = reduce(vcat, map(x -> scalars["absAvgBonds"][x], ts))
-            posValsTup = map(t -> apply_alignment($alignment_rotations[t], alignedPositionsMatrices[t]), ts)
+    function render_movement_view_ts(scene, ts, time, alignment)
+        d = @lift begin
+            posValsTup = map(t -> apply_alignment($alignment[t], alignedPositionsMatrices[t]), $ts)
 
-            inits = reduce(vcat, first.(posValsTup))
-            fins = reduce(vcat, last.(posValsTup))
+            distances, t_to_mtx = get_local_matrix(cluster_data[], $ts)
+            R = kmedoids(distances, 1)
+            representativeIdx = first(R.medoids)
 
-            return (inits, fins), bondVals
-        end
+            positions = [Point3f.(eachrow(p)) for p in first.(posValsTup)]
+            refPositions = positions[representativeIdx] # chose the median in the future
+            velocities = last.(posValsTup) .- first.(posValsTup)
 
-        simple_atom_view!(scene, lift(x -> x[1], t_ap), lift(x -> x[2], t_ap), (0.5, 2.0), atom_cmap, time)
+            vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
 
-        #=
-        l = @lift begin
-            # calculate 10 interpolated positions for each moving atom
-            idx = findall(x -> x > 0.5, $t_ap[2])
-
-            init_lines = $t_ap[1][1][idx, :]
-            final_lines = $t_ap[1][2][idx, :]
-
-            lines = []
-            interpolated_range = collect(0.0:0.1:1.0)
-            for (i, (init, final)) in enumerate(zip(eachrow(init_lines), eachrow(final_lines)))
-                diff = final - init
-                push!(lines, map(x -> Point3f(init + (diff .* x)), interpolated_range)...)
-                push!(lines, Point3f(NaN))
+            num_neighbors = 10
+            clusterKd = KDTree.(positions)
+            for t in eachindex(clusterKd)
+                for pId in eachindex(refPositions)
+                    knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
+                    uValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
+                    vValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
+                    wValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
+                    vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
+                end
             end
-            return lines
-        end
 
-        lin = lines!(scene, l, overdraw=true)
-        lin.inspectable = false
-        =#
-        return [], []
+            velocityMagnitudes = norm.(vd)
+            stdDeviation = std(velocityMagnitudes)
+            zMagnitudes = zscore(velocityMagnitudes, 0.0, stdDeviation)
+            distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
+            R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
+            groupOne = Vector{Int32}()
+            groupTwo = Vector{Int32}()
+
+            for index in eachindex(R.weights[:, 1])
+                if R.weights[index, 1] > 0.3 #if probability is higher than 30% (performs better than a hard cut between clusters)
+                    push!(groupOne, index)
+                end
+                if R.weights[index, 2] > 0.3
+                    push!(groupTwo, index)
+                end
+            end
+
+            meanOne = mean(velocityMagnitudes[groupOne])
+            meanTwo = mean(velocityMagnitudes[groupTwo])
+
+            groupMobile = Vector{Int32}()
+            groupStatic = Vector{Int32}()
+            if meanOne > meanTwo # which of the two groups is the static one: seems random
+                groupMobile = groupOne
+                groupStatic = groupTwo
+            else
+                groupStatic = groupOne
+                groupMobile = groupTwo
+            end
+            distanceMatrixMobile = pairwise(Euclidean(), vd[groupMobile]) # cluster only the moving atoms again
+
+            mobileResult = kmedoids(distanceMatrixMobile, min(length($ts), 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
+
+            clusters = ones(Float32, length(refPositions))
+
+            for i in eachindex(groupMobile)
+                clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left for immobile atoms
+            end
+
+            vels = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
+            vels[groupMobile[mobileResult.medoids]] = vd[groupMobile[mobileResult.medoids]]
+
+            inits = first.(posValsTup)[representativeIdx]
+            fins = last.(posValsTup)[representativeIdx]
+            return (inits, fins), vd, clusters
+        end
+        return simple_arrow_view!(scene, lift(x -> x[1], d), time, atom_cmap, lift(x -> x[2], d), lift(x -> x[3], d))
     end
 
-    function render_superquadrics_view(scene, inspector, transition)
-        t_ap = create_position_alignment_observer(transition)
+    function render_superquadrics_view(scene, transition, inspector, alignment)
+        t_ap = create_position_alignment_observer(transition, alignment)
 
         invariant = lift((x, y) -> active_trajectory[x][y], selected_invariant, transition)
         points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
@@ -461,10 +532,10 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
             sq[] = superquadric.(1.0, points[], s, 3.0, 0.1)[:]
         end
 
-        il, is = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
+        il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
 
         push!(il, calc_sq)
-        return il, is
+        return il, is, plots
     end
 
     function time_slider(init_time, figure)
@@ -480,6 +551,33 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
         return time, sg
     end
 
+    # could be one func
+    function render_menu(figure; default="Volume")
+        scene_selector = Observable(default)
+        render_menu = Menu(figure,
+            options=SINGLE_TRANSITION_RENDER_OPTIONS,
+            default=scene_selector[], tellwidth=false)
+
+        on(render_menu.selection) do s
+            scene_selector[] = s
+            notify(scene_selector)
+        end
+
+        return scene_selector, render_menu
+    end
+
+    function scalar_menu(figure)
+        opts = sort(collect(keys(scalars)))
+        scalar_selection = Observable(first(opts))
+
+        m = Menu(figure, options=opts, default=scalar_selection[])
+        on(m.selection) do ms
+            scalar_selection[] = ms
+        end
+
+        return scalar_selection, m
+    end
+
     function atom_widgets(init_time, figure, grid)
         gg = GridLayout(grid[end+1, :])
 
@@ -488,15 +586,15 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
         gg[1, 1:2] = t_slider
 
-        scalar_vals = Observable(scalars[first(opts)])
-        m = Menu(gg[2, 1], options=opts, default=first(opts))
-        on(m.selection) do ms
-            scalar_vals[] = scalars[ms]
-        end
+        scalar_selection, m = scalar_menu(figure)
+        gg[2, 1] = m
+        Colorbar(gg[2, 2],
+            colorrange=lift(x -> scalar_ranges[x], scalar_selection),
+            vertical=false,
+            colormap=atom_cmap,
+            tellwidth=false)
 
-        Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)
-
-        return gg, time, scalar_vals
+        return gg, time, scalar_selection
     end
 
     # just pass this dictionary around and pass in the arguments it needs
@@ -504,11 +602,17 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     render_views["Atom"] = render_atom_view
     render_views["Volume"] = render_volume_view
     render_views["Superquadric"] = render_superquadrics_view
-    render_views["Movement"] = render_movement_view
+    render_views["SMovement"] = render_movement_view_ts
 
     widgets = Dict()
     widgets["Atom"] = atom_widgets
     widgets["Movement"] = time_slider
+    widgets["Render"] = render_menu
+    widgets["Scalar"] = scalar_menu
+
+    calculators = Dict()
+    calculators["Alignment"] = calc_alignment
+    calculators["GetTransitions"] = get_transitions
 
     function on_click(t, on_window_hover)
         t_idx = t_to_idx[t]
@@ -517,8 +621,32 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
 
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
+
+    ds::MaybeObservable{DataInspector} = Observable(nothing)
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window((600, 800), transitionSequence, t_to_idx, on_click, num_atoms, dm, volRange, volume_cmap, clustering, scalars, h_cutoff, cluster_groups, h_range, settings_window, render_views, widgets, invariantRange, cluster_representatives, active_trajectory["selected_dm_name"], active_trajectory["per_t_scalars"], active_trajectory["per_t_scalar_ranges"])
+    window = build_selection_window(transitionSequence,
+        rel_t_to_idx,
+        on_click,
+        num_atoms,
+        dm,
+        volRange,
+        volume_cmap,
+        cluster_data,
+        cluster_info,
+        scalars,
+        h_cutoff,
+        h_range,
+        settings_window,
+        render_views,
+        widgets,
+        invariantRange,
+        active_trajectory["selected_dm_name"],
+        active_trajectory["per_t_scalars"],
+        active_trajectory["per_t_scalar_ranges"],
+        calculators,
+        active_trajectory["name"],
+        ds
+    )
 
     #= 
     # creating screen after the window is built prevents subtle bugs
@@ -526,5 +654,11 @@ function main_window(active_trajectory; chunk_size=100, init_h_cutoff=0.3, align
     =#
     screen = GLMakie.Screen()
     display(screen, window)
+
+    # create inspector after render to avoid bugs
+    ds[] = DataInspector(window)
+
+    # close reduction window
+    close(screen_ref[])
 end
 end

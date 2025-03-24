@@ -1,163 +1,209 @@
-using Makie: clear_temporary_plots!, Orthographic, SparseArrays
+using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform_and_model
 using GLMakie: Screen
 using StatsBase
-using UMAP
+using ImageIO
+using NetworkLayout
+using Observables
 
-const cluster_colors = :tab20
+const MIN_NODE_SIZE = 10.0
+const MAX_NODE_SIZE = 100.0
 
-function build_selection_window(fig_size,
+function build_selection_window(
     t_list,
-    t_to_idx,
+    rel_t_to_idx::Dict{Transition,Int},
     on_click,
     num_atoms,
     dm,
     volRange,
     vol_cmap,
-    clustering,
+    cluster_data::Observable{ClusterData},
+    cluster_info::Observable{ClusterInfo},
     scalars,
     h_cutoff,
-    cluster_groups,
     h_range,
     settings_window,
     render_views,
     widgets,
     invariantRange,
-    cluster_representatives,
     matColLabel,
     per_t_scalars,
-    per_t_scalar_ranges
+    per_t_scalar_ranges,
+    calculators,
+    trajectory_name,
+    inspector;
+    fig_size=(600, 800)
 )
 
     window = Figure(size=fig_size)
     menu_bar = top_bar(window, "Overview", 2)
 
-    # reorders distance matrix according to clustering
-    reordered_matrix = @lift begin
-        m = $dm
-        rm = zeros(size(m))
+    init_transitions = Set{Transition}()
+    selected_transitions = Observable{Set{Transition}}(init_transitions)
+    hovered_transition = MaybeObservable{Transition}()
 
-        # gets the correct idx 
-        idx_to_mtx = zeros(Int, size(m)[1])
-        t_to_mtx = Dict()
-        for (i, r) in enumerate($clustering.order)
-            rm[i, :] .= m[r, :][$clustering.order]
-            idx_to_mtx[r] = i
-            t_to_mtx[t_list[r]] = i
-        end
+    cluster_annotations = Observable(ClusterAnnotations())
 
-        # get minimum and maximum of entire matrix for cmap
-        fl = vec(m)
-        return rm, idx_to_mtx, (minimum(fl), maximum(fl)), t_to_mtx
-    end
-    # can't get it to align left
-    # title =Label(window[1, 1], "TransVis", justification=:left, fontsize=30, tellwidth=false)
-
-    open_cluster_windows = Dict{Set{Int},Screen}()
-    function on_show_cluster_click(clusters)
-        if !(clusters in keys(open_cluster_windows))
-            ts_idx = reduce(vcat, map(x -> cluster_groups[][x], collect(clusters)))
-            ts = t_list[ts_idx]
-
-            ts_idx_to_mtx_idx = map(x -> reordered_matrix[][2][x], ts_idx)
-            mtx_idx = sort(ts_idx_to_mtx_idx)
-            mat = reordered_matrix[][1]
-            vals = mat[mtx_idx, mtx_idx]
-
-            # want to update volume data in case user messes with volume params
-            # but we keep atom positions consistent with the alignment that existed at the time of creation
-            w = build_cluster_window(
-                clusters,
-                ts,
-                collect(eachindex(ts_idx_to_mtx_idx)),
-                vals,
-                scalars,
-                t_to_idx,
-                reordered_matrix[][3],
-                render_views,
-                widgets
-            )
-            s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
-            display(s, w)
-
-            open_cluster_windows[clusters] = s
-        end
-    end
-
-    # close cluster views if clustering changes
-    on(cluster_groups) do c
-        foreach(s -> close(s), values(open_cluster_windows))
-    end
+    init_clusters = Set{Set{Int}}()
+    selected_clusters = Observable{Set{Set{Int}}}(init_clusters)
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    l_hovered_cluster = Observable(Set{Int}(1))
-    r_hovered_cluster = Observable(Set{Int}(1))
+    hovered_cluster = MaybeObservable{Set{Int}}(Set{Int}())
 
-    tGrid = GridLayout()
-    window[2:3, 1] = tGrid
+    # used to place transitions into scratchpad
+    function on_transition_select(t)
+        push!(selected_transitions[], t)
+        notify(selected_transitions)
+    end
+
+    function on_cluster_select(c)
+        push!(selected_clusters[], c)
+        notify(selected_clusters)
+    end
 
     bins = @lift begin
         return $h_range[1]:1:($h_range[2]+1)
     end
 
-    setup_cluster_view!(window,
-        tGrid,
-        (1, 1),
-        l_hovered_cluster,
-        cluster_groups,
-        reordered_matrix,
-        on_show_cluster_click,
-        bins
-    )
-
-    setup_cluster_view!(window,
-        tGrid,
-        (1, 2),
-        r_hovered_cluster,
-        cluster_groups,
-        reordered_matrix,
-        on_show_cluster_click,
-        bins
-    )
-
-    @show length(clustering[].order)
-
-    function build_info(clusters, cluster_reps, rm, clustering)
-        # find centroid between all clusters 
-        dm = rm[1]
-        t_to_mtx = rm[4]
-        cluster_list = collect(clusters)
-
-        reps = map(x -> cluster_reps[x], cluster_list)
-        mtx_idx = map(x -> t_to_mtx[x], reps)
-
-        dist_sum = map(x -> sum(dm[x, :][mtx_idx]), mtx_idx)
-        ref_t_idx = mtx_idx[argmin(dist_sum)]
-
-        f_rep = t_list[clustering.order[ref_t_idx]]
-        return (clusters, t_to_idx[f_rep], f_rep)
+    function on_cluster_window_hover(c)
+        if !isnothing(c)
+            hovered_cluster[] = c
+            notify(hovered_cluster)
+        else
+            if !isnothing(hovered_cluster[])
+                hovered_cluster.val = nothing
+                hovered_cluster[] = hovered_cluster[]
+                notify(hovered_cluster)
+            end
+        end
     end
 
-    l_info = lift((x, y, z, w) -> build_info(x, y, z, w), l_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
-    r_info = lift((x, y, z, w) -> build_info(x, y, z, w), r_hovered_cluster, cluster_representatives, reordered_matrix, clustering)
-    setup_transition_view!(window, tGrid, (2, 1), l_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
-    setup_transition_view!(window, tGrid, (2, 2), r_info, vol_cmap, volRange, on_click, render_views, widgets, invariantRange)
+    # can be more clever
+    function cw_on_up(cc)
+        parent = get_parent(cluster_info[], cc[])
+        if parent != cc[]
+            cc[] = parent
+            notify(cc)
+        end
+    end
+
+    function cw_on_left(cc)
+        n = get_neighbor(cluster_info[], cc[], 1)
+        if n != cc[]
+            cc[] = n
+            notify(cc)
+        end
+    end
+
+    function cw_on_right(cc)
+        n = get_neighbor(cluster_info[], cc[], 2)
+        if n != cc[]
+            cc[] = n
+            notify(cc)
+        end
+    end
+
+    function cw_on_downleft(cc)
+        children = get_children(cluster_info[], cc[])
+        if !isnothing(children)
+            lc, rc = children
+            if lc != cc[]
+                cc[] = lc
+                notify(cc)
+            end
+        end
+    end
+
+    function cw_on_downright(cc)
+        children = get_children(cluster_info[], cc[])
+        if !isnothing(children)
+            lc, rc = children
+            if rc != cc[]
+                cc[] = rc
+                notify(cc)
+            end
+        end
+    end
+
+
+    num_open_windows = 0
+    open_cluster_windows = Dict{Int,Screen}()
+    function on_show_cluster_click(clusters)
+        cc = Observable(clusters)
+        scd = @lift begin
+            ref_t = find_group_centroid($cc, cluster_data[], cluster_info[], t_list)
+            ts = get_transitions($cluster_info, $cc)
+            mat, t_to_mtx = get_local_matrix(cluster_data[], ts)
+
+            return buildSingleClusterData(
+                cluster=cc[],
+                ref_t=ref_t,
+                ts=ts,
+                mat=mat,
+                cluster_info=cluster_info[],
+                rel_t_to_idx=rel_t_to_idx,
+                t_to_mtx=t_to_mtx)
+        end
+
+        ds::MaybeObservable{DataInspector} = Observable(nothing)
+        w = build_cluster_window(
+            cc,
+            scd,
+            scalars,
+            cluster_data[].m_extrema,
+            render_views,
+            widgets,
+            bins,
+            on_transition_select,
+            hovered_transition,
+            hovered_cluster,
+            ds,
+            calculators,
+            cluster_annotations,
+            on_window_hover=on_cluster_window_hover,
+            on_cluster_select=on_cluster_select,
+            on_up=cw_on_up,
+            on_left=cw_on_left,
+            on_right=cw_on_right,
+            on_downleft=cw_on_downleft,
+            on_downright=cw_on_downright,
+        )
+        s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
+        display(s, w)
+
+        num_open_windows += 1
+        w_idx = num_open_windows
+        # create inspector after render to avoid bugs
+        ds[] = DataInspector(w)
+        open_cluster_windows[w_idx] = s
+
+        on(events(w).window_open) do e
+            if !e
+                delete!(open_cluster_windows, w_idx)
+                empty!(w)
+                close(s)
+            end
+        end
+    end
+
+    # close cluster views if clustering changes
+    on(cluster_info) do c
+        foreach(s -> close(s), values(open_cluster_windows))
+        empty!(open_cluster_windows)
+    end
 
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
-        l_hovered_cluster[] = Set{Int}(1)
-        notify(l_hovered_cluster)
-
-        r_hovered_cluster[] = Set{Int}(1)
-        notify(r_hovered_cluster)
+        hovered_cluster.val = nothing
+        notify(hovered_cluster)
 
         h_cutoff[] = parse(Float64, s)
         notify(h_cutoff)
     end
 
     dGrid = GridLayout()
-    window[2:3, 2] = dGrid
-    colsize!(window.layout, 2, Relative(0.66))
+    window[2:3, 1] = dGrid
+    #colsize!(window.layout, 2, Relative(0.66))
 
     Label(dGrid[1, 1:2], matColLabel, font=:bold, fontsize=20)
     graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
@@ -170,30 +216,51 @@ function build_selection_window(fig_size,
 
     hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
 
-    rowsize!(dGrid, 2, Relative(0.25))
+    rowsize!(dGrid, 2, Relative(0.40))
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
 
-    function on_dendrogram_click(clusters, keyboard)
-        if Keyboard.a in keyboard
-            l_hovered_cluster[] = clusters
-            notify(l_hovered_cluster)
-        elseif Keyboard.d in keyboard
-            r_hovered_cluster[] = clusters
-            notify(r_hovered_cluster)
+    function on_dendrogram_click(clusters)
+        on_show_cluster_click(clusters)
+    end
+
+    dendrogram!(graph_ax,
+        cluster_info,
+        hovered_cluster,
+        cluster_annotations;
+        on_click=on_dendrogram_click,
+        colormap=CLUSTER_COLORS)
+
+    hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data))
+    hm_m_events = addmouseevents!(hm_ax.scene)
+
+    on(hm_m_events.obs) do e
+        if e.type === MouseEventTypes.leftdown
+            plot, _ = pick(hm_ax)
+            if !isnothing(plot)
+                ord = cluster_data[].mtx_to_t
+                xy = mouseposition(hm_ax)
+                i, j = Int.(round.(xy))
+                t1 = ord[i]
+                t2 = ord[j]
+                push!(selected_transitions[], t1)
+
+                if t1 != t2
+                    push!(selected_transitions[], t2)
+                end
+
+                notify(selected_transitions)
+            end
         end
     end
 
-    dendrogram!(graph_ax, clustering, h_cutoff, h_range; on_click=on_dendrogram_click, colormap=cluster_colors)
-    heatmap!(hm_ax, lift(x -> x[1], reordered_matrix))
-
-    cluster_cmap = to_colormap(cluster_colors)
+    cluster_cmap = to_colormap(CLUSTER_COLORS)
     rendered_clusters = []
     @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        for (c, ts_idx) in $cluster_groups
-            idx_to_mtx = $reordered_matrix[2]
-            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+        for (c, ts) in $(cluster_info).groups
+            t_to_mtx = $(cluster_data).t_to_mtx
+            m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
@@ -204,16 +271,15 @@ function build_selection_window(fig_size,
         end
     end
 
-    function calc_cluster_bounding_box(hc, cg, rm, last_bBox)
+    function calc_cluster_bounding_box(hc, ci, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        if length(hc) > 0
-            ts_idx = reduce(vcat, map(x -> cg[x], collect(hc)))
-            idx_to_mtx = rm
+        if !isnothing(hc)
+            ts = get_transitions(ci, hc)
 
-            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+            m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
@@ -226,14 +292,14 @@ function build_selection_window(fig_size,
 
             return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=3)
         end
+        return draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
     end
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    l_last_bBox = nothing
-    r_last_bBox = nothing
-    @lift begin
-        l_last_bBox = calc_cluster_bounding_box($l_hovered_cluster, $cluster_groups, $reordered_matrix[2], l_last_bBox)
-        r_last_bBox = calc_cluster_bounding_box($r_hovered_cluster, $cluster_groups, $reordered_matrix[2], r_last_bBox)
+    hm_last_bBox::Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
+    on(hovered_cluster) do hc
+        res = calc_cluster_bounding_box(hc, cluster_info[], cluster_data[].t_to_mtx, hm_last_bBox)
+        hm_last_bBox = res
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -241,204 +307,74 @@ function build_selection_window(fig_size,
     on(settings_btn.clicks) do n
         # n has how many times the button's been clicked
         if isnothing(screen)
-            screen = GLMakie.Screen(title="TransVis Settings")
+            screen = GLMakie.Screen(title="LAMDA Settings")
             display(screen, settings_window)
         else
             close(screen)
             screen = nothing
         end
     end
-    menu_bar[1, 3] = settings_btn
-    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x[3], reordered_matrix))
-    rowsize!(dGrid, 3, Relative(0.65))
 
-    band_sel = Observable(first(sort(collect(keys(per_t_scalars)))))
+    export_btn = Button(window, label="Export", halign=:right)
+    export_menu = Menu(window, options=["Scratchpad", "All"], default="Scratchpad", tellwidth=false, halign=:right)
+    menu_bar[1, 3] = export_btn
+    menu_bar[1, 4] = export_menu
+    menu_bar[1, 5] = settings_btn
 
-    x_vals = lift(x -> eachindex(x.order), clustering)
-    colors = lift((x, z) -> map(y -> per_t_scalars[z][t_list[y]], x.order), clustering, band_sel)
-    colorrange = lift(x -> per_t_scalar_ranges[x], band_sel)
+    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
+    rowsize!(dGrid, 3, Relative(0.55))
+    linkxaxes!(hm_ax, graph_ax)
 
-    band_ax = Axis(dGrid[4, 1], backgroundcolor=:transparent, title="Per-transition scalar values")
-    band_plot = vlines!(band_ax,
-        x_vals,
-        color=colors,
-        colorrange=colorrange,
-        linewidth=3,
-        inspector_label=(plot, idx, pos) -> "$(plot.color[][idx])")
+    tGrid = GridLayout()
+    scg = GridLayout()
 
-    hidedecorations!(band_ax)
-    deregister_interaction!(band_ax, :rectanglezoom)
+    window[2:3, 2] = vgrid!(tGrid, scg)
 
-    band_menu = Menu(window, options=sort(collect(keys(per_t_scalars))), default=band_sel[])
-    band_cbar = Colorbar(window, band_plot; vertical=false)
-    dGrid[5, 1:2] = hgrid!(band_menu, band_cbar)
+    render_selection, scratchpad_render_menu = widgets["Render"](window)
+    scalar_selection, scalar_menu = widgets["Scalar"](window)
+    time, scratchpad_t_slider = widgets["Movement"](0.0, window)
 
-    on(band_menu.selection) do s
-        band_sel[] = s
-        notify(band_sel)
+    ax, scratchpad = scratchpad!(
+        window,
+        tGrid[1, 1],
+        selected_transitions,
+        cluster_info,
+        cluster_data,
+        render_views,
+        render_selection,
+        scalar_selection,
+        time,
+        selected_clusters,
+        t_list,
+        rel_t_to_idx,
+        calculators,
+        cluster_annotations,
+        inspector;
+        hovered_cluster=hovered_cluster,
+        hovered=hovered_transition,
+        on_click=on_show_cluster_click)
+
+    on(export_btn.clicks) do n
+        # export all clusters on screen
+        ep = relative_path("export")
+        if !isdir(ep)
+            mkdir(ep)
+        end
+        if export_menu.selection[] == "All"
+            export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], ep; overwrite=true)
+        else
+            dpath = get_ase_dict_path(trajectory_name)
+            export_scratchpad(scratchpad, cluster_info[], ep, dpath)
+        end
+
+        # thought we could do pdfs?
+        rp = joinpath(ep, "report.png")
+        save(rp, ax.scene)
     end
 
-    linkxaxes!(hm_ax, graph_ax, band_ax)
+    scg[1, 1] = scratchpad_render_menu
+    scg[1, 2] = scalar_menu
+    scg[2, 1:2] = scratchpad_t_slider
 
     return window
-end
-
-function setup_transition_view!(
-    fig,
-    parentGrid,
-    loc,
-    hovered,
-    vol_cmap,
-    volumeRange,
-    on_click,
-    render_views,
-    widgets,
-    invariantRange
-)
-
-    cluster_idx = lift(x -> x[1], hovered)
-    t_idx = lift(x -> x[2], hovered)
-    t = lift(x -> x[3], hovered)
-
-    rootScene = LScene(
-        fig,
-        show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
-    )
-
-    # prevents camera from moving around
-    Camera3D(parent_scene(rootScene); left_key=false, right_key=false)
-    inspector = DataInspector(rootScene)
-
-    sel = Observable("Volume")
-
-    m = Menu(fig,
-        options=collect(keys(render_views)),
-        default=sel[])
-
-    on(m.selection) do cw
-        sel[] = cw
-        notify(sel)
-    end
-
-    btn = Button(fig, label="Show")
-    on(btn.clicks) do n
-        on_click(t[], () -> ())
-    end
-
-    l = Label(fig, lift(x -> string("$(x)"), t), tellwidth=false)
-
-    i, j = loc
-    g = vgrid!(rootScene, hgrid!(l, m, btn))
-    parentGrid[i, j] = g
-
-    function choose_scene(selection)
-        if selection == "Volume"
-            gg = GridLayout(g[end+1, :])
-
-            Colorbar(gg[1, :],
-                colorrange=volumeRange,
-                vertical=false,
-                colormap=vol_cmap,
-                tellwidth=false)
-
-            render_views[selection](rootScene, t_idx, t)
-            return [], [gg]
-        else
-            if selection == "Superquadric"
-                gg = GridLayout(g[end+1, :])
-                Colorbar(gg[1, :],
-                    colorrange=invariantRange,
-                    vertical=false,
-                    colormap=vol_cmap,
-                    tellwidth=false)
-                il, is = render_views[selection](rootScene, inspector, t)
-                return il, [gg]
-            elseif selection == "Atom"
-                gg, time, scalar_vals = widgets["Atom"](0.0, fig, g)
-                render_views[selection](rootScene, t, scalar_vals, time)
-                return [], [gg]
-            else
-                gg = GridLayout(g[end+1, :])
-                time, slider = widgets["Movement"](0.0, fig)
-                gg[1, 1:2] = slider
-                render_views[selection](rootScene, cluster_idx, time)
-                return [], [gg]
-            end
-        end
-    end
-
-    scene_switcher(rootScene, g, sel, choose_scene)
-
-    return rootScene
-end
-
-
-function setup_cluster_view!(fig,
-    parentGrid,
-    loc,
-    clusters,
-    cluster_groups,
-    reordered_matrix,
-    on_cluster_button_click,
-    bins,
-)
-    i, j = loc
-    cluster_grid = GridLayout()
-    parentGrid[i, j] = cluster_grid
-
-    cmap = to_colormap(cluster_colors)
-    cluster_grid[1, 1] = Label(fig,
-        lift(x -> "Cluster $(str_limit(x;len=25))", clusters),
-        halign=:left,
-        font=:bold,
-        tellwidth=false)
-
-    show_cluster_btn = Button(cluster_grid[1, 2], label="Show")
-
-    on(show_cluster_btn.clicks) do n
-        on_cluster_button_click(clusters[])
-    end
-
-    hist_values = @lift begin
-        ts_idx = reduce(vcat, (map(x -> cluster_groups[][x], collect($clusters))))
-        mtx_idx = sort(map(x -> reordered_matrix[][2][x], ts_idx))
-        mat = reordered_matrix[][1]
-        vals = mat[mtx_idx, mtx_idx]
-        utri = triu!(trues(size(vals)))
-        return vec(vals[utri])
-    end
-
-    hist_ax = Axis(cluster_grid[2, 1:2], title="Intra-cluster distances",
-        backgroundcolor=:transparent, tellwidth=false, tellheight=false)
-
-    # hide y labels because otherwise the width of each column gets adjusted
-    hideydecorations!(hist_ax)
-
-    # TODO: copy over code for custom implementation 
-    # https://github.com/MakieOrg/Makie.jl/blob/master/src/stats/hist.jl 
-    # unfortunately bar_labels doesn't work
-    color = @lift begin
-        cl = collect($clusters)
-        if length(cl) != 1
-            return to_color(:grey)
-        else
-            return cmap[mod1(first(cl), length(cmap))]
-        end
-    end
-
-    hist!(hist_ax,
-        hist_values,
-        normalization=:density,
-        strokewidth=1,
-        strokecolor=:black,
-        color=color,
-        bins=bins
-    )
-
-    on(hist_values) do hv
-        reset_limits!(hist_ax)
-    end
-
-    return hist_ax
 end
