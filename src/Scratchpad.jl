@@ -120,21 +120,9 @@ function scratchpad!(
     function delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
+        scene = views[][v_idx]
 
-        scene, vp, size, listener, mouse_listener, scene_color = views[][v_idx]
-        if !isnothing(listener)
-            off(listener)
-            listener = nothing
-        end
-        off(mouse_listener)
-        mouse_listener = nothing
-
-        empty!(scene)
-        scene.visible[] = false
-
-        Observables.clear(vp)
-        Observables.clear(size)
-        Observables.clear(scene_color)
+        Makie.free(scene)
         delete!(obj_to_idx[], obj)
     end
 
@@ -217,12 +205,9 @@ function scratchpad!(
                 translate!(ax3d, 0, 0, 100)
 
                 inspector = DataInspector(ax3d)
-                listener = nothing
-                mouse_listener = nothing
-
                 m_events = addmouseevents!(ax3d)
 
-                mouse_listener = on(m_events.obs) do event
+                on(m_events.obs) do event
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
@@ -281,7 +266,7 @@ function scratchpad!(
                 # move to outside loop, will be far more efficient
                 if obj isa Transition
                     plt_rendered = []
-                    listener = on(render_selection, update=true) do rs
+                    on(render_selection, update=true) do rs
                         foreach(x -> delete!(ax3d, x), plt_rendered)
                         empty!(plt_rendered)
                         if rs == "Volume"
@@ -309,7 +294,7 @@ function scratchpad!(
                     render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
                     center!(ax3d)
                 end
-                push!(views[], (ax3d, listener, mouse_listener))
+                push!(views[], ax3d)
                 push!(rendered_idxes[], plt_idx)
             end
         end
@@ -317,7 +302,7 @@ function scratchpad!(
 
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport) do xlim, ylim, pp, svp
         ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
-        for (i, (scene, listener, mouse_listener)) in enumerate(views[])
+        for (i, scene) in enumerate(views[])
             plt_idx = i + 1
             pos = position_on_plot(nodes, plt_idx, apply_transform=false)
             x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
@@ -338,13 +323,13 @@ function scratchpad!(
     highlighted = []
     on(hovered) do hov
         for (v_idx) in highlighted
-            views[][v_idx][1].backgroundcolor[] = to_color(:black)
+            views[][v_idx].backgroundcolor[] = to_color(:black)
         end
         empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
+            views[][v_idx].backgroundcolor[] = to_color(:grey)
             push!(highlighted, v_idx)
         end
     end
@@ -352,13 +337,13 @@ function scratchpad!(
     highlighted_clusters = []
     on(hovered_cluster) do hov
         for (v_idx) in highlighted_clusters
-            views[][v_idx][1].backgroundcolor[] = to_color(:black)
+            views[][v_idx].backgroundcolor[] = to_color(:black)
         end
         empty!(highlighted_clusters)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
+            views[][v_idx].backgroundcolor[] = to_color(:grey)
             push!(highlighted_clusters, v_idx)
         end
     end
