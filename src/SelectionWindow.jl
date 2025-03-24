@@ -316,7 +316,7 @@ function build_selection_window(
     end
 
     export_btn = Button(window, label="Export", halign=:right)
-    export_menu = Menu(window, options=["Scratchpad", "All"], default="All", tellwidth=false, halign=:right)
+    export_menu = Menu(window, options=["Scratchpad", "All"], default="Scratchpad", tellwidth=false, halign=:right)
     menu_bar[1, 3] = export_btn
     menu_bar[1, 4] = export_menu
     menu_bar[1, 5] = settings_btn

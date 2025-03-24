@@ -46,12 +46,14 @@ function scratchpad!(
     d_start = Point2f(0.0)
     d_end = Point2f(0.0)
     c_bbox = Observable(BBox(0, 0, 0, 0))
-    boxes = Ref([])
+    boxes = Ref(Dict{Int,Any}())
+    sw = wireframe!(ax.scene, c_bbox, color=:black, visible=false)
+    sw.inspectable[] = false
+
     register_interaction!(ax, :create_group) do e::MouseEvent, axis
         if e.type === MouseEventTypes.leftdragstart
             d_start = mouseposition(ax.scene)
-            w = wireframe!(ax.scene, c_bbox, color=:black)
-            w.inspectable[] = false
+            sw.visible[] = true
         elseif e.type === MouseEventTypes.leftdrag
             d_end = mouseposition(ax.scene)
             l = (d_start[1] < d_end[1]) ? d_start[1] : d_end[1]
@@ -60,12 +62,16 @@ function scratchpad!(
             b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
             t = (b == d_start[2]) ? d_end[2] : d_start[2]
             c_bbox[] = BBox(l, r, b, t)
+            notify(c_bbox)
         elseif e.type === MouseEventTypes.leftdragstop
             # finish placing box
-            w = wireframe!(ax.scene, c_bbox[], color=:black)
+            w = poly!(ax.scene, c_bbox[], color=:transparent, strokewidth=2, strokecolor=:black)
             w.inspectable[] = false
-            push!(boxes[], c_bbox[])
-            bbox = Observable(BBox(0, 0, 0, 0))
+
+            s_idx = length(ax.scene.plots)
+            boxes[][s_idx] = c_bbox[]
+            sw.visible[] = false
+            c_bbox[] = BBox(0, 0, 0, 0)
         end
     end
 
@@ -110,9 +116,14 @@ function scratchpad!(
             if plt isa Makie.Text
                 delete!(ax.scene, plt)
                 delete!(txt_to_notes[], idx)
-            elseif plt isa Makie.Wireframe
+            elseif plt isa Makie.Lines
+                # pick returns Lines instead of the polygon itself, super annoying
+                for (i, abplot) in enumerate(ax.scene.plots)
+                    if plt in abplot.plots
+                        delete!(boxes[], i)
+                    end
+                end
                 delete!(ax.scene, plt)
-                # remove from boxes array
             end
         end
         return Consume(false)
@@ -363,12 +374,15 @@ end
 # any "loose" children are returned separately
 function group_scratchpad(s::Scratchpad)
     # start with the smallest boxes and work outwards for points
-    sort!(s.boxes[], by=x -> area(x))
+    boxes = collect(values(s.boxes[]))
+
+    sort!(boxes, by=x -> area(x))
     seen_boxes = Set()
     seen_text = Set()
     seen = Set()
     hierarchy = Dict()
-    for (bIdx, box) in enumerate(s.boxes[])
+
+    for (bIdx, box) in enumerate(boxes)
         # get name
         children = Union{Set{Int},Transition,String,Int}[]
         for (idx, vp) in enumerate(s.views[])
@@ -386,7 +400,7 @@ function group_scratchpad(s::Scratchpad)
             end
         end
 
-        for (c_bIdx, c_box) in enumerate(s.boxes[])
+        for (c_bIdx, c_box) in enumerate(boxes)
             if bIdx != c_bIdx
                 if c_box in box
                     push!(children, c_bIdx)
