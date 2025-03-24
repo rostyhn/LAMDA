@@ -69,7 +69,7 @@ function scratchpad!(
         end
     end
 
-    notes = Ref([])
+    txt_to_notes = Ref(Dict{Int,Any}())
     register_interaction!(ax, :create_text) do e::MouseEvent, axis
         if e.type == MouseEventTypes.leftdoubleclick
             plt, idx = pick(ax.scene)
@@ -82,10 +82,11 @@ function scratchpad!(
                     textcolor=:black,
                     focused=true)
 
-                px, py = mouseposition(ax)
+                pos = mouseposition(ax)
                 on(txt.stored_string) do s
-                    text!(ax.scene, px, py; text=s, color=:black)
-                    push!(notes[], (Point2f(px, py), s))
+                    text!(ax.scene, pos; text=s, color=:black)
+                    s_idx = length(ax.scene.plots)
+                    txt_to_notes[][s_idx] = (pos, s)
                 end
 
                 on(txt.focused) do is_focused
@@ -108,7 +109,7 @@ function scratchpad!(
             plt, idx = pick(ax.scene)
             if plt isa Makie.Text
                 delete!(ax.scene, plt)
-                # have to also remove from notes array
+                delete!(txt_to_notes[], idx)
             elseif plt isa Makie.Wireframe
                 delete!(ax.scene, plt)
                 # remove from boxes array
@@ -348,7 +349,7 @@ function scratchpad!(
         end
     end
 
-    return ax, Scratchpad(boxes=boxes, views=viewports, notes=notes, objs=idx_to_obj)
+    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=idx_to_obj)
 end
 
 @kwdef mutable struct Scratchpad
@@ -378,7 +379,7 @@ function group_scratchpad(s::Scratchpad)
             end
         end
 
-        for (i, (pos, text)) in enumerate(s.notes[])
+        for (i, (pos, text)) in enumerate(values(s.notes[]))
             if pos in box && !(i in seen_text)
                 push!(children, text)
                 push!(seen_text, i)
@@ -405,9 +406,9 @@ function group_scratchpad(s::Scratchpad)
         end
     end
 
-    for (i, n) in enumerate(s.notes[])
+    for (i, n) in enumerate(values(s.notes[]))
         if !(i in seen_text)
-            push!(loose, n)
+            push!(loose, n[2])
         end
     end
 
