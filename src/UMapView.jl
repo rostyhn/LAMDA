@@ -58,6 +58,7 @@ function umap_graph_view!(
     t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
     markersize_4d = Point4f(markersize, markersize, 0, 0)
 
+    frame_colors = Ref([])
     views = Observable([])
     @lift begin
         hovered[] = nothing
@@ -84,11 +85,13 @@ function umap_graph_view!(
                 size=(ms, ms))
             cam3d!(ax3d)
 
+            frame_color = Observable(set_color_alpha(data[][3][i], 0.6))
+
             frame = wireframe!(
                 ax3d,
                 Rect2f(-1, -1, 2, 2),
                 transformation=(:xy, 0),
-                color=data[][3][i],
+                color=frame_color,
                 overdraw=true,
                 linewidth=10,
                 space=:clip,
@@ -111,6 +114,7 @@ function umap_graph_view!(
                 end
             end
             push!(views[], (ax3d, rendered))
+            push!(frame_colors[], frame_color)
         end
         t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
     end
@@ -171,17 +175,19 @@ function umap_graph_view!(
         end
     end
 
+
     highlighted = Ref([])
     on(hovered) do hov
-        for (v_idx) in highlighted[]
-            views[][v_idx][1].backgroundcolor[] = to_color(EMBEDDED_SCENE_BACKGROUND)
+        for (v_idx, ogColor) in highlighted[]
+            frame_colors[][v_idx][] = ogColor
         end
         empty!(highlighted[])
 
         if !isnothing(hov) && hov in data[][1]
             v_idx = t_to_pltidx[][hov]
-            views[][v_idx][1].backgroundcolor[] = to_color(EMBEDDED_SCENE_SELECTED)
-            push!(highlighted[], v_idx)
+            ogColor = frame_colors[][v_idx][]
+            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+            push!(highlighted[], (v_idx, ogColor))
         end
     end
 

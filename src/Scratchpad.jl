@@ -218,6 +218,7 @@ function scratchpad!(
     end
 
     viewports = Ref([])
+    frame_colors = Ref([])
     on(idx_to_obj) do idxes
         ts = collect(selected_transitions[])
         s_alignment = Observable(calculators["Alignment"](ts))
@@ -242,6 +243,31 @@ function scratchpad!(
 
                 cam3d!(ax3d)
                 translate!(ax3d, 0, 0, 100)
+
+                frame_color = @lift begin
+                    if obj isa Transition
+                        return cycle_colormap($(cluster_info).assignments[rel_t_to_idx[obj]], CLUSTER_COLORMAP; alpha=0.6)
+                    else
+                        c = collect(obj)
+                        if length(c) == 1
+                            return cycle_colormap(first(c), CLUSTER_COLORMAP; alpha=0.6)
+                        else
+                            return set_color_alpha(to_color(:grey), 0.6)
+                        end
+                    end
+                end
+
+                frame = wireframe!(
+                    ax3d,
+                    Rect2f(-1, -1, 2, 2),
+                    transformation=(:xy, 0),
+                    color=frame_color,
+                    overdraw=true,
+                    linewidth=10,
+                    space=:clip,
+                    depth_shift=1.0e-3,
+                    inspectable=false
+                )
 
                 inspector = DataInspector(ax3d)
                 m_events = addmouseevents!(ax3d)
@@ -334,6 +360,7 @@ function scratchpad!(
                     center!(ax3d)
                 end
                 push!(views[], ax3d)
+                push!(frame_colors[], frame_color)
                 push!(rendered_idxes[], plt_idx)
             end
         end
@@ -361,29 +388,31 @@ function scratchpad!(
 
     highlighted = []
     on(hovered) do hov
-        for (v_idx) in highlighted
-            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_BACKGROUND)
+        for (v_idx, ogColor) in highlighted
+            frame_colors[][v_idx][] = ogColor
         end
         empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_SELECTED)
-            push!(highlighted, v_idx)
+            ogColor = frame_colors[][v_idx][]
+            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+            push!(highlighted, (v_idx, ogColor))
         end
     end
 
     highlighted_clusters = []
     on(hovered_cluster) do hov
-        for (v_idx) in highlighted_clusters
-            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_BACKGROUND)
+        for (v_idx, ogColor) in highlighted_clusters
+            frame_colors[][v_idx][] = ogColor
         end
         empty!(highlighted_clusters)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_SELECTED)
-            push!(highlighted_clusters, v_idx)
+            ogColor = frame_colors[][v_idx][]
+            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+            push!(highlighted_clusters, (v_idx, ogColor))
         end
     end
 

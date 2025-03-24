@@ -69,8 +69,8 @@ function set_color_alpha(c, a)
     return RGBAf(c.r, c.g, c.b, a)
 end
 
-function cycle_colormap(i, cmap)
-    return cmap[mod1(i, length(cmap))]
+function cycle_colormap(i, cmap; alpha=1.0)
+    return set_color_alpha(cmap[mod1(i, length(cmap))], alpha)
 end
 
 # leaving this an example

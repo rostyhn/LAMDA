@@ -90,7 +90,7 @@ function build_cluster_window(
         return calculators["Alignment"](ts.val)
     end
 
-    cbar = widgets["Colorbar"](scene_selector, scalar_selector)
+    cbar = widgets["Colorbar"](window, scene_selector, scalar_selector)
 
     window[2, 1:2] = hgrid!(
         cbar,
