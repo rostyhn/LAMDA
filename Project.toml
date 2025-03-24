@@ -1,6 +1,6 @@
 name = "TransVis"
 uuid = "7925c564-3854-4164-bf2c-78cbd5181e7d"
-authors = ["Baldwin Nsonga <nsonga@informatik.uni-leipzig.de>"]
+authors = ["Baldwin Nsonga <nsonga@informatik.uni-leipzig.de>", "Rostyslav Hnatyshyn <rostyslav.hnatyshyn@gmail.com>"]
 version = "0.1.0"
 
 [deps]
