@@ -193,6 +193,14 @@ function scratchpad!(
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
+    # guarantees updated version of clusterinfo
+    function get_t_cluster(idx)
+        x = lift(y -> Set(y.assignments[idx]), cluster_info)
+        xval = x[]
+        Observables.clear(x)
+        return xval
+    end
+
     viewports = Ref([])
     on(idx_to_obj) do idxes
         ts = collect(selected_transitions[])
@@ -231,7 +239,7 @@ function scratchpad!(
                         if obj isa Transition
                             hovered[] = obj
                             t_idx = rel_t_to_idx[obj]
-                            cluster = Set(cluster_info[].assignments[t_idx])
+                            cluster = get_t_cluster(t_idx)
                             notify(hovered)
                         else
                             cluster = obj
@@ -239,13 +247,12 @@ function scratchpad!(
                         hovered_cluster[] = cluster
                         notify(hovered_cluster)
                     elseif event.type === MouseEventTypes.out
-                        if obj isa Transition
-                            hovered[] = nothing
-                            notify(hovered)
-                        else
-                            hovered_cluster[] = nothing
-                            notify(hovered_cluster)
-                        end
+                        hovered[] = nothing
+                        notify(hovered)
+
+                        hovered_cluster[] = nothing
+                        notify(hovered_cluster)
+
                         activate_interaction!(ax, :create_group)
                         activate_interaction!(ax, :create_text)
                     elseif event.type === MouseEventTypes.middledrag
@@ -272,7 +279,7 @@ function scratchpad!(
                         cluster = obj
                         if obj isa Transition
                             t_idx = rel_t_to_idx[obj]
-                            cluster = Set(cluster_info[].assignments[t_idx])
+                            cluster = get_t_cluster(t_idx)
                         end
                         on_click(cluster)
                     end
