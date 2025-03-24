@@ -90,12 +90,14 @@ function build_cluster_window(
         return calculators["Alignment"](ts.val)
     end
 
+    cbar = widgets["Colorbar"](scene_selector, scalar_selector)
+
     window[2, 1:2] = hgrid!(
-        btn_centroid,
-        Label(window, "Render mode"),
+        cbar,
         render_menu,
         scalar_menu,
-        t_slider)
+        t_slider,
+        btn_centroid)
 
     hb = lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0,
         hovered_cluster,

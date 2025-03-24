@@ -333,6 +333,7 @@ function build_selection_window(
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
     time, scratchpad_t_slider = widgets["Movement"](0.0, window)
+    sc_cbar = widgets["Colorbar"](window, render_selection, scalar_selection)
 
     ax, scratchpad = scratchpad!(
         window,
@@ -373,8 +374,8 @@ function build_selection_window(
     end
 
     scg[1, 1] = scratchpad_render_menu
-    scg[1, 2] = scalar_menu
-    scg[2, 1:2] = scratchpad_t_slider
+    scg[1, 2] = hgrid!(scalar_menu, scratchpad_t_slider)
+    scg[2, 1:2] = sc_cbar
 
     return window
 end

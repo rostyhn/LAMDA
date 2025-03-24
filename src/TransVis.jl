@@ -602,6 +602,30 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return gg, time, scalar_selection
     end
 
+    function embed_colorbar(figure, render_selection, scalar_selection)
+        scalar_range = lift(x -> scalar_ranges[x], scalar_selection)
+
+        currentRange = Observable((0.0, 1.0))
+        currentCMap = Observable(to_colormap(:reds))
+
+        onany(render_selection, scalar_range, volRange, volume_cmap, update=true) do rs, sr, vr, vc
+            if rs == "Volume" || rs == "Superquadric"
+                currentRange[] = vr
+                currentCMap[] = vc
+            else
+                currentRange[] = sr
+                currentCMap[] = atom_cmap
+            end
+        end
+
+        cbar = Colorbar(figure,
+            colorrange=currentRange,
+            vertical=false,
+            colormap=currentCMap)
+
+        return cbar
+    end
+
     # just pass this dictionary around and pass in the arguments it needs
     render_views = Dict()
     render_views["Atom"] = render_atom_view
@@ -614,6 +638,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     widgets["Movement"] = time_slider
     widgets["Render"] = render_menu
     widgets["Scalar"] = scalar_menu
+    widgets["Colorbar"] = embed_colorbar
 
     calculators = Dict()
     calculators["Alignment"] = calc_alignment
