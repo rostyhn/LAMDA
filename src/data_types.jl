@@ -19,7 +19,7 @@ const Transition = Tuple{Int16,Int16}
 end
 
 function get_transitions(ci::ClusterInfo, cluster::Set{Int})::Vector{Transition}
-    return reduce(vcat, map(x -> ci.groups[x], collect(cluster)))
+    return reduce(vcat, map(x -> ci.groups[x], collect(cluster)), init=[])
 end
 
 function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}

@@ -270,12 +270,13 @@ function build_selection_window(
         end
     end
 
-    function calc_cluster_bounding_box(hc, ts, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
+    function calc_cluster_bounding_box(hc, ci, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        if !isnothing(hc) && length(hc) > 0
+        ts = get_transitions(ci, hc)
+        if !isempty(ts)
             m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
@@ -293,11 +294,10 @@ function build_selection_window(
     end
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    hm_last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = nothing
-    @lift begin
-        ts = get(cluster_info[].groups, $hovered_cluster, nothing)
-        if !isnothing(ts)
-            res = calc_cluster_bounding_box($hovered_cluster, ts, cluster_data[].t_to_mtx, hm_last_bBox)
+    hm_last_bBox::Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
+    on(hovered_cluster) do hc
+        if !isnothing(hc)
+            res = calc_cluster_bounding_box(hc, cluster_info[], cluster_data[].t_to_mtx, hm_last_bBox)
             hm_last_bBox = res
         end
     end
