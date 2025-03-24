@@ -275,8 +275,9 @@ function build_selection_window(
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
-        ts = get_transitions(ci, hc)
-        if !isempty(ts)
+        if !isnothing(hc)
+            ts = get_transitions(ci, hc)
+
             m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
@@ -296,10 +297,8 @@ function build_selection_window(
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     hm_last_bBox::Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
     on(hovered_cluster) do hc
-        if !isnothing(hc)
-            res = calc_cluster_bounding_box(hc, cluster_info[], cluster_data[].t_to_mtx, hm_last_bBox)
-            hm_last_bBox = res
-        end
+        res = calc_cluster_bounding_box(hc, cluster_info[], cluster_data[].t_to_mtx, hm_last_bBox)
+        hm_last_bBox = res
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)

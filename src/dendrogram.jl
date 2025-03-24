@@ -122,7 +122,7 @@ function dendrogram!(ax,
             else
                 color = to_color(rootcolor)
             end
-            push!(colors, set_color_alpha(color, 0.2))
+            push!(colors, set_color_alpha(color, 0.3))
         end
 
         # to get label idx just divide by 2
@@ -202,7 +202,8 @@ function dendrogram!(ax,
                 on_click(hovered[])
             end
         elseif e.type === MouseEventTypes.over
-            plot, idx = pick(ax)
+            mp = mouseposition_px(ax.scene)
+            plot, idx = pick(ax, mp, 10)
             if isnothing(plot) && !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
