@@ -307,7 +307,7 @@ function scratchpad!(
             pos = position_on_plot(nodes, plt_idx, apply_transform=false)
             x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
 
-            vp = Rect2i(x - ms[], y - ms[], ms[], ms[])
+            vp = Rect2i(x - (ms[] / 2), y - (ms[] / 2), ms[], ms[])
             vp = GeometryBasics.intersect(vp, svp)
             vw = widths(vp)
 
