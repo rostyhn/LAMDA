@@ -1,4 +1,5 @@
 using Observables
+const TITLE_HOTKEY = Keyboard.t
 
 function scratchpad!(
     window,
@@ -82,17 +83,19 @@ function scratchpad!(
             if isnothing(plt)
                 # add textbox at point if empty space was clicked
                 x, y = mouseposition_px(window.scene)
+                is_title = ispressed(ax.scene, TITLE_HOTKEY)
 
-                txt = Textbox(window.scene, bbox=BBox(x, x + 50, y, y + 50),
+                txt = Textbox(window.scene,
+                    bbox=BBox(x, x + 50, y, y + 50),
                     placeholder=" ",
                     textcolor=:black,
                     focused=true)
 
                 pos = mouseposition(ax)
                 on(txt.stored_string) do s
-                    text!(ax.scene, pos; text=s, color=:black)
+                    text!(ax.scene, pos; text=s, color=:black, font=(is_title) ? :bold : :regular)
                     s_idx = length(ax.scene.plots)
-                    txt_to_notes[][s_idx] = (pos, s)
+                    txt_to_notes[][s_idx] = (pos, s, is_title)
                 end
 
                 on(txt.focused) do is_focused
@@ -381,9 +384,10 @@ function group_scratchpad(s::Scratchpad)
     seen_text = Set()
     seen = Set()
     hierarchy = Dict()
+    titles = Dict()
 
     for (bIdx, box) in enumerate(boxes)
-        # get name
+        title = string(bIdx)
         children = Union{Set{Int},Transition,String,Int}[]
         for (idx, vp) in enumerate(s.views[])
             # seen lets us place things at bottom level
@@ -393,9 +397,13 @@ function group_scratchpad(s::Scratchpad)
             end
         end
 
-        for (i, (pos, text)) in enumerate(values(s.notes[]))
+        for (i, (pos, text, is_title)) in enumerate(values(s.notes[]))
             if pos in box && !(i in seen_text)
-                push!(children, text)
+                if !is_title
+                    push!(children, text)
+                else
+                    title = text
+                end
                 push!(seen_text, i)
             end
         end
@@ -408,6 +416,7 @@ function group_scratchpad(s::Scratchpad)
                 end
             end
         end
+        titles[bIdx] = title
         hierarchy[bIdx] = children
     end
 
@@ -426,31 +435,30 @@ function group_scratchpad(s::Scratchpad)
         end
     end
 
-    return top_level, hierarchy, loose
+    return top_level, hierarchy, loose, titles
 end
 
 function export_scratchpad(s, ci, ep, dpath)
     # export loose data in top folder
-    top_level, hierarchy, loose = group_scratchpad(s)
-    @show top_level, hierarchy, loose
+    top_level, hierarchy, loose, titles = group_scratchpad(s)
     if !isempty(loose)
         export_scratchpad_children(dpath, ep, loose, ci)
     end
 
     for b in top_level
-        export_scratchpad_children_recurse(b, hierarchy, ci, ep, dpath)
+        export_scratchpad_children_recurse(b, hierarchy, ci, ep, dpath, titles)
     end
 end
 
-function export_scratchpad_children_recurse(bIdx, hierarchy, ci, parent_dir, dpath)
-    cf = joinpath(parent_dir, string(bIdx))
+function export_scratchpad_children_recurse(bIdx, hierarchy, ci, parent_dir, dpath, titles)
+    cf = joinpath(parent_dir, titles[bIdx])
     if !isdir(cf)
         mkdir(cf)
     end
     children = hierarchy[bIdx]
     export_scratchpad_children(dpath, cf, children, ci)
     bChildren = filter(x -> x isa Int, children)
-    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, ci, cf, dpath), bChildren)
+    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, ci, cf, dpath, titles), bChildren)
 end
 
 function export_scratchpad_children(dpath, p, children, ci)
