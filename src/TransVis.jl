@@ -59,10 +59,15 @@ const DOWN_KEY = Keyboard.down
 const LEFT_DOWN = LEFT_KEY & DOWN_KEY
 const RIGHT_DOWN = RIGHT_KEY & DOWN_KEY
 
+const EMBEDDED_SCENE_BACKGROUND = colorant"#F5F5F5"
+const EMBEDDED_SCENE_SELECTED = colorant"#8b8680"
+const DISTANCE_MATRIX_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
+const CLUSTER_COLORMAP = to_colormap(CLUSTER_COLORS)
+
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     active_trajectory = get_data_alt(trajectory_name)
-    set_theme!(theme_latexfonts(); fontsize=18.0)
+    set_theme!(theme_latexfonts(); fontsize=18.0, inspectable=true)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
     window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
@@ -427,7 +432,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     end
 
     # did this to avoid drilling down and passing parameters constantly
-    atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
+    atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time, alignment)
         t_ap = create_position_alignment_observer(transition, alignment)
         return simple_atom_view!(scene, t_ap,

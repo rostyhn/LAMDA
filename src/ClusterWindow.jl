@@ -126,11 +126,11 @@ function build_cluster_window(
     centroid_grid = GridLayout()
     mat_grid[1, 1] = centroid_grid
 
-    Label(centroid_grid[1, 1], "Cluster average", font=:bold, tellwidth=false)
+    Label(centroid_grid[1, 1], "Group Displacement", font=:bold, tellwidth=false)
     centroid_scene = LScene(
         centroid_grid[2, 1],
         show_axis=false,
-        scenekw=(backgroundcolor=:black, clear=true),
+        scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, clear=true),
     )
 
     vals = lift(x -> x.mat, cluster_data)
@@ -154,7 +154,7 @@ function build_cluster_window(
         cluster_annotations;
         colormap=CLUSTER_COLORS)
 
-    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range)
+    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range, colormap=DISTANCE_MATRIX_COLORMAP)
     on(vals) do v
         reset_limits!(hm_ax)
     end

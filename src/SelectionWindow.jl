@@ -231,7 +231,7 @@ function build_selection_window(
         on_click=on_dendrogram_click,
         colormap=CLUSTER_COLORS)
 
-    hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data))
+    hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data), colormap=DISTANCE_MATRIX_COLORMAP)
     hm_m_events = addmouseevents!(hm_ax.scene)
 
     on(hm_m_events.obs) do e
@@ -321,7 +321,7 @@ function build_selection_window(
     menu_bar[1, 4] = export_menu
     menu_bar[1, 5] = settings_btn
 
-    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data))
+    dGrid[3, 2] = Colorbar(window, limits=lift(x -> x.m_extrema, cluster_data), colormap=DISTANCE_MATRIX_COLORMAP)
     rowsize!(dGrid, 3, Relative(0.55))
     linkxaxes!(hm_ax, graph_ax)
 

@@ -92,7 +92,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    hm = heatmap!(hm_ax, lift(x -> x[1], reordered_matrix), colorrange=lift(x -> x[3], reordered_matrix))
+    hm = heatmap!(hm_ax, lift(x -> x[1], reordered_matrix), colorrange=lift(x -> x[3], reordered_matrix), colormap=DISTANCE_MATRIX_COLORMAP)
 
     # draw clusters on screen and also calculate some stats on each group
     rendered_clusters = []
@@ -166,7 +166,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     hidedecorations!(red_hm_ax)
     deregister_interaction!(red_hm_ax, :rectanglezoom)
 
-    red_hm = heatmap!(red_hm_ax, lift(x -> x[1], reduced), colorrange=lift(x -> x[3], reordered_matrix))
+    red_hm = heatmap!(red_hm_ax, lift(x -> x[1], reduced), colorrange=lift(x -> x[3], reordered_matrix), colormap=DISTANCE_MATRIX_COLORMAP)
 
     on(go_btn.clicks) do n
         active_trajectory["selected_dm"] = Observable(reduced[][1])
@@ -177,7 +177,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
         on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 
-    Colorbar(window[4, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false)
+    Colorbar(window[4, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false, colormap=DISTANCE_MATRIX_COLORMAP)
 
     #linkaxes!(hm_ax, red_hm_ax)
 

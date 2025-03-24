@@ -20,8 +20,8 @@ function scratchpad!(
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_click=(x) -> (),
-    markersize=150
-)
+    markersize=200)
+
     ax = Axis(loc, backgroundcolor=:transparent, title="Scratchpad")
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
@@ -236,7 +236,7 @@ function scratchpad!(
 
                 ax3d = Scene(ax.scene, show_axis=false,
                     viewport=vp,
-                    backgroundcolor=:black,
+                    backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
                     clear=true,
                     size=(ms, ms))
 
@@ -362,13 +362,13 @@ function scratchpad!(
     highlighted = []
     on(hovered) do hov
         for (v_idx) in highlighted
-            views[][v_idx].backgroundcolor[] = to_color(:black)
+            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_BACKGROUND)
         end
         empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx].backgroundcolor[] = to_color(:grey)
+            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_SELECTED)
             push!(highlighted, v_idx)
         end
     end
@@ -376,13 +376,13 @@ function scratchpad!(
     highlighted_clusters = []
     on(hovered_cluster) do hov
         for (v_idx) in highlighted_clusters
-            views[][v_idx].backgroundcolor[] = to_color(:black)
+            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_BACKGROUND)
         end
         empty!(highlighted_clusters)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx].backgroundcolor[] = to_color(:grey)
+            views[][v_idx].backgroundcolor[] = to_color(EMBEDDED_SCENE_SELECTED)
             push!(highlighted_clusters, v_idx)
         end
     end

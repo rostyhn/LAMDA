@@ -79,7 +79,7 @@ function umap_graph_view!(
             ax3d = Scene(ax.scene,
                 show_axis=false,
                 viewport=vp,
-                backgroundcolor=:black,
+                backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
                 clear=true,
                 size=(ms, ms))
             cam3d!(ax3d)
@@ -174,13 +174,13 @@ function umap_graph_view!(
     highlighted = Ref([])
     on(hovered) do hov
         for (v_idx) in highlighted[]
-            views[][v_idx][1].backgroundcolor[] = to_color(:black)
+            views[][v_idx][1].backgroundcolor[] = to_color(EMBEDDED_SCENE_BACKGROUND)
         end
         empty!(highlighted[])
 
         if !isnothing(hov) && hov in data[][1]
             v_idx = t_to_pltidx[][hov]
-            views[][v_idx][1].backgroundcolor[] = to_color(:grey)
+            views[][v_idx][1].backgroundcolor[] = to_color(EMBEDDED_SCENE_SELECTED)
             push!(highlighted[], v_idx)
         end
     end
