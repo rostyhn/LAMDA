@@ -168,10 +168,9 @@ function get_data_alt(trajectory_name)
             end
 
             scalars = Dict()
+            scalar_ranges = Dict()
             # load in scalars if present
             scalarf = joinpath(t, "scalars")
-            globalMin = floatmax(Float32)
-            globalMax = floatmin(Float32)
             if isdir(scalarf)
                 println("Loading per-atom scalars...")
                 for sf in readdir(scalarf, join=true)
@@ -181,8 +180,7 @@ function get_data_alt(trajectory_name)
                         totExtrema = extrema.(values(d))
                         totMin = minimum(first.(totExtrema))
                         totMax = maximum(last.(totExtrema))
-                        globalMin = min(totMin, globalMin)
-                        globalMax = max(totMax, globalMax)
+                        scalar_ranges[basename(fname)] = (totMin, totMax)
                         scalars[basename(fname)] = d
                     end
                 end
@@ -227,7 +225,7 @@ function get_data_alt(trajectory_name)
             # TODO: check for correctness
             trajectory_data["alignments"] = alignments
             trajectory_data["scalars"] = scalars
-            trajectory_data["scalar_range"] = (globalMin, globalMax)
+            trajectory_data["scalar_ranges"] = scalar_ranges
             trajectory_data["per_t_scalars"] = per_t_scalars
             trajectory_data["per_t_scalar_ranges"] = per_t_scalar_ranges
             trajectory_data["dms"] = dms

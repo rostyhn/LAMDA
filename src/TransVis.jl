@@ -78,7 +78,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     scalars = active_trajectory["scalars"]
-    scalar_range = active_trajectory["scalar_range"]
+    scalar_ranges = active_trajectory["scalar_ranges"]
 
     connectivity = active_trajectory["connectivity"]
     distanceMatrices = active_trajectory["distanceMatrices"]
@@ -239,6 +239,9 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     bonds = Dict()
     bdMin = floatmax(Float32)
     bdMax = floatmin(Float32)
+    avgMin = floatmax(Float32)
+    avgMax = floatmin(Float32)
+
     println("Calculating bonds...")
     @showprogress for t in transitionSequence
         s1, s2 = t
@@ -257,12 +260,16 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             cartesians = length(findall(!iszero, r))
             avgs[i] = sum(abs.(r)) / cartesians
         end
+        avgMin = min(avgMin, minimum(avgs))
+        avgMax = max(avgMax, maximum(avgs))
+
         absAvgBonds[t] = avgs
         bondDeltas[t] = bd
         bonds[t] = calc_bonds(connectivity[t[1]])
     end
 
     scalars["absAvgBonds"] = absAvgBonds
+    scalar_ranges["absAvgBonds"] = (avgMin, avgMax)
 
     lsExtrema = (bdMin, bdMax)
     ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
@@ -423,7 +430,11 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     atom_cmap = resample_cmap(:reds, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time, alignment)
         t_ap = create_position_alignment_observer(transition, alignment)
-        return simple_atom_view!(scene, t_ap, lift((x, y) -> scalars[x][y], selected_scalar, transition), scalar_range, atom_cmap, time)
+        return simple_atom_view!(scene, t_ap,
+            lift((x, y) -> scalars[x][y], selected_scalar, transition),
+            lift(x -> scalar_ranges[x], selected_scalar),
+            atom_cmap,
+            time)
     end
 
     function render_volume_view(scene, transition)
@@ -577,7 +588,11 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
         scalar_selection, m = scalar_menu(figure)
         gg[2, 1] = m
-        Colorbar(gg[2, 2], colorrange=scalar_range, vertical=false, colormap=atom_cmap, tellwidth=false)
+        Colorbar(gg[2, 2],
+            colorrange=lift(x -> scalar_ranges[x], scalar_selection),
+            vertical=false,
+            colormap=atom_cmap,
+            tellwidth=false)
 
         return gg, time, scalar_selection
     end
