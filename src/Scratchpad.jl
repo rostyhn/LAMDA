@@ -377,33 +377,40 @@ function scratchpad!(
         end
     end
 
-    highlighted = []
-    on(hovered) do hov
-        for (v_idx, ogColor) in highlighted
-            frame_colors[][v_idx][] = ogColor
+    highlighted = Ref([])
+    onany(hovered, hovered_cluster) do hov, hc
+        if isnothing(hov) && isnothing(hc)
+            for (v_idx, ogColor) in highlighted[]
+                frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
+            end
+            empty!(highlighted[])
         end
-        empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
             ogColor = frame_colors[][v_idx][]
             frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted, (v_idx, ogColor))
+            push!(highlighted[], (v_idx, ogColor))
         end
-    end
 
-    highlighted_clusters = []
-    on(hovered_cluster) do hov
-        for (v_idx, ogColor) in highlighted_clusters
-            frame_colors[][v_idx][] = ogColor
-        end
-        empty!(highlighted_clusters)
+        if !isnothing(hc)
+            ts = filter(x -> x isa Transition, collect(keys(obj_to_idx[])))
+            for t in ts
+                c = get_cluster_of_transition(cluster_info[], t)
+                if length(intersect(c, hc)) > 0
+                    v_idx = obj_to_idx[][t] - 1
+                    ogColor = frame_colors[][v_idx][]
+                    frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+                    push!(highlighted[], (v_idx, ogColor))
+                end
+            end
 
-        if !isnothing(hov) && hov in keys(obj_to_idx[])
-            v_idx = obj_to_idx[][hov] - 1
-            ogColor = frame_colors[][v_idx][]
-            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted_clusters, (v_idx, ogColor))
+            if hc in keys(obj_to_idx[])
+                v_idx = obj_to_idx[][hc] - 1
+                ogColor = frame_colors[][v_idx][]
+                frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+                push!(highlighted[], (v_idx, ogColor))
+            end
         end
     end
 

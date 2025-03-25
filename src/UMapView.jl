@@ -213,7 +213,6 @@ function umap_graph_view!(
                 end
             end
         end
-
     end
 
     return umap_nodes
