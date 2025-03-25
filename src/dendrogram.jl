@@ -154,7 +154,7 @@ function dendrogram!(ax,
 
     function on_hover(plt, idx, pos)
         cl = dendrogram[][5](2)
-        if div(idx, 2) < length(dendrogram[][6])
+        if div(idx, 2) <= length(dendrogram[][6])
             cl = dendrogram[][5](idx)
         end
         hover_callbackfn(cl)
@@ -203,7 +203,7 @@ function dendrogram!(ax,
             end
         elseif e.type === MouseEventTypes.over
             mp = mouseposition_px(ax.scene)
-            plot, idx = pick(ax, mp, 10)
+            plot, idx = pick(ax, mp, min(Int(round(dendrogram[][7][2] - dendrogram[][7][2] / 4)), 10))
             if isnothing(plot) && !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
