@@ -16,7 +16,7 @@ function umap_graph_view!(
     markersize=100,
 )
     ax = Axis(loc, backgroundcolor=:transparent)
-    on(highlight_borders, update=true) do hb
+    #=on(highlight_borders, update=true) do hb
         border_color = to_color(:black)
         if hb
             border_color = to_color(:red)
@@ -25,7 +25,7 @@ function umap_graph_view!(
         ax.bottomspinecolor[] = border_color
         ax.leftspinecolor[] = border_color
         ax.rightspinecolor[] = border_color
-    end
+    end=#
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
 

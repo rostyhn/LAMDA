@@ -181,6 +181,18 @@ function build_cluster_window(
         return Consume(false)
     end
 
+    rel_t_to_idx = lift(x -> Dict(reverse.(enumerate(x.ts))), cluster_data)
+    lastBbox = nothing
+    on(hovered_transition) do ht
+        if ht in cluster_data[].ts
+            if !isnothing(lastBbox)
+                delete!(parent_scene(lastBbox), lastBbox)
+            end
+            mtx = rel_t_to_idx[][ht]
+            lastBbox = draw_bbox_pixel_space!(hm_ax.scene, mtx, mtx)
+        end
+    end
+
     on(events(window).keyboardbutton) do event
         if ispressed(window, Exclusively(LEFT_KEY))
             on_left(clusters)
