@@ -184,13 +184,14 @@ function umap_graph_view!(
         end
     end
 
-
     highlighted = Ref([])
-    on(hovered) do hov
-        for (v_idx, ogColor) in highlighted[]
-            frame_colors[][v_idx][] = ogColor
+    onany(hovered, hovered_cluster) do hov, hc
+        if isnothing(hov) && isnothing(hc)
+            for (v_idx, ogColor) in highlighted[]
+                frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
+            end
+            empty!(highlighted[])
         end
-        empty!(highlighted[])
 
         if !isnothing(hov) && hov in data[][1]
             v_idx = t_to_pltidx[][hov]
@@ -198,6 +199,20 @@ function umap_graph_view!(
             frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
             push!(highlighted[], (v_idx, ogColor))
         end
+
+        if !isnothing(hc)
+            ts = collect(keys(t_to_pltidx[]))
+            for t in ts
+                c = get_cluster_of_transition(cluster_info, t)
+                if length(intersect(c, hc)) > 0
+                    v_idx = t_to_pltidx[][t]
+                    ogColor = frame_colors[][v_idx][]
+                    frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+                    push!(highlighted[], (v_idx, ogColor))
+                end
+            end
+        end
+
     end
 
     return umap_nodes

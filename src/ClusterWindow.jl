@@ -120,14 +120,6 @@ function build_cluster_window(
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
 
-    #=
-    cluster_cmap = to_colormap(CLUSTER_COLORS)
-    cluster_color = to_color(:grey)
-    cl = collect(clusters)
-    if length(cl) == 1
-        cluster_color = cluster_cmap[mod1(first(cl), length(cluster_cmap))]
-    end=#
-
     centroid_grid = GridLayout()
     mat_grid[1, 1] = centroid_grid
 
@@ -207,12 +199,12 @@ function build_cluster_window(
         end
     end
 
-    on(events(window).entered_window) do entered
+    #=on(events(window).entered_window) do entered
         if entered
             on_window_hover(clusters[])
         else
             on_window_hover(nothing)
         end
-    end
+    end=#
     return window
 end
