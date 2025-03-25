@@ -158,6 +158,7 @@ function build_cluster_window(
 
     on(vals) do v
         reset_limits!(hm_ax)
+        center!(hm_ax.scene)
     end
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
@@ -179,10 +180,10 @@ function build_cluster_window(
 
     lastBbox = nothing
     on(hovered_transition) do ht
+        if !isnothing(lastBbox)
+            delete!(parent_scene(lastBbox), lastBbox)
+        end
         if ht in cluster_data[].ts
-            if !isnothing(lastBbox)
-                delete!(parent_scene(lastBbox), lastBbox)
-            end
             mtx = cluster_data[].t_to_mtx[ht]
             lastBbox = draw_bbox_pixel_space!(hm_ax.scene, mtx, mtx)
         end
