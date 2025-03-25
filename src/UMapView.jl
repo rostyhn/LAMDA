@@ -69,6 +69,7 @@ function umap_graph_view!(
             Makie.free(ax3d)
         end
         empty!(views[])
+        empty!(frame_colors[]) # update frame colors
         GC.gc()
 
         for (i, t) in enumerate(data.val[1])
@@ -89,7 +90,7 @@ function umap_graph_view!(
 
             frame_color = Observable(set_color_alpha(data[][3][i], 0.6))
 
-            frame = wireframe!(
+            wireframe!(
                 ax3d,
                 Rect2f(-1, -1, 2, 2),
                 transformation=(:xy, 0),
@@ -171,7 +172,7 @@ function umap_graph_view!(
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)
                 x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
 
-                vp = Rect2i(x - ms[], y - ms[], ms[], ms[])
+                vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
                 vp = GeometryBasics.intersect(vp, ax.scene.viewport[])
                 vw = widths(vp)
 
