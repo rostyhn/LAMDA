@@ -488,22 +488,31 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             velocities = last.(posValsTup) .- first.(posValsTup)
 
             vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
+            correlationMeasure = zeros(Float32, length(refPositions) )
 
             num_neighbors = 30
             clusterKd = KDTree.(positions)
-            for t in eachindex(clusterKd)
-                for pId in eachindex(refPositions)
+            for pId in eachindex(refPositions)
+                 vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
+                for t in eachindex(clusterKd)
+
                     knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
                     uValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
                     vValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
                     wValue = sum( ((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
                     vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
+                    vectorList[t] = Point3f(uValue, vValue, wValue)
+                end
+                meanV = mean(vectorList)
+                for v in vectorList
+                    correlationMeasure[pId] += (dot(meanV,v))/(dot(meanV,meanV) + dot(v,v))/length(vectorList) + 0.5
                 end
             end
+            @show correlationMeasure
 
             velocityMagnitudes = norm.(vd)
             stdDeviation = std(velocityMagnitudes)
-            @show zMagnitudes = zscore(velocityMagnitudes, 0, stdDeviation)
+            zMagnitudes = zscore(velocityMagnitudes, 0, stdDeviation)
             # distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
             # R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
             groupOne = Vector{Int32}()
@@ -544,9 +553,9 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
             inits = first.(posValsTup)[representativeIdx]
             fins = last.(posValsTup)[representativeIdx]
-            return (inits, fins), vd, clusters, zMagnitudes
+            return (inits, fins), vd, clusters, correlationMeasure
         end
-        return simple_arrow_view!(scene, lift(x -> x[1], d), time, atom_cmap, lift(x -> x[2], d), lift(x -> x[3], d))
+        return simple_arrow_view!(scene, lift(x -> x[1], d), time, atom_cmap, lift(x -> x[2], d), lift(x -> x[3], d), lift(x -> x[4], d))
     end
 
     function render_superquadrics_view(scene, transition, inspector, alignment)

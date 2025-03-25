@@ -82,11 +82,12 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
     return s
 end
 
-function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, mobilityClusters::Observable{Vector{Float32}})
+function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, mobilityClusters::Observable{Vector{Float32}}, correlation::Observable{Vector{Float32}})
     # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time) # median is moving for debugging
     int_pos = lift((x, y, vel) -> Point3f.(eachrow(x[1])) .+ (vel .* y), ap, time, vel) #average is moving
 
     velocities = lift(x -> 2.0 * x, vel)
+    corr = lift(x -> x,correlation) 
 
     velocityMagnitudes = lift(x -> norm.(x), velocities)
     magnitudeRange = lift(x -> extrema(x), velocityMagnitudes)
@@ -99,6 +100,7 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         points.val = ip
         points[] = points[]
         velocities[] = velocities[]
+        corr[] = corr[]
     end
 
     atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright6, 6)
@@ -119,30 +121,30 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
     #     getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
 
 
-    s = arrows!(scene, points, velocities;
-        color=colorVector,
-        #color=velocityMagnitudes,
-        arrowsize=1.2,
-        transparency=true,
-        inspectable=false,
-    )
+    # s = arrows!(scene, points, velocities;
+    #     color=colorVector,
+    #     #color=velocityMagnitudes,
+    #     arrowsize=1.2,
+    #     transparency=true,
+    #     inspectable=false,
+    # )
 
-    h = meshscatter!(scene,
-        points;
-        color=:gray,
-        colorrange=(1, 1),
-        marker=:Sphere,
-        alpha=0.3,
-        lowclip=:transparent,
-        highclip=:transparent,
-        transparency=true,
-        inspectable=false,
-        markersize=0.2)
+    # h = meshscatter!(scene,
+    #     points;
+    #     color=:gray,
+    #     colorrange=(1, 1),
+    #     marker=:Sphere,
+    #     alpha=0.3,
+    #     lowclip=:transparent,
+    #     highclip=:transparent,
+    #     transparency=true,
+    #     inspectable=false,
+    #     markersize=0.2)
 
-    h = meshscatter!(scene,
+    s = meshscatter!(scene,
         points;
-        color=colorVector,
-        # color=velocityMagnitudes,
+        # color=colorVector,
+        color=corr,
         marker=:Sphere,
         transparency=true,
         inspectable=false,
