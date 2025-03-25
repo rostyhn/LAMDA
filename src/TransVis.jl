@@ -114,7 +114,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     cluster_data = @lift begin
         clustering = hclust($dm, linkage=:ward, branchorder=:barjoseph)
-
         rm = zeros(Float32, size($dm))
         # gets the correct idx 
         t_to_mtx = Dict{Transition,Int}()

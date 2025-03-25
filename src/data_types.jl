@@ -79,9 +79,10 @@ end
 
 function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
-    t_to_mtx = Dict(zip(ts, mtx_idx))
-    sort!(mtx_idx)
-    return cd.matrix[mtx_idx, mtx_idx], t_to_mtx
+    # sortperm! doesn't mutate the arguments, spent a long time to figure this out
+    s = sortperm(mtx_idx)
+    t_to_mtx = Dict(reverse.(enumerate(ts[s])))
+    return cd.matrix[mtx_idx[s], mtx_idx[s]], t_to_mtx
 end
 
 

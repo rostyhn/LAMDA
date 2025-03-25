@@ -151,7 +151,11 @@ function build_cluster_window(
         cluster_annotations;
         colormap=CLUSTER_COLORS)
 
-    hm_ax, hm = heatmap(mat_grid[3, 1], vals, colorrange=mat_range, colormap=DISTANCE_MATRIX_COLORMAP)
+    hm_ax, hm = heatmap(mat_grid[3, 1],
+        vals,
+        colorrange=mat_range,
+        colormap=DISTANCE_MATRIX_COLORMAP)
+
     on(vals) do v
         reset_limits!(hm_ax)
     end
@@ -173,14 +177,13 @@ function build_cluster_window(
         return Consume(false)
     end
 
-    rel_t_to_idx = lift(x -> Dict(reverse.(enumerate(x.ts))), cluster_data)
     lastBbox = nothing
     on(hovered_transition) do ht
         if ht in cluster_data[].ts
             if !isnothing(lastBbox)
                 delete!(parent_scene(lastBbox), lastBbox)
             end
-            mtx = rel_t_to_idx[][ht]
+            mtx = cluster_data[].t_to_mtx[ht]
             lastBbox = draw_bbox_pixel_space!(hm_ax.scene, mtx, mtx)
         end
     end
