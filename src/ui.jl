@@ -82,11 +82,12 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
     return s
 end
 
-function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, mobilityClusters::Observable{Vector{Float32}}, correlation::Observable{Vector{Float32}})
+function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, correlation::Observable{Vector{Float32}}, corrThreshold::Observable{Float64})
     # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time) # median is moving for debugging
     int_pos = lift((x, y, vel) -> Point3f.(eachrow(x[1])) .+ (vel .* y), ap, time, vel) #average is moving
 
-    velocities = lift(x -> 2.0 * x, vel)
+    velocities = lift((x,c, t) -> 2.0 * x .* (c .>= Ref(t)) , vel, correlation, corrThreshold)
+
     corr = lift(x -> x,correlation) 
 
     velocityMagnitudes = lift(x -> norm.(x), velocities)
@@ -103,51 +104,61 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         corr[] = corr[]
     end
 
-    atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright6, 6)
+    # keep this for now; may be important later....
 
-    getAlpha(value, clusterId, range) = clusterId == 1 ? 0 : max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
-    getValue(value, range) = clusterId == 1 ? 0 : max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
+    # atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright6, 6)
 
-    colorVector[] = ColorTypes.RGBA{Float64}.(
-        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :r),
-        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :g),
-        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :b),
-        getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
+    # getAlpha(value, threshold) = value > threshold  ? 0 : 1.0)
+    # getValue(value, range) = max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
+
+    # colorVector[] = ColorTypes.RGBA{Float64}.(
+    #     getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :r),
+    #     getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :g),
+    #     getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :b),
+    #     getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
 
     # colorVector[] = ColorTypes.RGBA{Float64}.(
     #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :r),
     #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :g),
     #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :b),
-    #     getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
+    #     getAlpha.(corr[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
 
 
-    # s = arrows!(scene, points, velocities;
-    #     color=colorVector,
-    #     #color=velocityMagnitudes,
-    #     arrowsize=1.2,
-    #     transparency=true,
-    #     inspectable=false,
-    # )
 
-    # h = meshscatter!(scene,
-    #     points;
-    #     color=:gray,
-    #     colorrange=(1, 1),
-    #     marker=:Sphere,
-    #     alpha=0.3,
-    #     lowclip=:transparent,
-    #     highclip=:transparent,
-    #     transparency=true,
-    #     inspectable=false,
-    #     markersize=0.2)
-
-    s = meshscatter!(scene,
-        points;
-        # color=colorVector,
+    h = arrows!(scene, points, velocities;
         color=corr,
-        marker=:Sphere,
+        arrowsize=1.2,
+        colorrange=(corrThreshold[],1.0),
+        colormap=cmap, 
+        lowclip=:transparent,# BUGGED arrows dont et transparent. workaround by setting velocity 0 in these cases
+        # highclip=:transparent,
         transparency=true,
         inspectable=false,
+    )
+
+    v = meshscatter!(scene,
+        points;
+        color=:gray,
+        # colorrange=(0.0,corrThreshold),
+        marker=:Sphere,
+        # alpha=0.5,
+        colormap=cmap,
+        lowclip=:transparent,
+        highclip=:transparent,
+        transparency=true,
+        inspectable=false,
+        markersize=0.2)
+
+    # @show corr[]
+    s = meshscatter!(scene,
+        points;
+        color=corr,
+        marker=:Sphere,
+        # transparency=true,
+        # inspectable=false,
+        lowclip=:transparent,
+        colormap=cmap, 
+        colorrange=(corrThreshold[],1.0),
         markersize=0.7)
 
     update_cam!(parent_scene(s))

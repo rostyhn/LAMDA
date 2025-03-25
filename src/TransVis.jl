@@ -63,6 +63,7 @@ const EMBEDDED_SCENE_BACKGROUND = colorant"#F5F5F5"
 const EMBEDDED_SCENE_SELECTED = colorant"#8b8680"
 const DISTANCE_MATRIX_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
 const CLUSTER_COLORMAP = to_colormap(CLUSTER_COLORS)
+const CLUSTER_CONSENSUS_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
 
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
@@ -475,7 +476,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
-    function render_movement_view_ts(scene, ts, time, alignment)
+    function render_movement_view_ts(scene, ts, time, alignment, correlationThreshold)
         d = @lift begin
             posValsTup = map(t -> apply_alignment($alignment[t], alignedPositionsMatrices[t]), $ts)
 
@@ -490,7 +491,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
             correlationMeasure = zeros(Float32, length(refPositions) )
 
-            num_neighbors = 30
+            num_neighbors = 50
             clusterKd = KDTree.(positions)
             for pId in eachindex(refPositions)
                  vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
@@ -505,58 +506,59 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 end
                 meanV = mean(vectorList)
                 for v in vectorList
-                    correlationMeasure[pId] += (dot(meanV,v))/(dot(meanV,meanV) + dot(v,v)) + 0.5
-                    correlationMeasure[pId] *= 1.0/length(vectorList)
+                    correlationMeasure[pId] += (dot(meanV,v))/(dot(meanV,meanV) + dot(v,v)) 
                 end
+                correlationMeasure[pId] *= 1.0/length(vectorList)
+                correlationMeasure[pId] += 0.5
             end
-            @show correlationMeasure
+            # @show correlationMeasure
 
-            velocityMagnitudes = norm.(vd)
-            stdDeviation = std(velocityMagnitudes)
-            zMagnitudes = zscore(velocityMagnitudes, 0, stdDeviation)
-            # distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
-            # R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
-            groupOne = Vector{Int32}()
-            groupTwo = Vector{Int32}()
+            # velocityMagnitudes = norm.(vd)
+            # stdDeviation = std(velocityMagnitudes)
+            # zMagnitudes = zscore(velocityMagnitudes, 0, stdDeviation)
+            # # distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
+            # # R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
+            # groupOne = Vector{Int32}()
+            # groupTwo = Vector{Int32}()
 
-            for index in eachindex(velocityMagnitudes)
-                # if R.weights[index, 1] > 0.5 #if probability is higher than 30% (performs better than a hard cut between clusters)
-                if zMagnitudes[index] > 3
-                push!(groupOne, index)
-                else
-                    push!(groupTwo, index)
-                end
-            end
+            # for index in eachindex(velocityMagnitudes)
+            #     # if R.weights[index, 1] > 0.5 #if probability is higher than 30% (performs better than a hard cut between clusters)
+            #     if zMagnitudes[index] > 3
+            #     push!(groupOne, index)
+            #     else
+            #         push!(groupTwo, index)
+            #     end
+            # end
 
-            @show meanOne = mean(velocityMagnitudes[groupOne])
-            @show meanTwo = mean(velocityMagnitudes[groupTwo])
+            # @show meanOne = mean(velocityMagnitudes[groupOne])
+            # @show meanTwo = mean(velocityMagnitudes[groupTwo])
 
-            groupMobile = Vector{Int32}()
-            groupStatic = Vector{Int32}()
-            if meanOne > meanTwo # which of the two groups is the static one: seems random
-                groupMobile = groupOne
-                groupStatic = groupTwo
-            else
-                groupStatic = groupOne
-                groupMobile = groupTwo
-            end
-            distanceMatrixMobile = pairwise(CosineDist(), vd[groupMobile]) # cluster only the moving atoms again
-            mobileResult = kmedoids(distanceMatrixMobile, min(size(distanceMatrixMobile)[1], 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
+            # groupMobile = Vector{Int32}()
+            # groupStatic = Vector{Int32}()
+            # if meanOne > meanTwo # which of the two groups is the static one: seems random
+            #     groupMobile = groupOne
+            #     groupStatic = groupTwo
+            # else
+            #     groupStatic = groupOne
+            #     groupMobile = groupTwo
+            # end
+            # distanceMatrixMobile = pairwise(CosineDist(), vd[groupMobile]) # cluster only the moving atoms again
+            # mobileResult = kmedoids(distanceMatrixMobile, min(size(distanceMatrixMobile)[1], 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
 
-            clusters = ones(Float32, length(refPositions))
+            # clusters = ones(Float32, length(refPositions))
 
-            for i in eachindex(groupMobile)
-                clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left for immobile atoms
-            end
+            # for i in eachindex(groupMobile)
+            #     clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left for immobile atoms
+            # end
 
-            vels = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
-            vels[groupMobile[mobileResult.medoids]] = vd[groupMobile[mobileResult.medoids]]
+            # vels = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
+            # vels[groupMobile[mobileResult.medoids]] = vd[groupMobile[mobileResult.medoids]]
 
             inits = first.(posValsTup)[representativeIdx]
             fins = last.(posValsTup)[representativeIdx]
-            return (inits, fins), vd, clusters, correlationMeasure
+            return (inits, fins), vd, correlationMeasure
         end
-        return simple_arrow_view!(scene, lift(x -> x[1], d), time, atom_cmap, lift(x -> x[2], d), lift(x -> x[3], d), lift(x -> x[4], d))
+        return simple_arrow_view!(scene, lift(x -> x[1], d), time, CLUSTER_CONSENSUS_COLORMAP, lift(x -> x[2], d), lift(x -> x[3], d), correlationThreshold)
     end
 
     function render_superquadrics_view(scene, transition, inspector, alignment)
@@ -590,6 +592,17 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         sg = hgrid!(Label(figure, "t", font=:italic), t_slider, Label(figure, lift(x -> string(x), time)))
 
         return time, sg
+    end
+
+    function correlation_slider(threshold, figure)
+        correlationThreshold = Observable(threshold)
+        c_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=threshold)
+        on(c_slider.value) do x
+            correlationThreshold[] = x
+        end
+        sg = hgrid!(Label(figure, "correlation", font=:italic), c_slider, Label(figure, lift(x -> string(x), correlationThreshold)))
+
+        return correlationThreshold, sg
     end
 
     # could be one func
@@ -675,6 +688,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     widgets["Render"] = render_menu
     widgets["Scalar"] = scalar_menu
     widgets["Colorbar"] = embed_colorbar
+    widgets["CorrThreshold"] = correlation_slider
+
 
     calculators = Dict()
     calculators["Alignment"] = calc_alignment

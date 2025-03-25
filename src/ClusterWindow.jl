@@ -92,6 +92,7 @@ function build_cluster_window(
     time, t_slider = widgets["Movement"](0.0, window)
     btn_centroid = Button(window, label="Show centroid")
 
+
     on(btn_centroid.clicks) do n
         hovered_transition[] = cluster_data[].ref_t
         notify(hovered_transition)
@@ -144,8 +145,11 @@ function build_cluster_window(
 
     vals = lift(x -> x.mat, cluster_data)
 
-    render_views["SMovement"](centroid_scene, ts, time, alignment)
-    btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
+    btn_centroid_to_scratchpad = Button(centroid_grid[3, 2], label="To scratchpad", tellwidth=false)
+    correlation, corr_slider = widgets["CorrThreshold"](0.7, centroid_grid[3, 1]) 
+    render_views["SMovement"](centroid_scene, ts, time, alignment, correlation)
+    # btn_centroid_to_scratchpad = Button(centroid_grid[3, 1], label="To scratchpad", tellwidth=false)
+   
 
     on(btn_centroid_to_scratchpad.clicks) do n
         on_cluster_select(clusters[])
