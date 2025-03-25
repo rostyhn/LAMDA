@@ -83,24 +83,28 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
 end
 
 function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, mobilityClusters::Observable{Vector{Float32}})
-    int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
-    velocities = lift(x -> 20.0 * x, vel)
+    # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time) # median is moving for debugging
+    int_pos = lift((x, y, vel) -> Point3f.(eachrow(x[1])) .+ (vel .* y), ap, time, vel) #average is moving
+
+    velocities = lift(x -> 2.0 * x, vel)
 
     velocityMagnitudes = lift(x -> norm.(x), velocities)
     magnitudeRange = lift(x -> extrema(x), velocityMagnitudes)
-    points = Observable(Point3f.(eachrow(int_pos[])))
+    points = Observable(int_pos[])
 
     colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(velocities[])))
 
     on(int_pos) do ip
-        points.val = Point3f.(eachrow(ip))
+        # points.val = Point3f.(eachrow(ip))
+        points.val = ip
         points[] = points[]
         velocities[] = velocities[]
     end
 
-    atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright, 20)
+    atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright6, 6)
 
     getAlpha(value, clusterId, range) = clusterId == 1 ? 0 : max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
+    getValue(value, range) = clusterId == 1 ? 0 : max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
 
     colorVector[] = ColorTypes.RGBA{Float64}.(
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :r),
@@ -108,8 +112,16 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :b),
         getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
 
+    # colorVector[] = ColorTypes.RGBA{Float64}.(
+    #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :r),
+    #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :g),
+    #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :b),
+    #     getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
+
+
     s = arrows!(scene, points, velocities;
         color=colorVector,
+        #color=velocityMagnitudes,
         arrowsize=1.2,
         transparency=true,
         inspectable=false,
@@ -130,6 +142,7 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
     h = meshscatter!(scene,
         points;
         color=colorVector,
+        # color=velocityMagnitudes,
         marker=:Sphere,
         transparency=true,
         inspectable=false,

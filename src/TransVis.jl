@@ -489,37 +489,37 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
             vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
 
-            num_neighbors = 10
+            num_neighbors = 30
             clusterKd = KDTree.(positions)
             for t in eachindex(clusterKd)
                 for pId in eachindex(refPositions)
                     knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
-                    uValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
-                    vValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
-                    wValue = sum(kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
+                    uValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
+                    vValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
+                    wValue = sum( ((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
                     vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
                 end
             end
 
             velocityMagnitudes = norm.(vd)
             stdDeviation = std(velocityMagnitudes)
-            zMagnitudes = zscore(velocityMagnitudes, 0.0, stdDeviation)
-            distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
-            R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
+            @show zMagnitudes = zscore(velocityMagnitudes, 0, stdDeviation)
+            # distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
+            # R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
             groupOne = Vector{Int32}()
             groupTwo = Vector{Int32}()
 
-            for index in eachindex(R.weights[:, 1])
-                if R.weights[index, 1] > 0.3 #if probability is higher than 30% (performs better than a hard cut between clusters)
-                    push!(groupOne, index)
-                end
-                if R.weights[index, 2] > 0.3
+            for index in eachindex(velocityMagnitudes)
+                # if R.weights[index, 1] > 0.5 #if probability is higher than 30% (performs better than a hard cut between clusters)
+                if zMagnitudes[index] > 3
+                push!(groupOne, index)
+                else
                     push!(groupTwo, index)
                 end
             end
 
-            meanOne = mean(velocityMagnitudes[groupOne])
-            meanTwo = mean(velocityMagnitudes[groupTwo])
+            @show meanOne = mean(velocityMagnitudes[groupOne])
+            @show meanTwo = mean(velocityMagnitudes[groupTwo])
 
             groupMobile = Vector{Int32}()
             groupStatic = Vector{Int32}()
@@ -530,7 +530,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 groupStatic = groupOne
                 groupMobile = groupTwo
             end
-            distanceMatrixMobile = pairwise(Euclidean(), vd[groupMobile]) # cluster only the moving atoms again
+            distanceMatrixMobile = pairwise(CosineDist(), vd[groupMobile]) # cluster only the moving atoms again
             mobileResult = kmedoids(distanceMatrixMobile, min(size(distanceMatrixMobile)[1], 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
 
             clusters = ones(Float32, length(refPositions))
@@ -544,7 +544,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
             inits = first.(posValsTup)[representativeIdx]
             fins = last.(posValsTup)[representativeIdx]
-            return (inits, fins), vd, clusters
+            return (inits, fins), vd, clusters, zMagnitudes
         end
         return simple_arrow_view!(scene, lift(x -> x[1], d), time, atom_cmap, lift(x -> x[2], d), lift(x -> x[3], d))
     end
