@@ -3,6 +3,7 @@ using Makie
 function build_cluster_window(
     clusters::Observable{Set{Int}},
     cluster_data::Observable{SingleClusterData},
+    cluster_info::ClusterInfo,
     scalars,
     mat_range,
     render_views,
@@ -110,7 +111,9 @@ function build_cluster_window(
         time,
         render_views,
         hovered_transition,
-        alignment;
+        alignment,
+        hovered_cluster,
+        cluster_info;
         highlight_borders=hb,
         on_click=on_transition_select)
 

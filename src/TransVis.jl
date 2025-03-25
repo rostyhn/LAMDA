@@ -176,6 +176,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             lines=lines,
             c_to_parent=c_to_parent,
             parent_to_c=parent_to_c,
+            rel_t_to_idx=rel_t_to_idx,
             clusters=clusters,
             c_to_idx=c_to_idx,
             h_range=$h_range,

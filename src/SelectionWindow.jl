@@ -148,6 +148,7 @@ function build_selection_window(
         w = build_cluster_window(
             cc,
             scd,
+            cluster_info[],
             scalars,
             cluster_data[].m_extrema,
             render_views,

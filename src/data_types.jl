@@ -16,6 +16,18 @@ const Transition = Tuple{Int16,Int16}
     parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
     c_to_idx
     h_range
+    rel_t_to_idx
+end
+
+function get_cluster_of_transition(ci::ClusterInfo, t::Transition)
+    t_idx = ci.rel_t_to_idx[t]
+    return Set(ci.assignments[t_idx])
+end
+
+function get_parents_of_transition(ci::ClusterInfo, t::Transition)
+    c = get_cluster_of_transition(ci, t)
+    # TODO: get all clusters transition belongs to
+    return c
 end
 
 function get_transitions(ci::ClusterInfo, cluster::Set{Int})::Vector{Transition}

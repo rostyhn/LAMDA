@@ -34,8 +34,6 @@ function scratchpad!(
 
     ins = DataInspector(ax)
 
-    cluster_cmap = to_colormap(CLUSTER_COLORS)
-
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
     idx_to_obj = Observable{Vector{Union{Set{Int},Transition}}}(Union{Set{Int},Transition}[]) # gets transition from plotted idx
     obj_to_idx = Ref(Dict{Union{Set{Int},Transition},Int}())
@@ -168,13 +166,6 @@ function scratchpad!(
             delete_obj!(c, rendered_idxes, views, obj_to_idx, num_objs)
         end
 
-        assignments = ci.assignments
-        #=for t in keys(rt_to_idx)
-            plt_idx = rt_to_idx[t]
-            t_idx = rel_t_to_idx[t]
-            node_color = cycle_colormap(assignments[t_idx], cluster_cmap)
-            colors.val[plt_idx] = set_color_alpha(node_color, 0.6)
-        end=#
         empty!(selected_clusters[])
         selected_clusters[] = selected_clusters[]
     end

@@ -8,7 +8,9 @@ function umap_graph_view!(
     atom_time,
     render_views,
     hovered,
-    alignment;
+    alignment,
+    hovered_cluster,
+    cluster_info;
     highlight_borders=Observable(false),
     on_click=(x) -> (),
     markersize=100,
@@ -106,9 +108,16 @@ function umap_graph_view!(
                     show_data(ins, umap_nodes, i)
                     hovered[] = t
                     notify(hovered)
+
+                    c = get_cluster_of_transition(cluster_info, t)
+                    hovered_cluster[] = c
+                    notify(hovered_cluster)
                 elseif event.type === MouseEventTypes.out
                     hovered[] = nothing
                     notify(hovered)
+
+                    hovered_cluster[] = nothing
+                    notify(hovered_cluster)
                 elseif event.type === MouseEventTypes.leftdoubleclick
                     on_click(t)
                 end
