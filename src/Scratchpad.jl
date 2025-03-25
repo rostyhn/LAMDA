@@ -159,18 +159,6 @@ function scratchpad!(
         end
     end
 
-
-    on(cluster_info) do ci
-        clusters = filter(x -> x isa Set{Int}, collect(keys(obj_to_idx[])))
-        for c in clusters
-            delete_obj!(c, rendered_idxes, views, obj_to_idx, num_objs)
-        end
-
-        empty!(selected_clusters[])
-        selected_clusters[] = selected_clusters[]
-    end
-
-
     nodes = scatter!(ax, points, marker=:rect, visible=false)
     nodes.inspectable[] = false
 
@@ -178,6 +166,7 @@ function scratchpad!(
 
     # guarantees updated version of clusterinfo
     function get_t_cluster(idx)
+        # gets the INDEX of the current cluster
         x = lift(y -> Set(y.assignments[idx]), cluster_info)
         xval = x[]
         Observables.clear(x)
@@ -237,14 +226,11 @@ function scratchpad!(
 
                 frame_color = @lift begin
                     if obj isa Transition
-                        return cycle_colormap($(cluster_info).assignments[rel_t_to_idx[obj]], CLUSTER_COLORMAP; alpha=0.6)
+                        # get the currently assigned color of this transition
+                        return set_color_alpha(cluster_color($(cluster_info), obj), 0.6)
                     else
-                        c = collect(obj)
-                        if length(c) == 1
-                            return cycle_colormap(first(c), CLUSTER_COLORMAP; alpha=0.6)
-                        else
-                            return set_color_alpha(to_color(:grey), 0.6)
-                        end
+                        # gets the assigned cluster color
+                        return set_color_alpha(cluster_color($(cluster_data), obj), 0.6)
                     end
                 end
 
@@ -345,7 +331,8 @@ function scratchpad!(
                         center!(ax3d)
                     end
                 else
-                    ts = get_transitions(cluster_info[], obj)
+                    # get transitions from general cluster object instead of the current one
+                    ts = get_transitions(t_list, obj)
                     alignment = calculators["Alignment"](ts)
                     render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
                     center!(ax3d)
@@ -491,30 +478,30 @@ function group_scratchpad(s::Scratchpad)
     return top_level, hierarchy, loose, titles
 end
 
-function export_scratchpad(s, ci, ep, dpath)
+function export_scratchpad(s, t_list, ep, dpath)
     # export loose data in top folder
     top_level, hierarchy, loose, titles = group_scratchpad(s)
     if !isempty(loose)
-        export_scratchpad_children(dpath, ep, loose, ci)
+        export_scratchpad_children(dpath, ep, loose, t_list)
     end
 
     for b in top_level
-        export_scratchpad_children_recurse(b, hierarchy, ci, ep, dpath, titles)
+        export_scratchpad_children_recurse(b, hierarchy, t_list, ep, dpath, titles)
     end
 end
 
-function export_scratchpad_children_recurse(bIdx, hierarchy, ci, parent_dir, dpath, titles)
+function export_scratchpad_children_recurse(bIdx, hierarchy, t_list, parent_dir, dpath, titles)
     cf = joinpath(parent_dir, titles[bIdx])
     if !isdir(cf)
         mkdir(cf)
     end
     children = hierarchy[bIdx]
-    export_scratchpad_children(dpath, cf, children, ci)
+    export_scratchpad_children(dpath, cf, children, t_list)
     bChildren = filter(x -> x isa Int, children)
-    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, ci, cf, dpath, titles), bChildren)
+    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, t_list, cf, dpath, titles), bChildren)
 end
 
-function export_scratchpad_children(dpath, p, children, ci)
+function export_scratchpad_children(dpath, p, children, t_list)
     # write notes in folder
     notes = filter(x -> x isa String, children)
     if !isempty(notes)
@@ -528,7 +515,7 @@ function export_scratchpad_children(dpath, p, children, ci)
     clusters = filter(x -> x isa Set{Int}, children)
     transitions = filter(x -> x isa Transition, children)
 
-    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(ci, x), clusters), init=[]))
+    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(t_list, x), clusters), init=[]))
 
     if !isempty(ts)
         export_t = export_transitions()

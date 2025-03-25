@@ -88,7 +88,7 @@ function umap_graph_view!(
                 size=(ms, ms))
             cam3d!(ax3d)
 
-            frame_color = Observable(set_color_alpha(data[][3][i], 0.6))
+            frame_color = Observable(set_color_alpha(cluster_color(cluster_info, t), 0.6))
 
             wireframe!(
                 ax3d,

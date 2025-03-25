@@ -3,6 +3,7 @@ using Makie
 function build_cluster_window(
     clusters::Observable{Set{Int}},
     cluster_data::Observable{SingleClusterData},
+    all_cluster_data::Observable{ClusterData},
     cluster_info::ClusterInfo,
     scalars,
     mat_range,
@@ -147,6 +148,7 @@ function build_cluster_window(
 
     dendrogram!(dendrogram_ax,
         cluster_data,
+        all_cluster_data,
         hovered_cluster,
         cluster_annotations;
         colormap=CLUSTER_COLORS)

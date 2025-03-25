@@ -178,11 +178,9 @@ function pure_align(r1, r2)
 end
 
 # finds the centroid between a group of clusters
-function find_group_centroid(clusters, cd::ClusterData, ci::ClusterInfo, t_list)
-    cluster_list = collect(clusters)
-
-    reps = map(x -> ci.representatives[x], cluster_list)
-    mtx_idx = map(x -> cd.t_to_mtx[x], reps)
+function find_group_centroid(clusters, cd::ClusterData, t_list)
+    ts = get_transitions(t_list, clusters)
+    mtx_idx = map(x -> cd.t_to_mtx[x], ts)
 
     dist_sum = map(x -> sum(cd.matrix[x, :][mtx_idx]), mtx_idx)
     ref_t_idx = mtx_idx[argmin(dist_sum)]

@@ -128,8 +128,12 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         fl = vec($dm)
         h_range[] = extrema(clustering.heights)
         notify(h_range)
+
+        c2idx = get_hierarchy(clustering)
+
         return ClusterData(clustering=clustering,
             matrix=rm,
+            c2idx=c2idx,
             m_extrema=(extrema(fl)),
             t_to_mtx=t_to_mtx,
             mtx_to_t=mtx_to_t)
@@ -139,14 +143,26 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     cluster_info = @lift begin
         assignments = cutree($(cluster_data).clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Transition}}()
+        igroups = Dict{Int,Vector{Int}}()
+        # current assigned cluster to idx
+        ccidx2cidx = Dict{Int,Int}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
                 g = groups[c]
+                ig = igroups[c]
             else
                 g = Vector{Transition}()
+                ig = Vector{Int}()
             end
             push!(g, transitionSequence[i])
+            push!(ig, i)
             groups[c] = g
+            igroups[c] = ig
+        end
+
+        for (idx, g) in igroups
+            c = Set(g)
+            ccidx2cidx[idx] = ($cluster_data).c2idx[c]
         end
 
         #=
@@ -168,7 +184,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             reps[clusterIdx] = g[argmin(dist_sum)]
         end
 
-        lines, clusters, c_to_parent, parent_to_c, c_to_idx = treepositions($(cluster_data).clustering, $h_cutoff)
+        lines, clusters, c_to_parent, parent_to_c, c2lx = treepositions($(cluster_data).clustering, $h_cutoff)
         return ClusterInfo(groups=groups,
             representatives=reps,
             assignments=assignments,
@@ -177,7 +193,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             parent_to_c=parent_to_c,
             rel_t_to_idx=rel_t_to_idx,
             clusters=clusters,
-            c_to_idx=c_to_idx,
+            c2lx=c2lx,
+            cc2cidx=ccidx2cidx,
             h_range=$h_range,
             cutoff=$h_cutoff)
     end
@@ -504,8 +521,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 groupMobile = groupTwo
             end
             distanceMatrixMobile = pairwise(Euclidean(), vd[groupMobile]) # cluster only the moving atoms again
-
-            mobileResult = kmedoids(distanceMatrixMobile, min(length($ts), 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
+            mobileResult = kmedoids(distanceMatrixMobile, min(size(distanceMatrixMobile)[1], 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
 
             clusters = ones(Float32, length(refPositions))
 

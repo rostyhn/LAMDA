@@ -130,8 +130,8 @@ function build_selection_window(
     function on_show_cluster_click(clusters)
         cc = Observable(clusters)
         scd = @lift begin
-            ref_t = find_group_centroid($cc, cluster_data[], cluster_info[], t_list)
-            ts = get_transitions($cluster_info, $cc)
+            ref_t = find_group_centroid($cc, cluster_data[], t_list)
+            ts = get_transitions(t_list, $cc)
             mat, t_to_mtx = get_local_matrix(cluster_data[], ts)
 
             return buildSingleClusterData(
@@ -148,6 +148,7 @@ function build_selection_window(
         w = build_cluster_window(
             cc,
             scd,
+            cluster_data,
             cluster_info[],
             scalars,
             cluster_data[].m_extrema,
@@ -186,12 +187,6 @@ function build_selection_window(
         end
     end
 
-    # close cluster views if clustering changes
-    on(cluster_info) do c
-        foreach(s -> close(s), values(open_cluster_windows))
-        empty!(open_cluster_windows)
-    end
-
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
     on(cutoff_tb.stored_string) do s
         # reset hovered_cluster to avoid crashing
@@ -227,6 +222,7 @@ function build_selection_window(
 
     dendrogram!(graph_ax,
         cluster_info,
+        cluster_data,
         hovered_cluster,
         cluster_annotations;
         on_click=on_dendrogram_click,
@@ -268,30 +264,29 @@ function build_selection_window(
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cluster_cmap[mod1(c, length(cluster_cmap))])
+            p = draw_bbox_pixel_space!(hm_ax.scene,
+                lo,
+                hi;
+                color=cluster_color(cluster_info[], first(ts)))
 
             push!(rendered_clusters, p)
         end
     end
 
-    function calc_cluster_bounding_box(hc, ci, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
+    function calc_cluster_bounding_box(hc, cd, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
 
         if !isnothing(hc)
-            ts = get_transitions(ci, hc)
+            ts = get_transitions(t_list, hc)
 
             m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            if length(hc) != 1
-                color = to_color(:grey)
-            else
-                color = cluster_cmap[mod1(first(collect(hc)), length(cluster_cmap))]
-            end
+            color = cluster_color(cd, hc)
 
             return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=3)
         end
@@ -301,7 +296,7 @@ function build_selection_window(
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     hm_last_bBox::Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
     on(hovered_cluster) do hc
-        res = calc_cluster_bounding_box(hc, cluster_info[], cluster_data[].t_to_mtx, hm_last_bBox)
+        res = calc_cluster_bounding_box(hc, cluster_data[], cluster_data[].t_to_mtx, hm_last_bBox)
         hm_last_bBox = res
     end
 
@@ -365,10 +360,10 @@ function build_selection_window(
             mkdir(ep)
         end
         if export_menu.selection[] == "All"
-            export_all(trajectory_name, cluster_info[], cluster_data[], cluster_annotations[], ep; overwrite=true)
+            export_all(trajectory_name, cluster_info[], t_list, cluster_annotations[], ep; overwrite=true)
         else
             dpath = get_ase_dict_path(trajectory_name)
-            export_scratchpad(scratchpad, cluster_info[], ep, dpath)
+            export_scratchpad(scratchpad, t_list, ep, dpath)
         end
 
         # thought we could do pdfs?

@@ -15,6 +15,26 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
+# basically assigns each cluster a unique id
+function get_hierarchy(hc)
+    c2idx = Dict{Set{Int},Int}()
+    clusterIdx = collect(eachindex(hc.order))
+    for i in 1:size(hc.merges, 1)
+        c = get_st_clusters(hc.merges, i, clusterIdx)
+        c2idx[c] = i
+        lt = hc.merges[i, 1]
+        rt = hc.merges[i, 2]
+        if lt < 0
+            c2idx[Set(-lt)] = i
+        end
+        if rt < 0
+            c2idx[Set(-rt)] = i
+        end
+    end
+
+    return c2idx
+end
+
 function treepositions(hc, cutoff)::Tuple{
     Vector{Any},
     Vector{Set{Int}},
@@ -22,7 +42,8 @@ function treepositions(hc, cutoff)::Tuple{
     Dict{Set{Int},Tuple{Set{Int},Set{Int}}},
     Dict{Set{Int},Vector{Int}}}
 
-    clusterIdx = cutree(hc; h=cutoff)
+    # guarantees consistent labelling with main cluster info 
+    clusterIdx = collect(eachindex(hc.order))
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
 
@@ -30,7 +51,7 @@ function treepositions(hc, cutoff)::Tuple{
     clusters = []
     c_to_parent = Dict{Set{Int},Set{Int}}()
     parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
-    c_to_idx = Dict{Set{Int},Vector{Int}}()
+    c2lx = Dict{Set{Int},Vector{Int}}()
     lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
@@ -57,13 +78,13 @@ function treepositions(hc, cutoff)::Tuple{
             push!(lines, (Point2(x2, max(cutoff, y2)), Point2(x2, ypos)))
             push!(clusters, rg)
 
-            lg_ar = get(c_to_idx, lg, [])
-            rg_ar = get(c_to_idx, rg, [])
-            pg_ar = get(c_to_idx, pg, [])
+            lg_ar = get(c2lx, lg, [])
+            rg_ar = get(c2lx, rg, [])
+            pg_ar = get(c2lx, pg, [])
 
-            c_to_idx[lg] = push!(lg_ar, lx - 1)
-            c_to_idx[rg] = push!(rg_ar, lx + 1)
-            c_to_idx[pg] = push!(pg_ar, lx)
+            c2lx[lg] = push!(lg_ar, lx - 1)
+            c2lx[rg] = push!(rg_ar, lx + 1)
+            c2lx[pg] = push!(pg_ar, lx)
 
             c_to_parent[lg] = pg
             c_to_parent[rg] = pg
@@ -72,7 +93,7 @@ function treepositions(hc, cutoff)::Tuple{
         end
     end
 
-    return lines, clusters, c_to_parent, parent_to_c, c_to_idx
+    return lines, clusters, c_to_parent, parent_to_c, c2lx
 end
 
 # gets line positions for a specified branch in the dendrogram 
@@ -84,7 +105,7 @@ function branch(ci::ClusterInfo, root::Set{Int})
     corrected_children = []
 
     for c in children[]
-        idx = ci.c_to_idx[c]
+        idx = ci.c2lx[c]
         for i in 1:length(idx)
             push!(corrected_children, c)
         end
@@ -96,6 +117,7 @@ end
 
 function dendrogram!(ax,
     cluster_info,
+    cluster_data,
     hovered::MaybeObservable{Set{Int}},
     cluster_annotations;
     hover_callbackfn=(x -> ()),
@@ -107,8 +129,6 @@ function dendrogram!(ax,
     ax.xgridvisible = false
     ax.ygridvisible = false
 
-    cmap = to_colormap(colormap)
-
     dendrogram = @lift begin
         clusters = $(cluster_info).clusters
         lines = $(cluster_info).lines
@@ -116,12 +136,7 @@ function dendrogram!(ax,
 
         colors = []
         for c in clusters
-            if length(c) == 1
-                clusterIdx = first(collect(c))
-                color = cmap[mod1(clusterIdx, length(cmap))]
-            else
-                color = to_color(rootcolor)
-            end
+            color = cluster_color(cluster_data[], c)
             push!(colors, set_color_alpha(color, 0.3))
         end
 

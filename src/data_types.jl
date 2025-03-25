@@ -14,7 +14,8 @@ const Transition = Tuple{Int16,Int16}
     cutoff
     c_to_parent::Dict{Set{Int},Set{Int}}
     parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
-    c_to_idx
+    c2lx
+    cc2cidx
     h_range
     rel_t_to_idx
 end
@@ -30,8 +31,8 @@ function get_parents_of_transition(ci::ClusterInfo, t::Transition)
     return c
 end
 
-function get_transitions(ci::ClusterInfo, cluster::Set{Int})::Vector{Transition}
-    return reduce(vcat, map(x -> ci.groups[x], collect(cluster)), init=[])
+function get_transitions(t_list, cluster::Set{Int})::Vector{Transition}
+    return t_list[collect(cluster)]
 end
 
 function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}
@@ -73,6 +74,7 @@ end
     clustering
     matrix
     m_extrema
+    c2idx
     t_to_mtx::Dict{Transition,Int}
     mtx_to_t::Dict{Int,Transition}
 end
@@ -85,6 +87,13 @@ function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
     return cd.matrix[mtx_idx[s], mtx_idx[s]], t_to_mtx
 end
 
+function cluster_color(ci::ClusterInfo, t::Transition)
+    return cycle_colormap(ci.cc2cidx[ci.assignments[ci.rel_t_to_idx[t]]], CLUSTER_COLORMAP)
+end
+
+function cluster_color(cd::ClusterData, c::Set{Int})
+    return cycle_colormap(cd.c2idx[c], CLUSTER_COLORMAP)
+end
 
 @kwdef struct SingleClusterData
     cluster
