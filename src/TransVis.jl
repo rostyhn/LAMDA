@@ -505,7 +505,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 end
                 meanV = mean(vectorList)
                 for v in vectorList
-                    correlationMeasure[pId] += (dot(meanV,v))/(dot(meanV,meanV) + dot(v,v))/length(vectorList) + 0.5
+                    correlationMeasure[pId] += (dot(meanV,v))/(dot(meanV,meanV) + dot(v,v)) + 0.5
+                    correlationMeasure[pId] *= 1.0/length(vectorList)
                 end
             end
             @show correlationMeasure
