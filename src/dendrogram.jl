@@ -19,27 +19,39 @@ end
 function get_hierarchy(hc)
     c2idx = Dict{Set{Int},Int}()
     clusterIdx = collect(eachindex(hc.order))
+    c_to_parent = Dict{Set{Int},Set{Int}}()
+    parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
+
     for i in 1:size(hc.merges, 1)
-        c = get_st_clusters(hc.merges, i, clusterIdx)
-        c2idx[c] = i
+        pg = get_st_clusters(hc.merges, i, clusterIdx)
+        c2idx[pg] = i
+
         lt = hc.merges[i, 1]
         rt = hc.merges[i, 2]
+
+        lg = get_st_clusters(hc.merges, lt, clusterIdx)
+        rg = get_st_clusters(hc.merges, rt, clusterIdx)
+
         if lt < 0
-            c2idx[Set(-lt)] = i
+            c2idx[lg] = i
         end
         if rt < 0
-            c2idx[Set(-rt)] = i
+            c2idx[rg] = i
         end
+
+        c_to_parent[lg] = pg
+        c_to_parent[rg] = pg
+        parent_to_c[pg] = (lg, rg)
+
     end
 
-    return c2idx
+    return c2idx, c_to_parent, parent_to_c
 end
 
+# renders the clustering at the specified cutoff value
 function treepositions(hc, cutoff)::Tuple{
     Vector{Any},
     Vector{Set{Int}},
-    Dict{Set{Int},Set{Int}},
-    Dict{Set{Int},Tuple{Set{Int},Set{Int}}},
     Dict{Set{Int},Vector{Int}}}
 
     # guarantees consistent labelling with main cluster info 
@@ -49,8 +61,6 @@ function treepositions(hc, cutoff)::Tuple{
 
     lines = []
     clusters = []
-    c_to_parent = Dict{Set{Int},Set{Int}}()
-    parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
     c2lx = Dict{Set{Int},Vector{Int}}()
     lx = 2
     for i in 1:size(hc.merges, 1)
@@ -86,30 +96,27 @@ function treepositions(hc, cutoff)::Tuple{
             c2lx[rg] = push!(rg_ar, lx + 1)
             c2lx[pg] = push!(pg_ar, lx)
 
-            c_to_parent[lg] = pg
-            c_to_parent[rg] = pg
-            parent_to_c[pg] = (lg, rg)
             lx += 3
         end
     end
 
-    return lines, clusters, c_to_parent, parent_to_c, c2lx
+    return lines, clusters, c2lx
 end
 
 # gets line positions for a specified branch in the dendrogram 
-function branch(ci::ClusterInfo, root::Set{Int})
+function branch(cd::ClusterData, root::Set{Int})
     children = Ref([])
-    dfs(ci, root, children)
+    dfs(cd, root, children)
 
     new_lines = []
     corrected_children = []
 
     for c in children[]
-        idx = ci.c2lx[c]
+        idx = cd.c2lx[c]
         for i in 1:length(idx)
             push!(corrected_children, c)
         end
-        append!(new_lines, map(x -> ci.lines[x], idx))
+        append!(new_lines, map(x -> cd.lines[x], idx))
     end
 
     return corrected_children, new_lines
@@ -132,7 +139,6 @@ function dendrogram!(ax,
     dendrogram = @lift begin
         clusters = $(cluster_info).clusters
         lines = $(cluster_info).lines
-        cutoff = $(cluster_info).cutoff
 
         colors = []
         for c in clusters

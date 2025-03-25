@@ -11,10 +11,8 @@ const Transition = Tuple{Int16,Int16}
     # dendrogram info
     lines
     clusters
-    cutoff
-    c_to_parent::Dict{Set{Int},Set{Int}}
-    parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
     c2lx
+    cutoff
     cc2cidx
     h_range
     rel_t_to_idx
@@ -31,50 +29,16 @@ function get_parents_of_transition(ci::ClusterInfo, t::Transition)
     return c
 end
 
-function get_transitions(t_list, cluster::Set{Int})::Vector{Transition}
-    return t_list[collect(cluster)]
-end
-
-function get_parent(ci::ClusterInfo, cluster::Set{Int})::Set{Int}
-    return get(ci.c_to_parent, cluster, cluster)
-end
-
-function get_children(ci::ClusterInfo, cluster::Set{Int})::Union{Nothing,Tuple{Set{Int},Set{Int}}}
-    return get(ci.parent_to_c, cluster, nothing)
-end
-
-function get_root(ci::ClusterInfo)
-    c = first(ci.clusters)
-    p = ci.c_to_parent[c]
-    while length(intersect(p, c)) != length(p)
-        c = p
-        p = get_parent(ci, c)
-    end
-    return p
-end
-
-function dfs(ci::ClusterInfo, cluster::Set{Int}, acc=Ref([]))
-    push!(acc[], cluster)
-    children = get_children(ci, cluster)
-    if isnothing(children)
-        return
-    end
-    lc, rc = children
-    dfs(ci, lc, acc)
-    dfs(ci, rc, acc)
-end
-
-function get_neighbor(ci::ClusterInfo, cluster::Set{Int}, idx)
-    parent = ci.c_to_parent[cluster]
-    children = ci.parent_to_c[parent]
-    return children[idx]
-end
-
 @kwdef mutable struct ClusterData
     clustering
     matrix
     m_extrema
     c2idx
+    lines
+    clusters
+    c2lx
+    c_to_parent::Dict{Set{Int},Set{Int}}
+    parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
     t_to_mtx::Dict{Transition,Int}
     mtx_to_t::Dict{Int,Transition}
 end
@@ -87,12 +51,52 @@ function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
     return cd.matrix[mtx_idx[s], mtx_idx[s]], t_to_mtx
 end
 
+# we want to color transitions by their currently assigned cluster determined by the cutoff
 function cluster_color(ci::ClusterInfo, t::Transition)
     return cycle_colormap(ci.cc2cidx[ci.assignments[ci.rel_t_to_idx[t]]], CLUSTER_COLORMAP)
 end
 
 function cluster_color(cd::ClusterData, c::Set{Int})
     return cycle_colormap(cd.c2idx[c], CLUSTER_COLORMAP)
+end
+
+function get_transitions(t_list, cluster::Set{Int})::Vector{Transition}
+    return t_list[collect(cluster)]
+end
+
+function get_parent(cd::ClusterData, cluster::Set{Int})::Set{Int}
+    return get(cd.c_to_parent, cluster, cluster)
+end
+
+function get_children(cd::ClusterData, cluster::Set{Int})::Union{Nothing,Tuple{Set{Int},Set{Int}}}
+    return get(cd.parent_to_c, cluster, nothing)
+end
+
+function get_root(cd::ClusterData)
+    c = first(keys(cd.c2idx))
+    p = cd.c_to_parent[c]
+    while length(intersect(p, c)) != length(p)
+        c = p
+        p = get_parent(cd, c)
+    end
+    return p
+end
+
+function dfs(cd::ClusterData, cluster::Set{Int}, acc=Ref([]))
+    push!(acc[], cluster)
+    children = get_children(cd, cluster)
+    if isnothing(children)
+        return
+    end
+    lc, rc = children
+    dfs(cd, lc, acc)
+    dfs(cd, rc, acc)
+end
+
+function get_neighbor(cd::ClusterData, cluster::Set{Int}, idx)
+    parent = cd.c_to_parent[cluster]
+    children = cd.parent_to_c[parent]
+    return children[idx]
 end
 
 @kwdef struct SingleClusterData
@@ -125,15 +129,14 @@ function set_val(ca, s::Set{Int}, property::String, val::String)
     ca[property][s] = val
 end
 
-function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_info, rel_t_to_idx)
+function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx)
     cmap = to_colormap(CLUSTER_COLORS)
 
     rel_ts = map(x -> rel_t_to_idx[x], ts)
     assignments = map(x -> cluster_info.assignments[x], rel_ts)
     colors = map(x -> cycle_colormap(x, cmap), assignments)
 
-    # transition to matrix index dict
-    clusters, lines = branch(cluster_info, cluster)
+    clusters, lines = branch(cluster_data, cluster)
 
     return SingleClusterData(cluster=cluster,
         ts=ts,

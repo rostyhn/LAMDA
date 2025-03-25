@@ -79,7 +79,7 @@ function build_selection_window(
 
     # can be more clever
     function cw_on_up(cc)
-        parent = get_parent(cluster_info[], cc[])
+        parent = get_parent(cluster_data[], cc[])
         if parent != cc[]
             cc[] = parent
             notify(cc)
@@ -87,7 +87,7 @@ function build_selection_window(
     end
 
     function cw_on_left(cc)
-        n = get_neighbor(cluster_info[], cc[], 1)
+        n = get_neighbor(cluster_data[], cc[], 1)
         if n != cc[]
             cc[] = n
             notify(cc)
@@ -95,7 +95,7 @@ function build_selection_window(
     end
 
     function cw_on_right(cc)
-        n = get_neighbor(cluster_info[], cc[], 2)
+        n = get_neighbor(cluster_data[], cc[], 2)
         if n != cc[]
             cc[] = n
             notify(cc)
@@ -103,7 +103,7 @@ function build_selection_window(
     end
 
     function cw_on_downleft(cc)
-        children = get_children(cluster_info[], cc[])
+        children = get_children(cluster_data[], cc[])
         if !isnothing(children)
             lc, rc = children
             if lc != cc[]
@@ -114,7 +114,7 @@ function build_selection_window(
     end
 
     function cw_on_downright(cc)
-        children = get_children(cluster_info[], cc[])
+        children = get_children(cluster_data[], cc[])
         if !isnothing(children)
             lc, rc = children
             if rc != cc[]
@@ -139,6 +139,7 @@ function build_selection_window(
                 ref_t=ref_t,
                 ts=ts,
                 mat=mat,
+                cluster_data=cluster_data[],
                 cluster_info=cluster_info[],
                 rel_t_to_idx=rel_t_to_idx,
                 t_to_mtx=t_to_mtx)
@@ -360,7 +361,13 @@ function build_selection_window(
             mkdir(ep)
         end
         if export_menu.selection[] == "All"
-            export_all(trajectory_name, cluster_info[], t_list, cluster_annotations[], ep; overwrite=true)
+            export_all(trajectory_name,
+                cluster_info[],
+                cluster_data[],
+                t_list,
+                cluster_annotations[],
+                ep;
+                overwrite=true)
         else
             dpath = get_ase_dict_path(trajectory_name)
             export_scratchpad(scratchpad, t_list, ep, dpath)

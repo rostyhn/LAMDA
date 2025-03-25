@@ -129,11 +129,18 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         h_range[] = extrema(clustering.heights)
         notify(h_range)
 
-        c2idx = get_hierarchy(clustering)
+        c2idx, c_to_parent, parent_to_c = get_hierarchy(clustering)
+        # render dendrogram once so that we can use any piece of it in the cluster window
+        lines, clusters, c2lx = treepositions(clustering, 0.0)
 
         return ClusterData(clustering=clustering,
             matrix=rm,
             c2idx=c2idx,
+            clusters=clusters,
+            lines=lines,
+            c2lx=c2lx,
+            c_to_parent=c_to_parent,
+            parent_to_c=parent_to_c,
             m_extrema=(extrema(fl)),
             t_to_mtx=t_to_mtx,
             mtx_to_t=mtx_to_t)
@@ -184,13 +191,12 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             reps[clusterIdx] = g[argmin(dist_sum)]
         end
 
-        lines, clusters, c_to_parent, parent_to_c, c2lx = treepositions($(cluster_data).clustering, $h_cutoff)
+        # instead of rendering the dendrogram twice like this and keeping two copies in memory, could modify dendrogram render to show lines under the cutoff differently
+        lines, clusters, c2lx = treepositions($(cluster_data).clustering, $h_cutoff)
         return ClusterInfo(groups=groups,
             representatives=reps,
             assignments=assignments,
             lines=lines,
-            c_to_parent=c_to_parent,
-            parent_to_c=parent_to_c,
             rel_t_to_idx=rel_t_to_idx,
             clusters=clusters,
             c2lx=c2lx,

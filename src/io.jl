@@ -247,7 +247,7 @@ function get_mmap_file(key)
     return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end
 
-function export_cluster(trajectory_name, path, cluster, ca, ci, t_list)
+function export_cluster(trajectory_name, path, cluster, ca, cd, ci, t_list)
     cluster_name = get_val(ca, "titles", cluster)
     cluster_notes = get(ca["notes"], cluster, nothing)
 
@@ -262,13 +262,13 @@ function export_cluster(trajectory_name, path, cluster, ca, ci, t_list)
         write(nf, cluster_notes)
     end
 
-    children = get_children(ci, cluster)
-    if !isnothing(children)
+    # this will break export
+    children = get_children(cd, cluster)
+    if !isnothing(children) && all(map(x -> x in ci.clusters, collect(children)))
         lc, rc = children
-        export_cluster(trajectory_name, cp, lc, ca, ci, t_list)
-        export_cluster(trajectory_name, cp, rc, ca, ci, t_list)
+        export_cluster(trajectory_name, cp, lc, ca, cd, ci, t_list)
+        export_cluster(trajectory_name, cp, rc, ca, cd, ci, t_list)
     else
-
         # get children of cluster
         ts = get_transitions(t_list, cluster)
         dpath = get_ase_dict_path(trajectory_name)
@@ -301,7 +301,7 @@ function export_transitions()
     return py"export_transitions"
 end
 
-function export_all(trajectory_name, ci::ClusterInfo, t_list, ca, exportPath; overwrite=false)
+function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, t_list, ca, exportPath; overwrite=false)
     if !isdir(exportPath)
         mkdir(exportPath)
     else
@@ -311,7 +311,7 @@ function export_all(trajectory_name, ci::ClusterInfo, t_list, ca, exportPath; ov
         end
     end
 
-    root = get_root(ci)
-    export_cluster(trajectory_name, exportPath, root, ca, ci, t_list)
+    root = get_root(cd)
+    export_cluster(trajectory_name, exportPath, root, ca, cd, ci, t_list)
 
 end
