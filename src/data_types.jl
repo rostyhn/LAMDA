@@ -12,6 +12,7 @@ const Transition = Tuple{Int16,Int16}
     lines
     clusters
     c2lx
+    a2c
     cutoff
     cc2cidx
     h_range
@@ -20,7 +21,7 @@ end
 
 function get_cluster_of_transition(ci::ClusterInfo, t::Transition)
     t_idx = ci.rel_t_to_idx[t]
-    return Set(ci.assignments[t_idx])
+    return Set(t_idx)
 end
 
 function get_parents_of_transition(ci::ClusterInfo, t::Transition)
@@ -130,11 +131,8 @@ function set_val(ca, s::Set{Int}, property::String, val::String)
 end
 
 function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx)
-    cmap = to_colormap(CLUSTER_COLORS)
-
     rel_ts = map(x -> rel_t_to_idx[x], ts)
-    assignments = map(x -> cluster_info.assignments[x], rel_ts)
-    colors = map(x -> cycle_colormap(x, cmap), assignments)
+    colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
 
     clusters, lines = branch(cluster_data, cluster)
 

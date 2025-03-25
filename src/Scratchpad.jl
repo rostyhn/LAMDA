@@ -165,9 +165,10 @@ function scratchpad!(
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
     # guarantees updated version of clusterinfo
-    function get_t_cluster(idx)
-        # gets the INDEX of the current cluster
-        x = lift(y -> Set(y.assignments[idx]), cluster_info)
+    function get_t_cluster(obj)
+        # gets current cluster assigned to idx
+        idx = rel_t_to_idx[obj]
+        x = lift(y -> y.a2c[y.assignments[idx]], cluster_info)
         xval = x[]
         Observables.clear(x)
         return xval
@@ -258,8 +259,7 @@ function scratchpad!(
 
                         if obj isa Transition
                             hovered[] = obj
-                            t_idx = rel_t_to_idx[obj]
-                            cluster = get_t_cluster(t_idx)
+                            cluster = get_t_cluster(obj)
                             notify(hovered)
                         else
                             cluster = obj
@@ -298,8 +298,7 @@ function scratchpad!(
                     elseif event.type === MouseEventTypes.leftdoubleclick
                         cluster = obj
                         if obj isa Transition
-                            t_idx = rel_t_to_idx[obj]
-                            cluster = get_t_cluster(t_idx)
+                            cluster = get_t_cluster(obj)
                         end
                         on_click(cluster)
                     end

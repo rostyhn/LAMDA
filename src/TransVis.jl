@@ -49,7 +49,7 @@ include("ui.jl")
 
 export go
 const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
-const CLUSTER_COLORS = :tab20
+const CLUSTER_COLORS = :glasbey_bw_minc_20_maxl_70_n256
 
 const LEFT_KEY = Keyboard.left
 const RIGHT_KEY = Keyboard.right
@@ -153,6 +153,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         igroups = Dict{Int,Vector{Int}}()
         # current assigned cluster to idx
         ccidx2cidx = Dict{Int,Int}()
+        # cluster to assignment idx 
+        a2c = Dict{Int,Set{Int}}()
         for (i, c) in enumerate(assignments)
             if c in keys(groups)
                 g = groups[c]
@@ -169,6 +171,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
         for (idx, g) in igroups
             c = Set(g)
+            a2c[idx] = c
             ccidx2cidx[idx] = ($cluster_data).c2idx[c]
         end
 
@@ -200,6 +203,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             rel_t_to_idx=rel_t_to_idx,
             clusters=clusters,
             c2lx=c2lx,
+            a2c=a2c,
             cc2cidx=ccidx2cidx,
             h_range=$h_range,
             cutoff=$h_cutoff)
