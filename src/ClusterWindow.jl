@@ -34,7 +34,7 @@ function build_cluster_window(
     scene_selector = Observable("Volume")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
-    title = lift((x, y) -> get_val(y, "titles", x), clusters, cluster_annotations)
+    title = lift((x, y) -> str_limit(get_val(y, "titles", x), len=25), clusters, cluster_annotations)
     notes = lift((x, y) -> get_val(y, "notes", x), clusters, cluster_annotations)
     menu_bar = top_bar(window, title, 3)
 
@@ -47,16 +47,27 @@ function build_cluster_window(
     end
 
     screen = nothing
-    nw = NoteWindow(title, notes, update_cluster)
+    nw = nothing
     on(btn_notes.clicks) do n
         if isnothing(screen)
+            nw = NoteWindow(title, notes, update_cluster)
             screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
             display(screen, nw)
         else
             close(screen)
             screen = nothing
+            Makie.free(nw.scene)
+            nw = nothing
         end
+    end
 
+    on(clusters) do c
+        if !isnothing(nw)
+            close(screen)
+            screen = nothing
+            Makie.free(nw.scene)
+            nw = nothing
+        end
     end
 
     render_menu = Menu(window,
