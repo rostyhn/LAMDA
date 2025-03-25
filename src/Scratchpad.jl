@@ -283,10 +283,10 @@ function scratchpad!(
                     elseif event.type === MouseEventTypes.out
                         hovered[] = nothing
                         notify(hovered)
-                        hide_inspector()
                         hovered_cluster[] = nothing
                         notify(hovered_cluster)
 
+                        hide_inspector()
                         activate_interaction!(ax, :create_group)
                         activate_interaction!(ax, :create_text)
                     elseif event.type === MouseEventTypes.middledrag
@@ -414,7 +414,7 @@ function scratchpad!(
         end
     end
 
-    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=idx_to_obj)
+    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=obj_to_idx)
 end
 
 @kwdef mutable struct Scratchpad
@@ -440,10 +440,12 @@ function group_scratchpad(s::Scratchpad)
     for (bIdx, box) in enumerate(boxes)
         title = string(bIdx)
         children = Union{Set{Int},Transition,String,Int}[]
-        for (idx, vp) in enumerate(s.views[])
+        for (obj, idx) in s.objs[]
+            v_idx = idx - 1
+            vp = s.views[][v_idx]
             # seen lets us place things at bottom level
             if vp in box && !(idx in seen)
-                push!(children, s.objs[][idx])
+                push!(children, obj)
                 push!(seen, idx)
             end
         end
@@ -474,9 +476,9 @@ function group_scratchpad(s::Scratchpad)
     top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
 
     loose = Union{Set{Int},Transition,String}[]
-    for (i, c) in enumerate(s.objs[])
-        if !(i in seen)
-            push!(loose, c)
+    for (obj, idx) in s.objs[]
+        if !(idx in seen)
+            push!(loose, obj)
         end
     end
 
