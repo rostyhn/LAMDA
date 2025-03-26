@@ -36,6 +36,7 @@ function umap_graph_view!(
         if length($data[1]) > 2
             em = transpose(umap(transpose($data[2]), 2;
                 metric=:precomputed,
+                min_dist=2,
                 n_neighbors=min(length($data[1]) - 1, 15)))
             return map(x -> Point2f(x), eachrow(em))
         else
