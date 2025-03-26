@@ -79,7 +79,7 @@ function go(trajectory_name::String; kwargs...)
     display(screen, window)
 end
 
-function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff=0.3, align_with=nothing)
+function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff::Float64=0.3, align_with=nothing)
     # GLMakie.closeall() # close reduction window 
 
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
@@ -110,7 +110,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     per_t_scalars["t_to_idx"] = t_to_idx
     per_t_scalar_ranges["t_to_idx"] = (1, length(active_trajectory["transitions"]))
 
-    h_cutoff = Observable(init_h_cutoff)
+    h_cutoff::Observable{Float64} = Observable(float(init_h_cutoff))
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
     cluster_data = @lift begin

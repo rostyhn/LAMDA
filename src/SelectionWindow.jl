@@ -188,16 +188,6 @@ function build_selection_window(
         end
     end
 
-    cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
-    on(cutoff_tb.stored_string) do s
-        # reset hovered_cluster to avoid crashing
-        hovered_cluster.val = nothing
-        notify(hovered_cluster)
-
-        h_cutoff[] = parse(Float64, s)
-        notify(h_cutoff)
-    end
-
     dGrid = GridLayout()
     window[2:3, 1] = dGrid
     #colsize!(window.layout, 2, Relative(0.66))
@@ -206,10 +196,6 @@ function build_selection_window(
     graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
     deregister_interaction!(graph_ax, :rectanglezoom)
     hidexdecorations!(graph_ax)
-
-    dGrid[2, 2] = vgrid!(
-        cutoff_tb,
-        Label(window, "Cutoff", tellwidth=false))
 
     hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
 
@@ -221,12 +207,22 @@ function build_selection_window(
         on_show_cluster_click(clusters)
     end
 
+    function update_cutoff(x::Float64)
+        # reset hovered_cluster to avoid crashing
+        hovered_cluster.val = nothing
+        notify(hovered_cluster)
+
+        h_cutoff[] = x
+        notify(h_cutoff)
+    end
+
     dendrogram!(graph_ax,
         cluster_info,
         cluster_data,
         hovered_cluster,
         cluster_annotations;
         on_click=on_dendrogram_click,
+        on_cutoff_line_drag=update_cutoff,
         colormap=CLUSTER_COLORS)
 
     hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data),

@@ -131,6 +131,7 @@ function dendrogram!(ax,
     colormap=:tab20,
     rootcolor=:black,
     on_click=(x -> ()),
+    on_cutoff_line_drag=(x -> ()),
     kwargs...)
 
     ax.xgridvisible = false
@@ -155,14 +156,14 @@ function dendrogram!(ax,
         min_x, max_x = extrema(all_x)
         all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines))
         min_y, max_y = extrema(all_y)
-        cutoff_line = ([min_x, max_x], [min_y, min_y])
+        cut_line = ([min_x, max_x], [min_y, min_y])
 
         cl_to_idx = Dict{Set{Int},Int}()
         for (i, c) in enumerate(clusters)
             cl_to_idx[c] = i
         end
 
-        return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
+        return lines, colors, cut_line, cl_to_idx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
     end
 
     highlighted = []
@@ -217,38 +218,68 @@ function dendrogram!(ax,
 
     m_events = addmouseevents!(ax.scene)
 
+    cutoff_line::Observable{Tuple{Vector{Float64},Vector{Float64}}} = Observable(dendrogram[][3])
+
+    cutoff_hovered = Observable(false)
+    dragging = Ref(false)
+
+    # add cutoff line
+    l = lines!(ax,
+        lift(x -> x[1], cutoff_line),
+        lift(x -> x[2], cutoff_line);
+        linewidth=5,
+        color=lift(x -> (x) ? to_color(colorant"#D3D3D3") : to_color(:grey), cutoff_hovered))
+    l.inspectable[] = false
+
     on(m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
-            if !isnothing(hovered[])
+            if !isnothing(hovered[]) && !cutoff_hovered[]
                 on_click(hovered[])
             end
         elseif e.type === MouseEventTypes.over
-            mp = mouseposition_px(ax.scene)
-            plot, idx = pick(ax, mp, min(Int(round(dendrogram[][7][2] - dendrogram[][7][2] / 4)), 10))
+            plot, idx = pick(ax) #10)
             if isnothing(plot) && !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
+            end
+
+            if plot == l
+                cutoff_hovered[] = true
+            else
+                cutoff_hovered[] = false
             end
         elseif e.type == MouseEventTypes.out
             if !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
             end
+        elseif e.type == MouseEventTypes.leftdragstart
+            mp = mouseposition(ax.scene)
+            plot, idx = pick(ax, mp)
+            if cutoff_hovered[]
+                dragging[] = true
+            end
+        elseif e.type == MouseEventTypes.leftdrag
+            if dragging[]
+                px, py = float.(mouseposition(ax))
+                y = max(0.0, py)
+                cutoff_line[] = (cutoff_line[][1], [y, y])
+                notify(cutoff_line)
+            end
+        elseif e.type == MouseEventTypes.leftdragstop
+            if dragging[]
+                px, py = float.(mouseposition(ax))
+                dragging[] = false
+                on_cutoff_line_drag(max(0.0, py))
+            end
         end
     end
-
-    # add cutoff line
-    l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
-        linestyle=:dash,
-        color=:grey)
-
-    l.inspectable[] = false
 
     # add listeners to reset limits whenever something changes
     @lift begin
         xlo, xhi = $dendrogram[7]
         ylo, yhi = $dendrogram[8]
         xlims!(ax, (xlo - 1), (xhi + 1))
-        ylims!(ax, (0.0, yhi + 0.1))
+        ylims!(ax, (-5, yhi + 0.1))
     end
 end

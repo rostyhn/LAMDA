@@ -132,8 +132,15 @@ end
 
 function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx)
     rel_ts = map(x -> rel_t_to_idx[x], ts)
-    colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
-
+    # color umap view with direct children
+    children = get_children(cluster_data, cluster)
+    if isnothing(children)
+        colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
+    else
+        lc, rc = children
+        lcolor, rcolor = cluster_color.(Ref(cluster_data), children)
+        colors = map(x -> (x in lc) ? lcolor : rcolor, rel_ts)
+    end
     clusters, lines = branch(cluster_data, cluster)
 
     return SingleClusterData(cluster=cluster,
