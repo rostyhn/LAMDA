@@ -197,8 +197,10 @@ function dendrogram!(ax,
         empty!(highlighted)
 
         if !isnothing(hov)
-            for c in collect(hov)
-                if Set(c) in keys(c_dict[])
+            children = Ref([])
+            dfs(cluster_data[], hov, children)
+            for c in children[]
+                if c in keys(c_dict[])
                     idx = c_dict[][Set(c)]
                     ogColor = d_colors.val[idx]
                     d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
