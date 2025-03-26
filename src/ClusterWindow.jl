@@ -149,7 +149,6 @@ function build_cluster_window(
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
     render_views["SMovement"](centroid_scene, ts, time, alignment, correlation)
 
-
     on(btn_centroid_to_scratchpad.clicks) do n
         on_cluster_select(clusters[])
     end

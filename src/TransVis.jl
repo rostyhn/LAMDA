@@ -558,7 +558,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             fins = last.(posValsTup)[representativeIdx]
             return (inits, fins), vd, correlationMeasure
         end
-        return simple_arrow_view!(scene, lift(x -> x[1], d), time, CLUSTER_CONSENSUS_COLORMAP, lift(x -> x[2], d), lift(x -> x[3], d), correlationThreshold)
+        return simple_arrow_view!(scene,
+            lift(x -> x[1], d),
+            time,
+            CLUSTER_CONSENSUS_COLORMAP,
+            lift(x -> x[2], d),
+            lift(x -> x[3], d),
+            correlationThreshold)
     end
 
     function render_superquadrics_view(scene, transition, inspector, alignment)

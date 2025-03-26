@@ -82,27 +82,27 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
     return s
 end
 
-function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, correlation::Observable{Vector{Float32}}, corrThreshold::Observable{Float64})
+function simple_arrow_view!(scene,
+    ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}},
+    time::Observable{Float64},
+    cmap,
+    vel::Observable{Vector{GeometryBasics.Point{3,Float32}}},
+    correlation::Observable{Vector{Float32}},
+    corrThreshold::Observable{Float64})
+
     # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time) # median is moving for debugging
-    int_pos = lift((x, y, vel) -> Point3f.(eachrow(x[1])) .+ (vel .* y), ap, time, vel) #average is moving
 
-    velocities = lift((x,c, t) -> 2.0 * x .* (c .>= Ref(t)) , vel, correlation, corrThreshold)
-
-    corr = lift(x -> x,correlation) 
-
-    velocityMagnitudes = lift(x -> norm.(x), velocities)
-    magnitudeRange = lift(x -> extrema(x), velocityMagnitudes)
-    points = Observable(int_pos[])
-
-    colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(velocities[])))
-
-    on(int_pos) do ip
-        # points.val = Point3f.(eachrow(ip))
-        points.val = ip
-        points[] = points[]
-        velocities[] = velocities[]
-        corr[] = corr[]
+    # use this function to set any variables that need to be equal length in a makie plot, need velocities, points and colors
+    # i know its annoying to use a tuple, but its the only way to prevent crashes
+    d = @lift begin
+        points = Point3f.(eachrow($ap[1])) .+ ($vel .* $time)
+        velocities = 2.0 * $vel .* ($correlation .>= Ref($corrThreshold))
+        return points, velocities, $correlation
     end
+
+    #velocityMagnitudes = lift(x -> norm.(x), velocities)
+    #magnitudeRange = lift(x -> extrema(x), velocityMagnitudes)
+    #colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(velocities[])))
 
     # keep this for now; may be important later....
 
@@ -124,24 +124,23 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
     #     getAlpha.(corr[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
 
 
-
-    h = arrows!(scene, points, velocities;
-        color=corr,
+    h = arrows!(scene,
+        lift(x -> x[1], d),
+        lift(x -> x[2], d);
+        color=lift(x -> x[3], d),
         arrowsize=1.2,
-        colorrange=(corrThreshold[],1.0),
-        colormap=cmap, 
-        lowclip=:transparent,# BUGGED arrows dont et transparent. workaround by setting velocity 0 in these cases
-        # highclip=:transparent,
+        colorrange=lift(x -> (x, 1.0), corrThreshold),
+        colormap=cmap,
+        lowclip=:transparent,
         transparency=true,
         inspectable=false,
     )
 
     v = meshscatter!(scene,
-        points;
+        lift(x -> x[1], d);
         color=:gray,
-        # colorrange=(0.0,corrThreshold),
+        colorrange=lift(x -> (0.0, x), corrThreshold),
         marker=:Sphere,
-        # alpha=0.5,
         colormap=cmap,
         lowclip=:transparent,
         highclip=:transparent,
@@ -149,21 +148,21 @@ function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{F
         inspectable=false,
         markersize=0.2)
 
-    # @show corr[]
     s = meshscatter!(scene,
-        points;
-        color=corr,
+        lift(x -> x[1], d);
+        color=lift(x -> x[3], d),
         marker=:Sphere,
-        # transparency=true,
-        # inspectable=false,
+        transparency=true,
+        inspectable=false,
         lowclip=:transparent,
-        colormap=cmap, 
-        colorrange=(corrThreshold[],1.0),
+        colormap=cmap,
+        colorrange=lift(x -> (x, 1.0), corrThreshold),
         markersize=0.7)
 
     update_cam!(parent_scene(s))
+    center!(parent_scene(s))
 
-    return s
+    return h, s, v
 end
 
 function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; update=false)
