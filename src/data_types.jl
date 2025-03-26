@@ -107,7 +107,7 @@ end
     mat::Matrix{Float32}
     colors
     t_to_mtx::Dict{Transition,Int}
-    cutoff
+    heights::Dict{Set{Int},Float64}
     h_range
     lines
     assignments
@@ -132,16 +132,8 @@ end
 
 function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx)
     rel_ts = map(x -> rel_t_to_idx[x], ts)
-    # color umap view with direct children
-    children = get_children(cluster_data, cluster)
-    if isnothing(children)
-        colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
-    else
-        lc, rc = children
-        lcolor, rcolor = cluster_color.(Ref(cluster_data), children)
-        colors = map(x -> (x in lc) ? lcolor : rcolor, rel_ts)
-    end
-    clusters, lines = branch(cluster_data, cluster)
+    colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
+    clusters, lines, heights = branch(cluster_data, cluster)
 
     return SingleClusterData(cluster=cluster,
         ts=ts,
@@ -150,8 +142,26 @@ function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_dat
         colors=colors,
         t_to_mtx=t_to_mtx,
         lines=lines,
+        heights=heights,
         clusters=clusters,
         assignments=assignments,
-        h_range=cluster_info.h_range,
-        cutoff=cluster_info.cutoff)
+        h_range=cluster_info.h_range)
+end
+
+function clusters_above_cutoff(cc::Set{Int}, cd::ClusterData, scd::SingleClusterData, cutoff::Float64, acc=Ref([]))
+    children = get_children(cd, cc)
+    if isnothing(children)
+        if scd.heights[cc] > cutoff
+            push!(acc[], cc)
+        end
+        return
+    end
+
+    lc, rc = children
+    if scd.heights[lc] > cutoff && scd.heights[rc] > cutoff
+        clusters_above_cutoff(lc, cd, scd, cutoff, acc)
+        clusters_above_cutoff(rc, cd, scd, cutoff, acc)
+    else
+        push!(acc[], cc)
+    end
 end

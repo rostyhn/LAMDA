@@ -116,8 +116,32 @@ function build_cluster_window(
         hovered_cluster,
         clusters)
 
+    colors = lift(x -> x.colors, cluster_data)
+    function update_colors(cutoff)
+        cut_clusters = Ref([])
+        clusters_above_cutoff(clusters[],
+            all_cluster_data[],
+            cluster_data[],
+            cutoff,
+            cut_clusters)
+
+        rel_ts = map(x -> cluster_info.rel_t_to_idx[x], cluster_data[].ts)
+        rel_ts_to_c = []
+        for idx in rel_ts
+            for c in cut_clusters[]
+                if idx in c
+                    push!(rel_ts_to_c, c)
+                    break
+                end
+            end
+        end
+
+        colors[] = map(x -> cluster_color(all_cluster_data[], x), rel_ts_to_c)
+        notify(colors)
+    end
+
     umap_graph_view!(window[3, 1:2],
-        lift(x -> (x.ts, x.mat, x.colors), cluster_data),
+        lift((x, y) -> (x.ts, x.mat, y), cluster_data, colors),
         scene_selector,
         scalar_selector,
         time,
@@ -163,7 +187,8 @@ function build_cluster_window(
         cluster_data,
         all_cluster_data,
         hovered_cluster,
-        cluster_annotations;
+        cluster_annotations,
+        on_cutoff_line_drag=update_colors;
         colormap=CLUSTER_COLORS)
 
     hm_ax, hm = heatmap(mat_grid[3, 1],

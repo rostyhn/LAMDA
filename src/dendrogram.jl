@@ -111,15 +111,19 @@ function branch(cd::ClusterData, root::Set{Int})
     new_lines = []
     corrected_children = []
 
+    heights = Dict{Set{Int},Float64}()
     for c in children[]
         idx = cd.c2lx[c]
         for i in 1:length(idx)
             push!(corrected_children, c)
         end
-        append!(new_lines, map(x -> cd.lines[x], idx))
+        lines = map(x -> cd.lines[x], idx)
+        h = maximum(map(x -> x[2][2], lines))
+        heights[c] = h
+        append!(new_lines, lines)
     end
 
-    return corrected_children, new_lines
+    return corrected_children, new_lines, heights
 end
 
 function dendrogram!(ax,
@@ -207,6 +211,8 @@ function dendrogram!(ax,
                     push!(highlighted, (idx, ogColor))
                 end
             end
+            # mark children for gc, don't trust julia to do anything
+            children = nothing
         end
         d_colors[] = d_colors[]
         notify(d_colors)
@@ -221,6 +227,10 @@ function dendrogram!(ax,
     m_events = addmouseevents!(ax.scene)
 
     cutoff_line::Observable{Tuple{Vector{Float64},Vector{Float64}}} = Observable(dendrogram[][3])
+
+    on(dendrogram) do d
+        cutoff_line[] = (d[3][1], cutoff_line[][2])
+    end
 
     cutoff_hovered = Observable(false)
     dragging = Ref(false)
@@ -239,7 +249,7 @@ function dendrogram!(ax,
                 on_click(hovered[])
             end
         elseif e.type === MouseEventTypes.over
-            plot, idx = pick(ax) #10)
+            plot, idx = pick(ax, 10)
             if isnothing(plot) && !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
