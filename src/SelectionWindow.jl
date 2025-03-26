@@ -190,16 +190,12 @@ function build_selection_window(
 
     dGrid = GridLayout()
     window[2:3, 1] = dGrid
-    #colsize!(window.layout, 2, Relative(0.66))
 
-    Label(dGrid[1, 1:2], matColLabel, font=:bold, fontsize=20)
-    graph_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
+    graph_ax = Axis(dGrid[1, 1], backgroundcolor=:transparent, title=matColLabel)
     deregister_interaction!(graph_ax, :rectanglezoom)
     hidexdecorations!(graph_ax)
+    hm_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
 
-    hm_ax = Axis(dGrid[3, 1], backgroundcolor=:transparent)
-
-    rowsize!(dGrid, 2, Relative(0.40))
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
 
@@ -316,8 +312,7 @@ function build_selection_window(
     menu_bar[1, 4] = export_menu
     menu_bar[1, 5] = settings_btn
 
-    dGrid[3, 2] = Colorbar(window, colorrange=lift(x -> x.m_extrema, cluster_data), colormap=DISTANCE_MATRIX_COLORMAP)
-    rowsize!(dGrid, 3, Relative(0.55))
+    dGrid[3, 1] = Colorbar(window, vertical=false, colorrange=lift(x -> x.m_extrema, cluster_data), colormap=DISTANCE_MATRIX_COLORMAP)
     linkxaxes!(hm_ax, graph_ax)
 
     tGrid = GridLayout()
