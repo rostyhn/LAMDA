@@ -489,26 +489,26 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             velocities = last.(posValsTup) .- first.(posValsTup)
 
             vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
-            correlationMeasure = zeros(Float32, length(refPositions) )
+            correlationMeasure = zeros(Float32, length(refPositions))
 
             num_neighbors = 50
             clusterKd = KDTree.(positions)
             for pId in eachindex(refPositions)
-                 vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
+                vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
                 for t in eachindex(clusterKd)
 
                     knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
                     uValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
                     vValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
-                    wValue = sum( ((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
+                    wValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
                     vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
                     vectorList[t] = Point3f(uValue, vValue, wValue)
                 end
                 meanV = mean(vectorList)
                 for v in vectorList
-                    correlationMeasure[pId] += (dot(meanV,v))/(dot(meanV,meanV) + dot(v,v)) 
+                    correlationMeasure[pId] += (dot(meanV, v)) / (dot(meanV, meanV) + dot(v, v))
                 end
-                correlationMeasure[pId] *= 1.0/length(vectorList)
+                correlationMeasure[pId] *= 1.0 / length(vectorList)
                 correlationMeasure[pId] += 0.5
             end
             # @show correlationMeasure
@@ -594,13 +594,15 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         return time, sg
     end
 
-    function correlation_slider(threshold, figure)
-        correlationThreshold = Observable(threshold)
-        c_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=threshold)
+    function correlation_slider(figure, default)
+        correlationThreshold = Observable(default)
+        c_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=default)
         on(c_slider.value) do x
             correlationThreshold[] = x
         end
-        sg = hgrid!(Label(figure, "correlation", font=:italic), c_slider, Label(figure, lift(x -> string(x), correlationThreshold)))
+        sg = hgrid!(Label(figure, "Correlation", font=:italic),
+            c_slider,
+            Label(figure, lift(x -> string(x), correlationThreshold), tellwidth=false))
 
         return correlationThreshold, sg
     end
