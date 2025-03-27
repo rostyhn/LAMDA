@@ -16,7 +16,7 @@ function build_cluster_window(
     inspector_ref::MaybeObservable{DataInspector},
     calculators,
     cluster_annotations;
-    on_cluster_select=(x) -> (),
+    on_cluster_select=(x, y) -> (),
     on_window_hover=(x) -> (),
     on_up=(x) -> (),
     on_left=(x) -> (),
@@ -178,7 +178,9 @@ function build_cluster_window(
         correlation)
 
     on(btn_centroid_to_scratchpad.clicks) do n
-        on_cluster_select(clusters[])
+        # save correlation to scratchpad, quick fix for now
+        # will have a better solution later
+        on_cluster_select(clusters[], correlation[])
     end
 
     dendrogram_ax = Axis(mat_grid[2, 1],

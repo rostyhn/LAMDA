@@ -16,7 +16,8 @@ function scratchpad!(
     rel_t_to_idx,
     calculators,
     cluster_annotations,
-    window_inspector;
+    window_inspector,
+    c2corr;
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_click=(x) -> (),
@@ -333,7 +334,7 @@ function scratchpad!(
                     # get transitions from general cluster object instead of the current one
                     ts = get_transitions(t_list, obj)
                     alignment = calculators["Alignment"](ts)
-                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment), Observable(0.7))
+                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment), Observable(c2corr[][obj]))
                     center!(ax3d)
                 end
                 push!(views[], ax3d)

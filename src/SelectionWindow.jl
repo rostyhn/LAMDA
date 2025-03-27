@@ -55,8 +55,10 @@ function build_selection_window(
         notify(selected_transitions)
     end
 
-    function on_cluster_select(c)
+    c2corr = Ref(Dict())
+    function on_cluster_select(c, corr)
         push!(selected_clusters[], c)
+        c2corr[][c] = corr
         notify(selected_clusters)
     end
 
@@ -342,7 +344,8 @@ function build_selection_window(
         rel_t_to_idx,
         calculators,
         cluster_annotations,
-        inspector;
+        inspector,
+        c2corr;
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,
         on_click=on_show_cluster_click)
