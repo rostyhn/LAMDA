@@ -141,13 +141,14 @@ function build_cluster_window(
     end
 
     umap_graph_view!(window[3, 1:2],
-        lift((x, y) -> (x.ts, x.mat, y, x.alignment), cluster_data, colors),
+        lift(x -> (x.ts, x.mat, x.alignment), cluster_data),
         scene_selector,
         scalar_selector,
         time,
         render_views,
         hovered_transition,
         hovered_cluster,
+        colors,
         cluster_info;
         highlight_borders=hb,
         on_click=on_transition_select)

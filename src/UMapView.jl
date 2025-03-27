@@ -9,6 +9,7 @@ function umap_graph_view!(
     render_views,
     hovered,
     hovered_cluster,
+    colors,
     cluster_info;
     highlight_borders=Observable(false),
     on_click=(x) -> (),
@@ -89,7 +90,7 @@ function umap_graph_view!(
             cam3d!(ax3d)
 
             # sets to color of original leaves
-            frame_color = Observable(data[][3][i])
+            frame_color = Observable(colors[][i])
             # sets to color of assignment 
             # set_color_alpha(cluster_color(cluster_info, t), 0.6))
 
@@ -132,6 +133,7 @@ function umap_graph_view!(
         t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
     end
 
+
     onany(selected_render, views, embedding; update=true) do sr, v, e
         if length(v) == length(e)
             for (i, (ax3d, rendered)) in enumerate(v)
@@ -146,14 +148,14 @@ function umap_graph_view!(
                         Observable(t),
                         selected_scalar,
                         atom_time,
-                        Observable(data[][4]))
+                        Observable(data[][3]))
                     rendered[] = [s]
                 else
                     inspector = DataInspector(ax3d)
                     il, is, plots = render_views["Superquadric"](ax3d,
                         Observable(t),
                         inspector,
-                        Observable(data[][4]))
+                        Observable(data[][3]))
                     rendered[] = plots
                 end
                 center!(ax3d)
@@ -189,6 +191,15 @@ function umap_graph_view!(
     end
 
     highlighted = Ref([])
+    on(colors) do c_list
+        if length(c_list) == length(frame_colors[])
+            empty!(highlighted[])
+            for (i, c) in enumerate(c_list)
+                frame_colors[][i][] = c
+            end
+        end
+    end
+
     onany(hovered, hovered_cluster) do hov, hc
         if isnothing(hov) && isnothing(hc)
             for (v_idx, ogColor) in highlighted[]
