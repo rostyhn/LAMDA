@@ -133,12 +133,14 @@ function build_selection_window(
             ref_t = find_group_centroid($cc, cluster_data[], t_list)
             ts = get_transitions(t_list, $cc)
             mat, t_to_mtx = get_local_matrix(cluster_data[], ts)
+            alignment = calculators["Alignment"](ts)
 
             return buildSingleClusterData(
                 cluster=cc[],
                 ref_t=ref_t,
                 ts=ts,
                 mat=mat,
+                alignment=alignment,
                 cluster_data=cluster_data[],
                 cluster_info=cluster_info[],
                 rel_t_to_idx=rel_t_to_idx,
@@ -165,10 +167,10 @@ function build_selection_window(
             on_window_hover=on_cluster_window_hover,
             on_cluster_select=on_cluster_select,
             on_up=cw_on_up,
-            on_left=cw_on_left,
-            on_right=cw_on_right,
-            on_downleft=cw_on_downleft,
-            on_downright=cw_on_downright,
+            on_left=cw_on_downleft,
+            on_right=cw_on_downright,
+            #on_downleft=cw_on_downleft,
+            #on_downright=cw_on_downright,
         )
         s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
         display(s, w)

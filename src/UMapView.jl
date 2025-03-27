@@ -8,7 +8,6 @@ function umap_graph_view!(
     atom_time,
     render_views,
     hovered,
-    alignment,
     hovered_cluster,
     cluster_info;
     highlight_borders=Observable(false),
@@ -147,20 +146,20 @@ function umap_graph_view!(
                         Observable(t),
                         selected_scalar,
                         atom_time,
-                        alignment)
+                        Observable(data[][4]))
                     rendered[] = [s]
                 else
                     inspector = DataInspector(ax3d)
                     il, is, plots = render_views["Superquadric"](ax3d,
                         Observable(t),
                         inspector,
-                        alignment)
+                        Observable(data[][4]))
                     rendered[] = plots
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up
                 # otherwise it seems like the renderer gets overwhelmed & it just goes oom
-                sleep(0.001)
+                yield()
             end
         end
         reset_limits!(ax)

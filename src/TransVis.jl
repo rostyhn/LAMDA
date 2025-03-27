@@ -304,9 +304,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     scalars["absAvgBonds"] = absAvgBonds
     scalar_ranges["absAvgBonds"] = (avgMin, avgMax)
 
-    lsExtrema = (bdMin, bdMax)
-    ls_cmap = resample_cmap(:bwr, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-
     molGrid = Figure()
     Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],

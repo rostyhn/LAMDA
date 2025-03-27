@@ -111,6 +111,7 @@ end
     h_range
     lines
     assignments
+    alignment
     clusters
 end
 
@@ -130,7 +131,7 @@ function set_val(ca, s::Set{Int}, property::String, val::String)
     ca[property][s] = val
 end
 
-function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx)
+function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx, alignment)
     rel_ts = map(x -> rel_t_to_idx[x], ts)
     colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
     clusters, lines, heights = branch(cluster_data, cluster)
@@ -144,6 +145,7 @@ function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_dat
         lines=lines,
         heights=heights,
         clusters=clusters,
+        alignment=alignment,
         assignments=assignments,
         h_range=cluster_info.h_range)
 end

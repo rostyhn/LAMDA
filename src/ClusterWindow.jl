@@ -100,7 +100,7 @@ function build_cluster_window(
     ts = Observable(cluster_data[].ts)
     alignment = @lift begin
         ts.val = $(cluster_data).ts
-        return calculators["Alignment"](ts.val)
+        return $(cluster_data).alignment
     end
 
     cbar = widgets["Colorbar"](window, scene_selector, scalar_selector)
@@ -141,13 +141,12 @@ function build_cluster_window(
     end
 
     umap_graph_view!(window[3, 1:2],
-        lift((x, y) -> (x.ts, x.mat, y), cluster_data, colors),
+        lift((x, y) -> (x.ts, x.mat, y, x.alignment), cluster_data, colors),
         scene_selector,
         scalar_selector,
         time,
         render_views,
         hovered_transition,
-        alignment,
         hovered_cluster,
         cluster_info;
         highlight_borders=hb,
@@ -171,7 +170,11 @@ function build_cluster_window(
     correlation, corr_slider = widgets["CorrThreshold"](window, 0.7)
     btn_centroid_to_scratchpad = Button(window, label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
-    render_views["SMovement"](centroid_scene, ts, time, alignment, correlation)
+    render_views["SMovement"](centroid_scene,
+        ts,
+        time,
+        alignment,
+        correlation)
 
     on(btn_centroid_to_scratchpad.clicks) do n
         on_cluster_select(clusters[])

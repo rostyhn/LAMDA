@@ -333,7 +333,7 @@ function scratchpad!(
                     # get transitions from general cluster object instead of the current one
                     ts = get_transitions(t_list, obj)
                     alignment = calculators["Alignment"](ts)
-                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
+                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment), Observable(0.7))
                     center!(ax3d)
                 end
                 push!(views[], ax3d)
