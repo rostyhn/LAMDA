@@ -156,7 +156,14 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
             redmat[i, :] .= $reordered_matrix[1][mtx_idx, idxes]
         end
 
-        return redmat, red_t_list # will still need to order, but this can be done later
+        # should just do this here and pass it down to main instead of doing it twice
+        clustering = hclust(redmat, linkage=:ward, branchorder=:barjoseph)
+        rm = zeros(Float32, size(redmat))
+        for (i, r) in enumerate(clustering.order)
+            rm[i, :] .= redmat[r, :][clustering.order]
+        end
+
+        return redmat, red_t_list, rm
     end
 
     red_hm_ax = Axis(window[3, 2],
@@ -166,7 +173,9 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     hidedecorations!(red_hm_ax)
     deregister_interaction!(red_hm_ax, :rectanglezoom)
 
-    red_hm = heatmap!(red_hm_ax, lift(x -> x[1], reduced), colorrange=lift(x -> x[3], reordered_matrix), colormap=DISTANCE_MATRIX_COLORMAP)
+    red_hm = heatmap!(red_hm_ax, lift(x -> x[3], reduced),
+        colorrange=lift(x -> x[3], reordered_matrix),
+        colormap=DISTANCE_MATRIX_COLORMAP)
 
     on(go_btn.clicks) do n
         active_trajectory["selected_dm"] = Observable(reduced[][1])
