@@ -406,14 +406,17 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
         volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(abs_t_seq)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
+        #make it symmetric 
+        maximumRange = max(abs(volRange[][1]),abs(volRange[][2]))
+        volRange[] = (-maximumRange, maximumRange)
         notify(volRange)
 
         if $selected_invariant == "t2"
-            volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.1) .^ 2)
+            volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.05) .^ 2)
         else
             # should be fine, seems off-center because abs(volMin) != abs(volMax)
-            lowmap = reverse(resample_cmap(:RdPu_3, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.1) .^ 6))
-            himap = resample_cmap(:greens, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.1) .^ 6)
+            lowmap = reverse(resample_cmap(:RdPu_3, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
+            himap = resample_cmap(:greens, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
             volume_cmap[] = vcat(lowmap, himap)
         end
         notify(volume_cmap)
@@ -599,7 +602,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     function correlation_slider(figure, default)
         correlationThreshold = Observable(default)
-        c_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=default)
+        c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=default)
         on(c_slider.value) do x
             correlationThreshold[] = x
         end
