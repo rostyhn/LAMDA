@@ -250,7 +250,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         lo_sq,
         color=lo_col,
         #highclip=:transparent,
-         #transparency=true,
+        #transparency=true,
         # shading=NoShading,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
@@ -270,12 +270,12 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         # fxaa=false
     )
     v = meshscatter!(scene,
-    points;
-    color=:gray,
-    marker=:Sphere,
-    transparency=true,
-    inspectable=false,
-    markersize=0.2)
+        points;
+        color=:gray,
+        marker=:Sphere,
+        transparency=true,
+        inspectable=false,
+        markersize=0.2)
 
     m_hi.inspectable[] = false
 
@@ -303,7 +303,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     end=#
 
     update_cam!(parent_scene(m_lo))
-    return [cam_listener], [], [m_lo, m_hi]
+    return [cam_listener], [], [m_lo, m_hi, v]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
