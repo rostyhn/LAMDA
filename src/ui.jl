@@ -96,7 +96,7 @@ function simple_arrow_view!(scene,
     # i know its annoying to use a tuple, but its the only way to prevent crashes
     d = @lift begin
         points = Point3f.(eachrow($ap[1])) .+ ($vel .* $time)
-        velocities = 2.0 * $vel .* ($correlation .>= Ref($corrThreshold))
+        velocities = $vel .* ($correlation .>= Ref($corrThreshold))
         return points, velocities, $correlation
     end
 
@@ -138,10 +138,10 @@ function simple_arrow_view!(scene,
 
     v = meshscatter!(scene,
         lift(x -> x[1], d);
-        color=:gray,
+        color=lift(x -> x[3], d),
         colorrange=lift(x -> (0.0, x), corrThreshold),
         marker=:Sphere,
-        colormap=cmap,
+        colormap=:gist_yarg,
         lowclip=:transparent,
         highclip=:transparent,
         transparency=true,
@@ -198,6 +198,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         transformation=t,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
 
+
     # FIXME sometimes the volume will get rotated so hard it disappears
     # could be a floating point precision issue?
     # if called before screen is rendered it crashes
@@ -217,7 +218,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
     v_hi.inspectable[] = false
     v_lo.inspectable[] = false
 
-    update_cam!(parent_scene(v_lo))
+    # update_cam!(parent_scene(v_lo))
 
     return v_lo, v_hi
 end
