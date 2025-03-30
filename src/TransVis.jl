@@ -1,4 +1,5 @@
 module TransVis
+using CairoMakie # for saving plots w/ SVG
 
 #Data handling
 using GLMakie: apply_transform
@@ -67,6 +68,7 @@ const CLUSTER_CONSENSUS_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
 
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
+    GLMakie.activate!()
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(theme_latexfonts(); fontsize=18.0, inspectable=true)
 

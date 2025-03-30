@@ -1,5 +1,6 @@
 using Makie
 using StatsBase
+#using CairoMakie
 
 function get_st_clusters(merge, i, clusterIdx)
     if i < 0
@@ -148,7 +149,7 @@ function dendrogram!(ax,
         colors = []
         for c in clusters
             color = cluster_color(cluster_data[], c)
-            push!(colors, set_color_alpha(color, 0.3))
+            push!(colors, set_color_alpha(color, 0.6))
         end
 
         # to get label idx just divide by 2
@@ -260,6 +261,13 @@ function dendrogram!(ax,
             else
                 cutoff_hovered[] = false
             end
+        elseif e.type === MouseEventTypes.leftdoubleclick
+            cc = deepcopy(d_colors[])
+            d_colors[] = map(x -> set_color_alpha(x, 1.0), d_colors[])
+            notify(d_colors)
+            save("$(time()).pdf", ax.scene, backend=CairoMakie, update=false)
+            d_colors[] = cc
+            notify(d_colors)
         elseif e.type == MouseEventTypes.out
             if !isnothing(hovered[])
                 hovered.val = nothing
