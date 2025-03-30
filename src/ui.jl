@@ -249,11 +249,12 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         scene,
         lo_sq,
         color=lo_col,
-        highclip=:transparent,
-        transparency=true,
+        #highclip=:transparent,
+         #transparency=true,
+        # shading=NoShading,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
-        fxaa=false
+        # fxaa=false
     )
     m_lo.inspectable[] = false
 
@@ -261,12 +262,21 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         scene,
         hi_sq,
         color=hi_col,
-        lowclip=:transparent,
-        transparency=true,
+        #lowclip=:transparent,
+        # transparency=true,
+        # shading=NoShading,
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
-        fxaa=false
+        # fxaa=false
     )
+    v = meshscatter!(scene,
+    points;
+    color=:gray,
+    marker=:Sphere,
+    transparency=true,
+    inspectable=false,
+    markersize=0.2)
+
     m_hi.inspectable[] = false
 
     cam_listener = on(lo_sq) do ls
