@@ -242,9 +242,11 @@ function umap_graph_view!(
     # if I wanted to do this I could just write C
     on(events(ax.scene).window_open) do e
         if !e
-            off(hover_listener)
-            hover_listener = nothing
-
+            for l in hover_listener
+                off(l)
+                l = nothing
+            end
+            empty!(hover_listener)
             off(c_listener)
             c_listener = nothing
 
