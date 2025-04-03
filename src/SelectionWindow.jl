@@ -185,10 +185,9 @@ function build_selection_window(
 
         on(events(w).window_open) do e
             if !e
-                @show "window closed"
                 delete!(open_cluster_windows, w_idx)
                 empty!(w)
-                close(s)
+                GC.gc()
             end
         end
     end

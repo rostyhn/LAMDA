@@ -747,7 +747,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     # create inspector after render to avoid bugs
     ds[] = DataInspector(window)
-
+    on(events(window).window_open) do e
+        if !e
+            empty!(window)
+            Makie.free(window.scene)
+            GC.gc()
+        end
+    end
     # close reduction window
     close(screen_ref[])
 end

@@ -89,6 +89,13 @@ function umap_graph_view!(
                 size=(ms, ms))
             cam3d!(ax3d)
 
+            on(events(ax3d).window_open) do e
+                if !e
+                    empty!(ax3d)
+                    Makie.free(ax3d)
+                end
+            end
+
             # sets to color of original leaves
             frame_color = Observable(colors[][i])
             # sets to color of assignment 
