@@ -31,11 +31,11 @@ function build_selection_window(
     calculators,
     trajectory_name,
     inspector;
-    fig_size=(600, 800)
+    fig_size=(1920, 1080)
 )
 
     window = Figure(size=fig_size)
-    menu_bar = top_bar(window, "Overview", 2)
+    menu_bar = top_bar(window, "Selection Window", 2)
 
     init_transitions = Set{Transition}()
     selected_transitions = Observable{Set{Transition}}(init_transitions)
@@ -185,6 +185,7 @@ function build_selection_window(
 
         on(events(w).window_open) do e
             if !e
+                @show "window closed"
                 delete!(open_cluster_windows, w_idx)
                 empty!(w)
                 close(s)
@@ -302,7 +303,7 @@ function build_selection_window(
     on(settings_btn.clicks) do n
         # n has how many times the button's been clicked
         if isnothing(screen)
-            screen = GLMakie.Screen(title="LAMDA Settings")
+            screen = GLMakie.Screen(title="LAMDA - Settings")
             display(screen, settings_window)
         else
             close(screen)

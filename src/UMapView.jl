@@ -110,7 +110,7 @@ function umap_graph_view!(
             m_events = addmouseevents!(ax3d)
             on(m_events.obs) do event
                 if event.type === MouseEventTypes.over
-                    show_data(ins, umap_nodes, i)
+                    #show_data(ins, umap_nodes, i)
                     hovered[] = t
                     notify(hovered)
 
@@ -131,11 +131,11 @@ function umap_graph_view!(
             push!(frame_colors[], frame_color)
         end
         t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
+        notify(views)
     end
 
-
-    onany(selected_render, views, embedding; update=true) do sr, v, e
-        if length(v) == length(e)
+    onany(selected_render, views; update=true) do sr, v
+        if length(v) == length(embedding[])
             for (i, (ax3d, rendered)) in enumerate(v)
                 t = data[][1][i]
                 foreach(x -> delete!(ax3d, x), rendered[])

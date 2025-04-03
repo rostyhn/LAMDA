@@ -65,7 +65,6 @@ const EMBEDDED_SCENE_SELECTED = colorant"#8b8680"
 const DISTANCE_MATRIX_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
 const CLUSTER_COLORMAP = to_colormap(CLUSTER_COLORS)
 const CLUSTER_CONSENSUS_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
-
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     GLMakie.activate!()
@@ -76,7 +75,7 @@ function go(trajectory_name::String; kwargs...)
     window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
-    screen = GLMakie.Screen()
+    screen = GLMakie.Screen(title="LAMDA - Reduction Window")
     screen_ref[] = screen
     display(screen, window)
 end
@@ -409,7 +408,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(abs_t_seq)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
         #make it symmetric 
-        maximumRange = max(abs(volRange[][1]),abs(volRange[][2]))
+        maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
         volRange[] = (-maximumRange, maximumRange)
         notify(volRange)
 
@@ -743,7 +742,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     # creating screen after the window is built prevents subtle bugs
     # such as interactions being trigged before the window is rendered 
     =#
-    screen = GLMakie.Screen()
+    screen = GLMakie.Screen(title="LAMDA - Selection Window")
     display(screen, window)
 
     # create inspector after render to avoid bugs

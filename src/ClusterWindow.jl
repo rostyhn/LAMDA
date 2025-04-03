@@ -23,7 +23,7 @@ function build_cluster_window(
     on_right=(x) -> (),
     on_downleft=(x) -> (),
     on_downright=(x) -> (),
-    fig_size=(400, 400)
+    fig_size=(1920, 1080)
 )
 
     window = Figure(size=fig_size)

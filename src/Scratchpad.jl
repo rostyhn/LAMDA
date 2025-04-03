@@ -256,7 +256,7 @@ function scratchpad!(
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
                         deactivate_interaction!(ax, :create_text)
-                        show_inspector(obj)
+                        #show_inspector(obj)
 
                         if obj isa Transition
                             hovered[] = obj
