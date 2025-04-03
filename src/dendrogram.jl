@@ -137,6 +137,7 @@ function dendrogram!(ax,
     rootcolor=:black,
     on_click=(x -> ()),
     on_cutoff_line_drag=(x -> ()),
+    cutoff_reset=false,
     kwargs...)
 
     ax.xgridvisible = false
@@ -230,7 +231,12 @@ function dendrogram!(ax,
     cutoff_line::Observable{Tuple{Vector{Float64},Vector{Float64}}} = Observable(dendrogram[][3])
 
     on(dendrogram) do d
-        cutoff_line[] = (d[3][1], cutoff_line[][2])
+        # reset cutoff line
+        if cutoff_reset
+            cutoff_line[] = (d[3][1], [0, 0])
+        else
+            cutoff_line[] = (d[3][1], cutoff_line[][2])
+        end
     end
 
     cutoff_hovered = Observable(false)

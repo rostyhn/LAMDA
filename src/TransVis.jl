@@ -408,8 +408,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(abs_t_seq)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
         #make it symmetric 
-        maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
-        volRange[] = (-maximumRange, maximumRange)
+        #maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
+        #volRange[] = (-maximumRange, maximumRange)
         notify(volRange)
 
         if $selected_invariant == "t2"
