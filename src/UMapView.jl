@@ -71,7 +71,7 @@ function umap_graph_view!(
         end
         empty!(views[])
         empty!(frame_colors[]) # update frame colors
-        GC.gc()
+        GC.gc(true)
 
         for (i, t) in enumerate(data.val[1])
             pos = $embedding[i]
@@ -148,6 +148,8 @@ function umap_graph_view!(
                 foreach(x -> delete!(ax3d, x), rendered[])
                 empty!(rendered[])
                 if sr == "Volume"
+                    #=(v_lo, v_hi), vd = render_views[sr](ax3d, Observable(t))
+                    push!(observables[], vd)=#
                     v_lo, v_hi = render_views[sr](ax3d, Observable(t))
                     rendered[] = [v_lo, v_hi]
                 elseif sr == "Atom"
@@ -170,6 +172,7 @@ function umap_graph_view!(
                 # otherwise it seems like the renderer gets overwhelmed & it just goes oom
                 yield()
             end
+            GC.gc(true)
         end
         reset_limits!(ax)
         center!(ax.scene)
@@ -204,6 +207,18 @@ function umap_graph_view!(
             for (i, c) in enumerate(c_list)
                 frame_colors[][i][] = c
             end
+        end
+    end
+
+    on(events(ax.scene).window_open) do e
+        if !e
+            for (ax3d, rendered) in views[]
+                empty!(ax3d)
+                Makie.free(ax3d)
+            end
+            empty!(views[])
+            empty!(frame_colors[]) # update frame colors
+            GC.gc(true)
         end
     end
 

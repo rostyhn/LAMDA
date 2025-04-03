@@ -187,7 +187,7 @@ function build_selection_window(
             if !e
                 delete!(open_cluster_windows, w_idx)
                 empty!(w)
-                GC.gc()
+                GC.gc(true)
             end
         end
     end

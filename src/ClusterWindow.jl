@@ -31,7 +31,7 @@ function build_cluster_window(
     # the transitions being hovered on in the dist matrix
     mat_hovered = Observable((0, 0))
 
-    scene_selector = Observable("Volume")
+    scene_selector = Observable("Atom")
     scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
     title = lift((x, y) -> str_limit(get_val(y, "titles", x), len=25), clusters, cluster_annotations)
@@ -195,6 +195,7 @@ function build_cluster_window(
         hovered_cluster,
         cluster_annotations,
         on_cutoff_line_drag=update_colors;
+        cutoff_reset=true,
         colormap=CLUSTER_COLORS)
 
     hm_ax, hm = heatmap(mat_grid[3, 1],

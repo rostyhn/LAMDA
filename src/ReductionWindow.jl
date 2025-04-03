@@ -183,7 +183,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
         active_trajectory["reduced_transitions"] = reduced[][2]
         active_trajectory["selected_dm_name"] = selected_dm[]
         empty!(window)
-        GC.gc()
+        GC.gc(true)
         on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 

@@ -4,7 +4,7 @@ const Maybe{T} = Union{Nothing,T}
 const MaybeObservable{T} = Observable{Maybe{T}}
 const Transition = Tuple{Int16,Int16}
 
-@kwdef mutable struct ClusterInfo
+@kwdef struct ClusterInfo
     groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx
     assignments::Vector{Int}
     representatives
@@ -30,7 +30,7 @@ function get_parents_of_transition(ci::ClusterInfo, t::Transition)
     return c
 end
 
-@kwdef mutable struct ClusterData
+@kwdef struct ClusterData
     clustering
     matrix
     m_extrema

@@ -471,9 +471,11 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             time)
     end
 
-    function render_volume_view(scene, transition)
-        vd = lift((x, y, z) ->
-                reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, transition, sampleRanges)
+    function render_volume_view(scene::Makie.Scene, transition::Observable{Transition})
+        # this leaks memory
+        vd = reshape(volumeData[][:, t_to_idx[transition[]]], (length(sampleRanges[][1]), length(sampleRanges[][2]), length(sampleRanges[][3])))
+        #vd = lift((x, y, z) ->
+        #        reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, transition, sampleRanges)
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
@@ -751,7 +753,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         if !e
             empty!(window)
             Makie.free(window.scene)
-            GC.gc()
+            GC.gc(true)
         end
     end
     # close reduction window
