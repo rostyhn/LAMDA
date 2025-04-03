@@ -201,7 +201,7 @@ function umap_graph_view!(
     end
 
     highlighted = Ref([])
-    on(colors) do c_list
+    c_listener = on(colors) do c_list
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
             for (i, c) in enumerate(c_list)
@@ -210,19 +210,7 @@ function umap_graph_view!(
         end
     end
 
-    on(events(ax.scene).window_open) do e
-        if !e
-            for (ax3d, rendered) in views[]
-                empty!(ax3d)
-                Makie.free(ax3d)
-            end
-            empty!(views[])
-            empty!(frame_colors[]) # update frame colors
-            GC.gc(true)
-        end
-    end
-
-    onany(hovered, hovered_cluster) do hov, hc
+    hover_listener = onany(hovered, hovered_cluster) do hov, hc
         if isnothing(hov) && isnothing(hc)
             for (v_idx, ogColor) in highlighted[]
                 frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
@@ -248,6 +236,25 @@ function umap_graph_view!(
                     push!(highlighted[], (v_idx, ogColor))
                 end
             end
+        end
+    end
+
+    # if I wanted to do this I could just write C
+    on(events(ax.scene).window_open) do e
+        if !e
+            off(hover_listener)
+            hover_listener = nothing
+
+            off(c_listener)
+            c_listener = nothing
+
+            for (ax3d, rendered) in views[]
+                empty!(ax3d)
+                Makie.free(ax3d)
+            end
+            empty!(views[])
+            empty!(frame_colors[]) # update frame colors
+            GC.gc(true)
         end
     end
 
