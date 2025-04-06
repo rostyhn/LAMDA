@@ -202,6 +202,7 @@ function scratchpad!(
     viewports = Ref([])
     frame_colors = Ref([])
     on(idx_to_obj) do idxes
+        @show Makie.current_default_theme()
         ts = collect(selected_transitions[])
         s_alignment = Observable(calculators["Alignment"](ts))
         for (idx, obj) in enumerate(idxes)

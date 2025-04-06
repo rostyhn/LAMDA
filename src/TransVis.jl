@@ -69,7 +69,8 @@ function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     GLMakie.activate!()
     active_trajectory = get_data_alt(trajectory_name)
-    set_theme!(theme_latexfonts(); fontsize=18.0, inspectable=true)
+    plot_theme = Theme(MeshScatter=(inspectable=false, markercolor=to_color(:blue)))
+    set_theme!(Makie.merge(theme_latexfonts(), plot_theme); fontsize=18.0, inspectable=true, markercolor=:blue)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
     window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
