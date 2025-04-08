@@ -181,6 +181,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         transparency=true,
         transformation=t,
         shading=NoShading,
+        inspectable=false,
         colorrange=lift(x -> (x[1], 0.0), volumeRange))
 
     v_hi = volume!(scene,
@@ -196,6 +197,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         transparency=true,
         shading=NoShading,
         transformation=t,
+        inspectable=false,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
 
 
@@ -214,9 +216,6 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         notify(t)
         update_cam!(parent_scene(v_lo))
     end=#
-
-    v_hi.inspectable[] = false
-    v_lo.inspectable[] = false
 
     # update_cam!(parent_scene(v_lo))
 

@@ -23,6 +23,14 @@ function scratchpad!(
     on_click=(x) -> (),
     markersize=200)
 
+    plot_theme = Theme(MeshScatter=(inspectable=false, markercolor=to_color(:blue)),
+        fontsize=18.0,
+        inspectable=true,
+        markercolor=to_color(:blue))
+
+    ct = Makie.merge(theme_latexfonts(), plot_theme)
+
+    set_theme!(ct)
     ax = Axis(loc, backgroundcolor=:transparent, title="Scratchpad")
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
@@ -32,8 +40,6 @@ function scratchpad!(
     # run once on creation to bind axis
     reset_limits!(ax)
     center!(ax.scene)
-
-    ins = DataInspector(ax)
 
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
     idx_to_obj = Observable{Vector{Union{Set{Int},Transition}}}(Union{Set{Int},Transition}[]) # gets transition from plotted idx
@@ -134,7 +140,7 @@ function scratchpad!(
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
         scene = views[][v_idx]
-
+        # Makie.free seems to destroy theme object...
         Makie.free(scene)
         delete!(obj_to_idx[], obj)
     end
@@ -202,7 +208,9 @@ function scratchpad!(
     viewports = Ref([])
     frame_colors = Ref([])
     on(idx_to_obj) do idxes
-        @show Makie.current_default_theme()
+        # @show Makie.current_default_theme()
+        # @show ax.scene.theme
+
         ts = collect(selected_transitions[])
         s_alignment = Observable(calculators["Alignment"](ts))
         for (idx, obj) in enumerate(idxes)
@@ -218,7 +226,9 @@ function scratchpad!(
                 # viewports need to be in data space
                 push!(viewports[], pos)
 
-                ax3d = Scene(ax.scene, show_axis=false,
+                set_theme!(ct)
+                ax3d = Scene(ax.scene,
+                    show_axis=false,
                     viewport=vp,
                     backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
                     clear=true,
@@ -274,7 +284,6 @@ function scratchpad!(
                         hovered_cluster[] = nothing
                         notify(hovered_cluster)
 
-                        hide_inspector()
                         activate_interaction!(ax, :create_group)
                         activate_interaction!(ax, :create_text)
                     elseif event.type === MouseEventTypes.middledrag
@@ -316,7 +325,8 @@ function scratchpad!(
                             v_lo, v_hi = render_views[rs](ax3d, Observable(obj))
                             plt_rendered = [v_lo, v_hi]
                         elseif rs == "Atom"
-                            s = render_views["Atom"](ax3d, Observable(obj),
+                            s = render_views["Atom"](ax3d,
+                                Observable(obj),
                                 scalar_selection,
                                 atom_time,
                                 s_alignment)
