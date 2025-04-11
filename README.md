@@ -17,11 +17,8 @@ To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` sh
 Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** The following is an example data directory: 
 ```
 trajectory_name/ # used as input to go()
-    distances.pickle # atom-atom distance matrices per state; Dict{Int,Matrix{Float}}
     transitions.pickle # list of transitions; Vector{Tuple{Int,Int}}
-    connectivity.pickle # atom-atom connectivity per state; Dict{Int, Matrix{Float}}
-    aligned_positions.pickle # positions per transition; Dict{Tuple{Int,Int}, Matrix{Float}}
-    t_ase_dict.pickle # ASE data per transition; Dict{Tuple{Int,Int}, Tuple{Atoms, Atoms}}
+    ase_dict.pickle # ASE data per state; Dict{Int, Atoms}
 
     dms/ 
         - some_distance_metric/
