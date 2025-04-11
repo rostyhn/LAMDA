@@ -26,7 +26,7 @@ trajectory_name/ # used as input to go()
     alignment/
         - some_features.pickle # alignment features; Dict{Tuple{Int, Int}, Tuple{Matrix{Float}, Matrix{Float}}
     scalars/ # optional
-        - some_scalar.pickle # per-atom scalar values; Dict{Tuple{Int,Int}, Tuple{Vector{Float},Vector{Float}}}
+        - some_scalar.pickle # per-atom scalar values; Dict{Tuple{Int,Int}, Vector{Float}}
     per_t_scalars/ # optional
         - some_scalar.pickle # per-transition scalar values; Dict{Tuple{Int,Int}, Float}}
 
