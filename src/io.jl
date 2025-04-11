@@ -18,10 +18,8 @@ end
 
 function check_directory_format(dir)
     contents = readdir(dir)
-    return "distances.pickle" in contents &&
-           "transitions.pickle" in contents &&
-           "connectivity.pickle" in contents &&
-           "aligned_positions.pickle" in contents
+    return "ase_dict.pickle" in contents &&
+           "transitions.pickle" in contents
 end
 
 function get_data_folders(path)
@@ -90,17 +88,36 @@ function get_data_alt(trajectory_name)
             t = trajectories[trajectory_name]
 
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
+            transitions_pickle = joinpath(t, "transitions.pickle")
+            transitions = Vector{Transition}(Pickle.npyload(transitions_pickle))
 
-            # TODO: make sure these exist!
+            ase_pickle = joinpath(t, "ase_dict.pickle")
+
             distances_pickle = joinpath(t, "distances.pickle")
             connectivity_pickle = joinpath(t, "connectivity.pickle")
-            transitions_pickle = joinpath(t, "transitions.pickle")
             alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
+            data_pickles = [distances_pickle, connectivity_pickle, alignedPositions_pickle]
 
-            distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
-            connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
-            transitions = Vector{Transition}(Pickle.npyload(transitions_pickle))
-            rawAlignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
+            # if any do not exist, compute them in python before continuing
+            if any(x -> !isfile(x), data_pickles)
+                @show "Processing ASE data..."
+                @pyinclude(joinpath(dirname(@__FILE__), "ase_processing.py"))
+                py"process_dataset"(transitions, ase_pickle, t)
+            end
+
+            py"""
+            import pickle
+            def load_pickle(fpath):
+                with open(fpath, "rb") as f:
+                    data = pickle.load(f)
+                return data
+            """
+            load_pickle = py"load_pickle"
+
+            # seems like Pickle.jl fails here
+            distanceMatrices = Dict{Int16,Matrix{Float32}}(load_pickle(distances_pickle))
+            connectivity = Dict{Int16,Matrix{Float32}}(load_pickle(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
+            rawAlignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(load_pickle(alignedPositions_pickle))
 
             # convert to point3fs & generate kd trees
             println("Computing KDTrees.")
