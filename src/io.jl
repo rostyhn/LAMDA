@@ -115,8 +115,8 @@ function get_data_alt(trajectory_name)
             load_pickle = py"load_pickle"
 
             # seems like Pickle.jl fails here
-            distanceMatrices = Dict{Int16,Matrix{Float32}}(load_pickle(distances_pickle))
-            connectivity = Dict{Int16,Matrix{Float32}}(load_pickle(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
+            distanceMatrices = Dict{State,Matrix{Float32}}(load_pickle(distances_pickle))
+            connectivity = Dict{State,Matrix{Float32}}(load_pickle(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
             rawAlignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(load_pickle(alignedPositions_pickle))
 
             # convert to point3fs & generate kd trees

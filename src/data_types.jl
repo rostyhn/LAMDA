@@ -2,6 +2,7 @@
 const ColorMatrix = Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}} # stored as mat of ints from 0 to 255
 const Maybe{T} = Union{Nothing,T}
 const MaybeObservable{T} = Observable{Maybe{T}}
+const State = Int16
 const Transition = Tuple{Int16,Int16}
 
 @kwdef struct ClusterInfo

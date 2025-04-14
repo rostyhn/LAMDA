@@ -6,8 +6,10 @@ You need to install the Python environment manager `poetry`([https://python-poet
 
 To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
 
-`go` has some keyword parameters as well. 
+`go` has some keyword parameters as well.
+
 | parameter | type | purpose |
+|-----------|------|---------|
 | `chunk_size` | `Int` | sets how many volumes get processed at a time |
 | `init_h_cutoff` | `Float` | sets the initial height cutoff value for the clustering |
 | `align_with` | `String` | sets the initial feature values used to align the transitions |
