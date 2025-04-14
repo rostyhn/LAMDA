@@ -454,8 +454,13 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     end
 
     function render_volume_view(scene::Makie.Scene, transition::Observable{Transition})
-        # this leaks memory
-        vd = reshape(volumeData[][:, t_to_idx[transition[]]], (length(sampleRanges[][1]), length(sampleRanges[][2]), length(sampleRanges[][3])))
+        # directly indexing the mmap creates a copy, need to use a view
+        vvd = view(volumeData[], :, t_to_idx[transition[]]) 
+        vd = reshape(vvd, 
+                     (length(sampleRanges[][1]), 
+                      length(sampleRanges[][2]), 
+                      length(sampleRanges[][3]))
+                    )
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
@@ -494,53 +499,12 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 correlationMeasure[pId] *= 1.0 / length(vectorList)
                 correlationMeasure[pId] += 0.5
             end
-            # @show correlationMeasure
-
-            # velocityMagnitudes = norm.(vd)
-            # stdDeviation = std(velocityMagnitudes)
-            # zMagnitudes = zscore(velocityMagnitudes, 0, stdDeviation)
-            # # distanceMatrix = pairwise(Cityblock(), zMagnitudes', ; dims=2) # equivalent to Euclidean in 1D
-            # # R = fuzzy_cmeans(distanceMatrix, 2, 2, maxiter=200)
-            # groupOne = Vector{Int32}()
-            # groupTwo = Vector{Int32}()
-
-            # for index in eachindex(velocityMagnitudes)
-            #     # if R.weights[index, 1] > 0.5 #if probability is higher than 30% (performs better than a hard cut between clusters)
-            #     if zMagnitudes[index] > 3
-            #     push!(groupOne, index)
-            #     else
-            #         push!(groupTwo, index)
-            #     end
-            # end
-
-            # @show meanOne = mean(velocityMagnitudes[groupOne])
-            # @show meanTwo = mean(velocityMagnitudes[groupTwo])
-
-            # groupMobile = Vector{Int32}()
-            # groupStatic = Vector{Int32}()
-            # if meanOne > meanTwo # which of the two groups is the static one: seems random
-            #     groupMobile = groupOne
-            #     groupStatic = groupTwo
-            # else
-            #     groupStatic = groupOne
-            #     groupMobile = groupTwo
-            # end
-            # distanceMatrixMobile = pairwise(CosineDist(), vd[groupMobile]) # cluster only the moving atoms again
-            # mobileResult = kmedoids(distanceMatrixMobile, min(size(distanceMatrixMobile)[1], 5)) # 5 is arbitrary, maybe introduce parameter (too many might be hard to interpret and might break common groups)
-
-            # clusters = ones(Float32, length(refPositions))
-
-            # for i in eachindex(groupMobile)
-            #     clusters[groupMobile[i]] = assignments(mobileResult)[i] + 1 #assign resulting groups to new clusters; make sure groups 1 is left for immobile atoms
-            # end
-
-            # vels = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
-            # vels[groupMobile[mobileResult.medoids]] = vd[groupMobile[mobileResult.medoids]]
-
+            
             inits = first.(posValsTup)[representativeIdx]
             fins = last.(posValsTup)[representativeIdx]
             return (inits, fins), vd, correlationMeasure
         end
+
         return simple_arrow_view!(scene,
             lift(x -> x[1], d),
             time,
