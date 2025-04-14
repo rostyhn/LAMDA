@@ -1,5 +1,3 @@
-using Observables
-
 function umap_graph_view!(
     loc,
     data,

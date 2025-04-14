@@ -1,70 +1,53 @@
 module TransVis
-using CairoMakie # for saving plots w/ SVG
-
-#Data handling
-using GLMakie: apply_transform
-using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data
+using PyCall
+using Base.Threads
+using ImageIO
 using Pickle
 using JLD2
 using CodecZlib
-using Clustering: hclust, cutree
 using FileIO
 using ColorTypes
+
+using ProgressMeter
+using LinearAlgebra
+using Statistics
+using StatsBase
+using SparseArrays
+using Distances
+using GeometryBasics
+using Mmap
 using FixedPointNumbers
 
-#Vis
-using GLMakie
-using Makie
-using GeometryBasics
-# using GLFW
+using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie 
+using CairoMakie # for saving plots w/ SVG
+using GLMakie: GLMakie, Screen, apply_transform, ScreenConfig 
+using Observables
 
-#Processing and Helpers
+using Clustering: Clustering, hclust, cutree, kmedoids
 using NearestNeighbors
-using LinearAlgebra
-using Base.Threads
-using Statistics
-using ProgressMeter
-using Mmap
-using Clustering
 using UMAP
 
-using PyCall
-
+#using GLFW
+include("constants.jl")
 include("data_types.jl")
 include("io.jl")
-# unfortunately is used as part of the main module
 include("multiprocess.jl")
 include("processing.jl")
-include("SelectionWindow.jl")
-include("MolWindow.jl")
 include("utils.jl")
 include("math.jl")
-include("dendrogram.jl")
-include("UMapView.jl")
-include("Scratchpad.jl")
-include("NoteWindow.jl")
-include("SettingsWindow.jl")
-include("ClusterWindow.jl")
-include("ReductionWindow.jl")
 include("ui.jl")
 
+include("vis/Dendrogram.jl")
+include("vis/UMapView.jl")
+include("vis/Scratchpad.jl")
+
+include("windows/ReductionWindow.jl")
+include("windows/SelectionWindow.jl")
+include("windows/ClusterWindow.jl")
+include("windows/NoteWindow.jl")
+include("windows/SettingsWindow.jl")
+
 export go
-const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
-const CLUSTER_COLORS = :glasbey_bw_minc_20_maxl_70_n256
-
-const LEFT_KEY = Keyboard.left
-const RIGHT_KEY = Keyboard.right
-const UP_KEY = Keyboard.up
-const DOWN_KEY = Keyboard.down
-
-const LEFT_DOWN = LEFT_KEY & DOWN_KEY
-const RIGHT_DOWN = RIGHT_KEY & DOWN_KEY
-
-const EMBEDDED_SCENE_BACKGROUND = colorant"#F5F5F5"
-const EMBEDDED_SCENE_SELECTED = colorant"#8b8680"
-const DISTANCE_MATRIX_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
-const CLUSTER_COLORMAP = to_colormap(CLUSTER_COLORS)
-const CLUSTER_CONSENSUS_COLORMAP = to_colormap(:linear_worb_100_25_c53_n256)
 function go(trajectory_name::String; kwargs...)
     GLMakie.closeall() #close all windows for rerun!
     GLMakie.activate!()
@@ -82,8 +65,6 @@ function go(trajectory_name::String; kwargs...)
 end
 
 function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff::Float64=0.3, align_with=nothing)
-    # GLMakie.closeall() # close reduction window 
-
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     scalars = active_trajectory["scalars"]
     scalar_ranges = active_trajectory["scalar_ranges"]
@@ -475,8 +456,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     function render_volume_view(scene::Makie.Scene, transition::Observable{Transition})
         # this leaks memory
         vd = reshape(volumeData[][:, t_to_idx[transition[]]], (length(sampleRanges[][1]), length(sampleRanges[][2]), length(sampleRanges[][3])))
-        #vd = lift((x, y, z) ->
-        #        reshape(x[:, t_to_idx[y]], (length(z[1]), length(z[2]), length(z[3]))), volumeData, transition, sampleRanges)
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
     end
 
@@ -707,11 +686,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     calculators["Alignment"] = calc_alignment
     calculators["GetTransitions"] = get_transitions
 
-    function on_click(t, on_window_hover)
-        t_idx = t_to_idx[t]
-        build_mol_window(t, t_idx, render_views, widgets)
-    end
-
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
 
@@ -719,7 +693,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     # atomPositions, stateKDTree, numAtoms, firstTransition 
     window = build_selection_window(transitionSequence,
         rel_t_to_idx,
-        on_click,
         num_atoms,
         dm,
         volRange,

@@ -1,7 +1,3 @@
-using Makie
-using StatsBase
-#using CairoMakie
-
 function get_st_clusters(merge, i, clusterIdx)
     if i < 0
         return Set(clusterIdx[-i])
@@ -158,9 +154,9 @@ function dendrogram!(ax,
             return clusters[div(i, 2)]
         end
 
-        all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines))
+        all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines), init=[])
         min_x, max_x = extrema(all_x)
-        all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines))
+        all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines), init=[])
         min_y, max_y = extrema(all_y)
         cut_line = ([min_x, max_x], [min_y, min_y])
 

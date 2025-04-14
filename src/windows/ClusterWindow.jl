@@ -1,5 +1,3 @@
-using Makie
-
 function build_cluster_window(
     clusters::Observable{Set{Int}},
     cluster_data::Observable{SingleClusterData},

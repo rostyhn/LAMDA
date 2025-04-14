@@ -1,5 +1,3 @@
-using Makie
-
 function clear_layout(layout::GridLayout)
     # Begin by removing the blocks from the recursive GridLayout structure
     items_to_remove = []

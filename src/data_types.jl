@@ -147,7 +147,7 @@ function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_dat
         heights=heights,
         clusters=clusters,
         alignment=alignment,
-        assignments=assignments,
+        assignments=cluster_info.assignments,
         h_range=cluster_info.h_range)
 end
 

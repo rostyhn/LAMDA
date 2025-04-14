@@ -1,5 +1,3 @@
-using PyCall
-
 function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
     #s2 changes s1 stays
     s = mean(x, dims=1)

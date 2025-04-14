@@ -81,7 +81,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
 
     go_btn = Button(window, label="Explore")
 
-    control_grid[1, 1] = hgrid!(Label(window, "Selected feature set"), dm_menu, cutoff_label, cutoff_tb, go_btn)
+    control_grid[1, 1] = hgrid!(Label(window, "Selected matrix"), dm_menu, cutoff_label, cutoff_tb, go_btn)
 
     hist_ax = Axis(control_grid[2, 1],
         title="Average intra-cluster distance",

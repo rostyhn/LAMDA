@@ -1,5 +1,3 @@
-using GeometryBasics, NearestNeighbors
-
 function kernelFunction(point::Point3f, atomPosition::Point3f, width::Float64)::Float32
     scale = 1 / ((2pi)^(3 / 2) * width^3)
     return scale * exp(-1 * (squaredNorm(point - atomPosition)) / (2 * width^2))

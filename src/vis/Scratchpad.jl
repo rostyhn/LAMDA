@@ -1,4 +1,3 @@
-using Observables
 const TITLE_HOTKEY = Keyboard.t
 
 function scratchpad!(

@@ -1,6 +1,3 @@
-using StatsBase, SparseArrays, Distances, LinearAlgebra
-using ProgressMeter
-
 function buildBonds(positions, bondDelta, connectivity)
     cartesians = findall(isone, connectivity)
     indices = Tuple.(cartesians)

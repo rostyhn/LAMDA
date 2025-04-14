@@ -1,9 +1,5 @@
-using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform_and_model
-using GLMakie: Screen
-using StatsBase
-using ImageIO
-using NetworkLayout
-using Observables
+#using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform_and_model
+#using GLMakie: Screen
 
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
@@ -11,7 +7,6 @@ const MAX_NODE_SIZE = 100.0
 function build_selection_window(
     t_list,
     rel_t_to_idx::Dict{Transition,Int},
-    on_click,
     num_atoms,
     dm,
     volRange,
@@ -88,22 +83,6 @@ function build_selection_window(
         end
     end
 
-    function cw_on_left(cc)
-        n = get_neighbor(cluster_data[], cc[], 1)
-        if n != cc[]
-            cc[] = n
-            notify(cc)
-        end
-    end
-
-    function cw_on_right(cc)
-        n = get_neighbor(cluster_data[], cc[], 2)
-        if n != cc[]
-            cc[] = n
-            notify(cc)
-        end
-    end
-
     function cw_on_downleft(cc)
         children = get_children(cluster_data[], cc[])
         if !isnothing(children)
@@ -171,8 +150,6 @@ function build_selection_window(
             on_up=cw_on_up,
             on_left=cw_on_downleft,
             on_right=cw_on_downright,
-            #on_downleft=cw_on_downleft,
-            #on_downright=cw_on_downright,
         )
         s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
         display(s, w)
@@ -250,7 +227,6 @@ function build_selection_window(
         end
     end
 
-    cluster_cmap = to_colormap(CLUSTER_COLORS)
     rendered_clusters = []
     @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
@@ -316,7 +292,11 @@ function build_selection_window(
     menu_bar[1, 4] = export_menu
     menu_bar[1, 5] = settings_btn
 
-    dGrid[3, 1] = Colorbar(window, vertical=false, colorrange=lift(x -> x.m_extrema, cluster_data), colormap=DISTANCE_MATRIX_COLORMAP)
+    dGrid[3, 1] = Colorbar(window,
+        vertical=false,
+        colorrange=lift(x -> x.m_extrema, cluster_data),
+        colormap=DISTANCE_MATRIX_COLORMAP)
+
     linkxaxes!(hm_ax, graph_ax)
 
     tGrid = GridLayout()
@@ -356,6 +336,7 @@ function build_selection_window(
         if !isdir(ep)
             mkdir(ep)
         end
+
         if export_menu.selection[] == "All"
             export_all(trajectory_name,
                 cluster_info[],
