@@ -98,30 +98,6 @@ function simple_arrow_view!(scene,
         return points, velocities, $correlation
     end
 
-    #velocityMagnitudes = lift(x -> norm.(x), velocities)
-    #magnitudeRange = lift(x -> extrema(x), velocityMagnitudes)
-    #colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(velocities[])))
-
-    # keep this for now; may be important later....
-
-    # atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright6, 6)
-
-    # getAlpha(value, threshold) = value > threshold  ? 0 : 1.0)
-    # getValue(value, range) = max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
-
-    # colorVector[] = ColorTypes.RGBA{Float64}.(
-    #     getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :r),
-    #     getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :g),
-    #     getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :b),
-    #     getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
-
-    # colorVector[] = ColorTypes.RGBA{Float64}.(
-    #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :r),
-    #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :g),
-    #     getproperty.(cmap[trunc.(Int32, velocityMagnitudes[])], :b),
-    #     getAlpha.(corr[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
-
-
     h = arrows!(scene,
         lift(x -> x[1], d),
         lift(x -> x[2], d);
@@ -163,7 +139,7 @@ function simple_arrow_view!(scene,
     return h, s, v
 end
 
-function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; update=false)
+function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
     t = Observable(Transformation())
 
     v_lo = volume!(scene,

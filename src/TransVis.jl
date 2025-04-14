@@ -194,26 +194,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     end
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
-    # perfom intra-cluster alignment
     selected_alignment = Observable(init_alignment)
-
-    alignment_rotations = @lift begin
-        println("Calculating alignment with $($selected_alignment)")
-        # figure out what transitions are grouped together
-        features = alignments[$selected_alignment]
-        rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
-        for (clusterIdx, ts) in $(cluster_info).groups
-            # find reference t
-            gi = map(x -> $(cluster_data).t_to_mtx[x], ts)
-            dist_sum = map(x -> sum($dm[x, :][gi]), gi)
-            ref_t = ts[argmin(dist_sum)]
-
-            g_rot = calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
-            merge!(rot, g_rot)
-        end
-        return rot
-    end
-
+    
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
@@ -461,7 +443,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                       length(sampleRanges[][2]), 
                       length(sampleRanges[][3]))
                     )
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, lift((x, y) -> x[y], alignment_rotations, transition))
+        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange)
     end
 
     function render_movement_view_ts(scene, ts, time, alignment, correlationThreshold)
@@ -652,7 +634,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
 
-
     ds::MaybeObservable{DataInspector} = Observable(nothing)
     # atomPositions, stateKDTree, numAtoms, firstTransition 
     window = build_selection_window(transitionSequence,
@@ -690,7 +671,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     on(events(window).window_open) do e
         if !e
             empty!(window)
+            empty!(settings_window)
             Makie.free(window.scene)
+            Makie.free(settings_window)
+            active_trajectory = nothing
             GC.gc(true)
         end
     end
