@@ -1,4 +1,4 @@
-function umap_graph_view!(
+function embedding_view!(
     loc,
     data,
     selected_render,
@@ -29,29 +29,19 @@ function umap_graph_view!(
 
     campixel!(ax.scene)
 
-    embedding = @lift begin
-        disable_interactions(ax)
-        if length($data[1]) > 2
-            em = transpose(umap(transpose($data[2]), 2;
-                metric=:precomputed,
-                #min_dist=2,
-                n_neighbors=min(length($data[1]) - 1, 15)))
-            return map(x -> Point2f(x), eachrow(em))
-        else
-            points = Point2f[]
-            for (i, t) in enumerate($data[1])
-                push!(points, Point2f((i - 1) * 5, 0.0))
-            end
-            return points
-        end
-    end
-
     # invisible scatter plot to set up camera
     umap_nodes = scatter!(ax,
-        embedding,
+        lift(x -> x[4], data),
         marker=:rect,
-        color=:transparent,
+        color=:red,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
+
+    @lift begin
+        @show $data[4]
+        # campixel!(ax.scene)
+        reset_limits!(ax)
+        center!(ax.scene)
+    end
 
     ins = DataInspector(umap_nodes)
     center!(ax.scene)
@@ -61,6 +51,7 @@ function umap_graph_view!(
 
     frame_colors = Ref([])
     views = Observable([])
+
     @lift begin
         hovered[] = nothing
         notify(hovered)
@@ -71,8 +62,8 @@ function umap_graph_view!(
         empty!(frame_colors[]) # update frame colors
         GC.gc(true)
 
-        for (i, t) in enumerate(data.val[1])
-            pos = $embedding[i]
+        for (i, t) in enumerate($data[1])
+            pos = position_on_plot(umap_nodes, i, apply_transform=false) #data.val[4][i]
             # x, y is in global pixel coords
             x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
             # calculate shifted size of marker
@@ -87,12 +78,12 @@ function umap_graph_view!(
                 size=(ms, ms))
             cam3d!(ax3d)
 
-            on(events(ax3d).window_open) do e
+            #=on(events(ax3d).window_open) do e
                 if !e
                     empty!(ax3d)
                     Makie.free(ax3d)
                 end
-            end
+            end=#
 
             # sets to color of original leaves
             frame_color = Observable(colors[][i])
@@ -140,7 +131,7 @@ function umap_graph_view!(
     end
 
     onany(selected_render, views; update=true) do sr, v
-        if length(v) == length(embedding[])
+        if length(v) == length(data[][4])
             for (i, (ax3d, rendered)) in enumerate(v)
                 t = data[][1][i]
                 foreach(x -> delete!(ax3d, x), rendered[])
@@ -179,7 +170,7 @@ function umap_graph_view!(
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits) do xlim, ylim
-        if length(views[]) == length(embedding[])
+        if length(views[]) == length(data[][4])
             ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d))[1]
             for (i, (scene, rendered)) in enumerate(views[])
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)
@@ -238,7 +229,7 @@ function umap_graph_view!(
     end
 
     # if I wanted to do this I could just write C
-    on(events(ax.scene).window_open) do e
+    #=on(events(ax.scene).window_open) do e
         if !e
             for l in hover_listener
                 off(l)
@@ -256,7 +247,7 @@ function umap_graph_view!(
             empty!(frame_colors[]) # update frame colors
             GC.gc(true)
         end
-    end
+    end=#
 
     return umap_nodes
 end

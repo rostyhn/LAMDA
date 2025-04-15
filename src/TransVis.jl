@@ -1,4 +1,5 @@
 module TransVis
+
 using PyCall
 using Base.Threads
 using ImageIO
@@ -18,9 +19,11 @@ using GeometryBasics
 using Mmap
 using FixedPointNumbers
 
-using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie 
+using MathTeXEngine
+using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie
 using CairoMakie # for saving plots w/ SVG
-using GLMakie: GLMakie, Screen, apply_transform, ScreenConfig 
+using GLMakie: Screen, apply_transform, ScreenConfig
+using GLMakie
 using Observables
 
 using Clustering: Clustering, hclust, cutree, kmedoids
@@ -38,7 +41,7 @@ include("math.jl")
 include("ui.jl")
 
 include("vis/Dendrogram.jl")
-include("vis/UMapView.jl")
+include("vis/EmbeddingView.jl")
 include("vis/Scratchpad.jl")
 
 include("windows/ReductionWindow.jl")
@@ -49,19 +52,28 @@ include("windows/SettingsWindow.jl")
 
 export go
 function go(trajectory_name::String; kwargs...)
+    clear_vars()
     GLMakie.closeall() #close all windows for rerun!
     GLMakie.activate!()
+
     active_trajectory = get_data_alt(trajectory_name)
-    plot_theme = Theme(MeshScatter=(inspectable=false, markercolor=to_color(:blue)))
-    set_theme!(Makie.merge(theme_latexfonts(), plot_theme); fontsize=18.0, inspectable=true, markercolor=:blue)
+    set_theme!(UI_THEME)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
     window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
+
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
     screen = GLMakie.Screen(title="LAMDA - Reduction Window")
     screen_ref[] = screen
     display(screen, window)
+end
+
+function clear_vars()
+    for x in Base.@locals
+        x = nothing
+    end
+    GC.gc(true)
 end
 
 function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff::Float64=0.3, align_with=nothing)
@@ -195,7 +207,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     selected_alignment = Observable(init_alignment)
-    
+
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
 
@@ -437,12 +449,14 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     function render_volume_view(scene::Makie.Scene, transition::Observable{Transition})
         # directly indexing the mmap creates a copy, need to use a view
-        vvd = view(volumeData[], :, t_to_idx[transition[]]) 
-        vd = reshape(vvd, 
-                     (length(sampleRanges[][1]), 
-                      length(sampleRanges[][2]), 
-                      length(sampleRanges[][3]))
-                    )
+        vvd = view(volumeData[], :, t_to_idx[transition[]])
+        vd = reshape(vvd,
+            (
+                length(sampleRanges[][1]),
+                length(sampleRanges[][2]),
+                length(sampleRanges[][3])
+            )
+        )
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange)
     end
 
@@ -481,7 +495,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
                 correlationMeasure[pId] *= 1.0 / length(vectorList)
                 correlationMeasure[pId] += 0.5
             end
-            
+
             inits = first.(posValsTup)[representativeIdx]
             fins = last.(posValsTup)[representativeIdx]
             return (inits, fins), vd, correlationMeasure
@@ -627,7 +641,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     widgets["Colorbar"] = embed_colorbar
     widgets["CorrThreshold"] = correlation_slider
 
-
     calculators = Dict()
     calculators["Alignment"] = calc_alignment
     calculators["GetTransitions"] = get_transitions
@@ -668,17 +681,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
 
     # create inspector after render to avoid bugs
     ds[] = DataInspector(window)
-    on(events(window).window_open) do e
-        if !e
-            empty!(window)
-            empty!(settings_window)
-            Makie.free(window.scene)
-            Makie.free(settings_window)
-            active_trajectory = nothing
-            GC.gc(true)
-        end
-    end
-    # close reduction window
     close(screen_ref[])
 end
-end
+end # close module

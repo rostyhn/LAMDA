@@ -1,6 +1,3 @@
-#using Makie: clear_temporary_plots!, Orthographic, SparseArrays, apply_transform_and_model
-#using GLMakie: Screen
-
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
@@ -28,6 +25,7 @@ function build_selection_window(
     inspector;
     fig_size=(1920, 1080)
 )
+    set_theme!(UI_THEME)
 
     window = Figure(size=fig_size)
     menu_bar = top_bar(window, "Selection Window", 2)

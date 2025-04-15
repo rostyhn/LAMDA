@@ -23,14 +23,11 @@ function build_cluster_window(
     on_downright=(x) -> (),
     fig_size=(1920, 1080)
 )
-
+    set_theme!(UI_THEME)
     window = Figure(size=fig_size)
 
     # the transitions being hovered on in the dist matrix
     mat_hovered = Observable((0, 0))
-
-    scene_selector = Observable("Atom")
-    scalar_selector = Observable(first(sort(collect(keys(scalars)))))
 
     title = lift((x, y) -> str_limit(get_val(y, "titles", x), len=25), clusters, cluster_annotations)
     notes = lift((x, y) -> get_val(y, "notes", x), clusters, cluster_annotations)
@@ -68,47 +65,12 @@ function build_cluster_window(
         end
     end
 
-    render_menu = Menu(window,
-        options=SINGLE_TRANSITION_RENDER_OPTIONS,
-        default=scene_selector[], tellwidth=false)
-
-    on(render_menu.selection) do s
-        scene_selector[] = s
-        notify(scene_selector)
-    end
-
-    scalar_menu = Menu(window,
-        options=sort(collect(keys(scalars))),
-        default=scalar_selector[],
-    )
-
-    on(scalar_menu.selection) do s
-        scalar_selector[] = s
-        notify(scalar_selector)
-    end
-
-    time, t_slider = widgets["Movement"](0.0, window)
-    btn_centroid = Button(window, label="Show centroid")
-
-    on(btn_centroid.clicks) do n
-        hovered_transition[] = cluster_data[].ref_t
-        notify(hovered_transition)
-    end
 
     ts = Observable(cluster_data[].ts)
     alignment = @lift begin
         ts.val = $(cluster_data).ts
         return $(cluster_data).alignment
     end
-
-    cbar = widgets["Colorbar"](window, scene_selector, scalar_selector)
-
-    window[2, 1:2] = hgrid!(
-        cbar,
-        render_menu,
-        scalar_menu,
-        t_slider,
-        btn_centroid)
 
     hb = lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0,
         hovered_cluster,
@@ -138,8 +100,21 @@ function build_cluster_window(
         notify(colors)
     end
 
-    umap_graph_view!(window[3, 1:2],
-        lift(x -> (x.ts, x.mat, x.alignment), cluster_data),
+    scene_selector, render_menu = widgets["Render"](window)
+    scalar_selector, scalar_menu = widgets["Scalar"](window)
+    cbar = widgets["Colorbar"](window, scene_selector, scalar_selector)
+    time, t_slider = widgets["Movement"](0.0, window)
+
+    btn_centroid = Button(window, label="Show centroid")
+    on(btn_centroid.clicks) do n
+        hovered_transition[] = cluster_data[].ref_t
+        notify(hovered_transition)
+    end
+
+    lm, embedding = layout_menu(window, cluster_data)
+
+    embedding_view!(window[2, 1:2],
+        lift((x, y) -> (x.ts, x.mat, x.alignment, y), cluster_data, embedding),
         scene_selector,
         scalar_selector,
         time,
@@ -150,6 +125,13 @@ function build_cluster_window(
         cluster_info;
         highlight_borders=hb,
         on_click=on_transition_select)
+
+    rg = hgrid!(render_menu, scalar_menu)
+
+    window[3, 1:2] = hgrid!(
+        vgrid!(rg, cbar),
+        vgrid!(t_slider, hgrid!(lm, btn_centroid))
+    )
 
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
@@ -181,9 +163,7 @@ function build_cluster_window(
         on_cluster_select(clusters[], correlation[])
     end
 
-    dendrogram_ax = Axis(mat_grid[2, 1],
-        backgroundcolor=:transparent, tellwidth=false, tellheight=false)
-
+    dendrogram_ax = Axis(mat_grid[2, 1], tellwidth=false, tellheight=false)
     deregister_interaction!(dendrogram_ax, :rectanglezoom)
     hidedecorations!(dendrogram_ax)
 
@@ -256,4 +236,44 @@ function build_cluster_window(
         end
     end=#
     return window
+end
+
+function layout_menu(window, cluster_data)
+    opts = ["Grid", "UMAP"]
+    m = Menu(window, options=opts, default=first(opts))
+    pts = @lift begin
+        ms = $(m.selection)
+        ts = $(cluster_data).ts
+        mat = $(cluster_data).mat
+
+        if ms == "UMAP"
+            if length(ts) > 2
+                em = transpose(umap(transpose(mat), 2;
+                    metric=:precomputed,
+                    min_dist=1,
+                    n_neighbors=min(length(ts) - 1, 15)))
+                points = map(x -> Point2f(x), eachrow(em))
+            else
+                points = Point2f[]
+                for (i, t) in enumerate(ts)
+                    push!(points, Point2f((i - 1), 0.0))
+                end
+            end
+        else
+            s = Int(round(sqrt(length(ts))))
+            points = Point2f[]
+            r = 0
+            for (i, t) in enumerate(ts)
+                x = mod1(i, s) * 1
+                if x == 1
+                    r += 1
+                end
+                y = r
+                push!(points, Point2f(x, y))
+            end
+        end
+        return points
+    end
+
+    return m, pts
 end

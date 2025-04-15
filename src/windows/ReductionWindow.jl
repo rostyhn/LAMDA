@@ -1,5 +1,5 @@
 function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
-
+    set_theme!(UI_THEME)
     window = Figure(size=(1920, 1080))
 
     menu_bar = top_bar(window, "Reduction", 2)
@@ -81,7 +81,12 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
 
     go_btn = Button(window, label="Explore")
 
-    control_grid[1, 1] = hgrid!(Label(window, "Selected matrix"), dm_menu, cutoff_label, cutoff_tb, go_btn)
+    control_grid[1, 1] = hgrid!(
+        Label(window, "Selected matrix"),
+        dm_menu,
+        cutoff_label,
+        cutoff_tb,
+        go_btn)
 
     hist_ax = Axis(control_grid[2, 1],
         title="Average intra-cluster distance",
@@ -93,7 +98,10 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    hm = heatmap!(hm_ax, lift(x -> x[1], reordered_matrix), colorrange=lift(x -> x[3], reordered_matrix), colormap=DISTANCE_MATRIX_COLORMAP)
+    hm = heatmap!(hm_ax,
+        lift(x -> x[1], reordered_matrix),
+        colorrange=lift(x -> x[3], reordered_matrix),
+        colormap=DISTANCE_MATRIX_COLORMAP)
 
     # draw clusters on screen and also calculate some stats on each group
     rendered_clusters = []
@@ -187,7 +195,11 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
         on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
     end
 
-    Colorbar(window[4, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false, colormap=DISTANCE_MATRIX_COLORMAP)
+    Colorbar(window[4, 1:2],
+        limits=lift(x -> x[3], reordered_matrix),
+        label="Distances",
+        vertical=false,
+        colormap=DISTANCE_MATRIX_COLORMAP)
 
     #linkaxes!(hm_ax, red_hm_ax)
 
