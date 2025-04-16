@@ -70,7 +70,7 @@ function embedding_view!(
         GC.gc(true)
 
         for (i, t) in enumerate($data[1])
-            pos = position_on_plot(umap_nodes, i, apply_transform=false) #data.val[4][i]
+            pos = position_on_plot(umap_nodes, i, apply_transform=false)
             # x, y is in global pixel coords
             x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
             # calculate shifted size of marker
@@ -234,7 +234,7 @@ function embedding_view!(
     end
 
     # if I wanted to do this I could just write C
-    #=on(events(ax.scene).window_open) do e
+    on(events(ax.scene).window_open) do e
         if !e
             for l in hover_listener
                 off(l)
@@ -252,7 +252,7 @@ function embedding_view!(
             empty!(frame_colors[]) # update frame colors
             GC.gc(true)
         end
-    end=#
+    end
 
     return umap_nodes
 end

@@ -5,13 +5,10 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     menu_bar = top_bar(window, "Reduction", 2)
 
     # only need transitions and distance matrix
-    dms = active_trajectory["dms"]
-    transitionSequence = active_trajectory["transitions"]
+    dms::Dict{String,Matrix{Float32}} = active_trajectory["dms"]
+    transitionSequence::Vector{Transition} = active_trajectory["transitions"]
 
-    t_to_idx = Dict()
-    for (i, t) in enumerate(transitionSequence)
-        t_to_idx[t] = i
-    end
+    t_to_idx = Dict{Transition,Int}(reverse.(enumerate(transitionSequence)))
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
@@ -29,7 +26,6 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     end
 
     cluster_groups = @lift begin
-
         # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
         assignments = cutree($clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Int}}()
@@ -49,17 +45,14 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
         m = dms[$selected_dm]
-        rm = zeros(Float32, size(m))
-
         # gets the correct idx 
+        rm = view(m, $clustering.order, $clustering.order)
         idx_to_mtx = zeros(Int, size(m)[1])
         for (i, r) in enumerate($clustering.order)
-            rm[i, :] .= m[r, :][$clustering.order]
             idx_to_mtx[r] = i
         end
-
         # get minimum and maximum of entire matrix for cmap
-        fl = vec(m)
+        fl = vec(m) #vec doesn't allocate
         return rm, idx_to_mtx, (minimum(fl), maximum(fl))
     end
 
@@ -107,7 +100,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     rendered_clusters = []
     avgs = @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        cmap = to_colormap(CLUSTER_COLORS)
+        cmap = CLUSTER_COLORMAP
         avgs = []
         for (c, ts_idx) in $cluster_groups
             idx_to_mtx = $reordered_matrix[2]
@@ -117,8 +110,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
             hi = maximum(m_idx)
 
             p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[mod1(c, length(cmap))])
-            mat = $reordered_matrix[1]
-            vals = mat[m_idx, m_idx]
+            vals = view($reordered_matrix[1], m_idx, m_idx)
             utri = triu!(trues(size(vals)))
 
             push!(avgs, mean(vec(vals[utri])))
@@ -139,17 +131,16 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     # apply reduction
     reduced = @lift begin
         n = length(collect(keys($cluster_groups)))
-        redmat = zeros(Float32, (n, n))
-        red_t_list = []
-        red_t_to_idx = Dict()
+        red_t_list = Transition[]
+        red_t_to_idx = Dict{Transition,Int}()
         idxes = zeros(Int, n)
         for (i, (clusterIdx, g)) in enumerate($cluster_groups)
             # find reference t
             m = dms[$selected_dm]
-            dist_sum = map(x -> sum(m[x, :][g]), g)
+            dist_sum = map(x -> sum(view(m, x, g)), g)
             ref_t_idx = argmin(dist_sum)
 
-            ts = map(x -> transitionSequence[x], g)
+            ts = view(transitionSequence, g)
 
             ref_t = ts[ref_t_idx]
             t_idx = t_to_idx[ref_t] # get absolute transitionSequence index
@@ -158,19 +149,13 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
             push!(red_t_list, ref_t)
             red_t_to_idx[ref_t] = i
             idxes[i] = mtx_idx
-
         end
 
-        for (i, mtx_idx) in enumerate(idxes)
-            redmat[i, :] .= $reordered_matrix[1][mtx_idx, idxes]
-        end
+        redmat = view($reordered_matrix[1], idxes, idxes)
 
         # should just do this here and pass it down to main instead of doing it twice
         clustering = hclust(redmat, linkage=:ward, branchorder=:barjoseph)
-        rm = zeros(Float32, size(redmat))
-        for (i, r) in enumerate(clustering.order)
-            rm[i, :] .= redmat[r, :][clustering.order]
-        end
+        rm = view(redmat, clustering.order, clustering.order)
 
         return redmat, red_t_list, rm
     end

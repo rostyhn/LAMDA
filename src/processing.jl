@@ -46,10 +46,10 @@ function computeTransitionInvariants(
                     continue
                 end
 
-                deltaXmn = aPos1[n, :] - aPos1[m, :]
+                deltaXmn = view(aPos1, n, :) - view(aPos1, m, :)
                 D = D + (deltaXmn * transpose(deltaXmn) * weights[m, n])
 
-                deltaxmn = aPos2[n, :] - aPos2[m, :]
+                deltaxmn = view(aPos2, n, :) - view(aPos2, m, :)
                 A = A + (deltaxmn * transpose(deltaXmn) * weights[m, n])
             end
             F[m] = A * inv(D)

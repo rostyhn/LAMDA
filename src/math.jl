@@ -182,7 +182,7 @@ function find_group_centroid(clusters, cd::ClusterData, t_list)
     ts = get_transitions(t_list, clusters)
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
 
-    dist_sum = map(x -> sum(cd.matrix[x, :][mtx_idx]), mtx_idx)
+    dist_sum = map(x -> sum(view(cd.matrix, x, mtx_idx)), mtx_idx)
     ref_t_idx = mtx_idx[argmin(dist_sum)]
 
     return t_list[cd.clustering.order[ref_t_idx]]

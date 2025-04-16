@@ -32,7 +32,7 @@ function get_data_folders(path)
 end
 
 function readDistanceMatrixFolder(folder)
-    dms = Dict()
+    dms = Dict{String,Matrix{Float32}}()
     for dmf in readdir(folder, join=true)
         # each distance matrix should be in a folder with the matrix
         dm_name = basename(dmf)
@@ -80,7 +80,7 @@ function get_data_alt(trajectory_name)
     cachePath = joinpath(rootPath, "cache")
 
     if isdir(dataPath)
-        trajectories = Dict(map(x -> (basename(x), x), get_data_folders(dataPath)))
+        trajectories = Dict{String,String}(map(x -> (basename(x), x), get_data_folders(dataPath)))
 
         if trajectory_name in keys(trajectories)
             t = trajectories[trajectory_name]
@@ -134,15 +134,14 @@ function get_data_alt(trajectory_name)
 
                 alignedPositionsMatrices[t] = (p1, p2)
 
-                pp1, pp2 = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
-                alignedPositions[t] = (pp1, pp2)
-                kdTrees[t] = (KDTree(pp1), KDTree(pp2))
+                #alignedPositions[t] = (pp1, pp2)
+                kdTrees[t] = (KDTree(p1; reorder=false), KDTree(p2; reorder=false))
             end
 
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
                 @time trajectory_data = JLD2.jldopen(cache_file) do file
-                    Dict{Any,Any}(file["trajectory_data"])
+                    Dict{String,Any}(file["trajectory_data"])
                 end
             else
                 println("Calculating data for $(trajectory_name).")
@@ -154,7 +153,7 @@ function get_data_alt(trajectory_name)
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
-                trajectory_data = Dict{Any,Any}("t1" => t1,
+                trajectory_data = Dict{String,Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
@@ -167,7 +166,6 @@ function get_data_alt(trajectory_name)
             trajectory_data["connectivity"] = connectivity
             trajectory_data["transitions"] = transitions
             trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
-            trajectory_data["alignedPositions"] = alignedPositions
             trajectory_data["kdTrees"] = kdTrees
             trajectory_data["name"] = trajectory_name
 
@@ -182,8 +180,8 @@ function get_data_alt(trajectory_name)
                 return error("No distance matrices found.")
             end
 
-            scalars = Dict()
-            scalar_ranges = Dict()
+            scalars = Dict{String,Dict{Transition,Array{Float32}}}()
+            scalar_ranges = Dict{String,Tuple{Float32,Float32}}()
             # load in scalars if present
             scalarf = joinpath(t, "scalars")
             if isdir(scalarf)
@@ -203,27 +201,9 @@ function get_data_alt(trajectory_name)
                 println("No scalars folder found, ignoring.")
             end
 
-            per_t_scalars = Dict()
-            per_t_scalar_ranges = Dict()
-            # load in scalars if present
-            tscalarf = joinpath(t, "per_t_scalars")
-            if isdir(tscalarf)
-                println("Loading per-transition scalars...")
-                for sf in readdir(tscalarf, join=true)
-                    fname, ext = splitext(sf)
-                    if isfile(sf) && ext == ".pickle"
-                        d = Dict{Transition,Float32}(Pickle.npyload(sf))
-                        per_t_scalars[basename(fname)] = d
-                        per_t_scalar_ranges[basename(fname)] = extrema(collect(values(d)))
-                    end
-                end
-            else
-                println("No scalars folder found, ignoring.")
-            end
-
             # load in alignment features
             alignmentf = joinpath(t, "alignment")
-            alignments = Dict()
+            alignments = Dict{String,Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}}()
 
             if isdir(alignmentf)
                 for af in readdir(alignmentf, join=true)
@@ -241,8 +221,6 @@ function get_data_alt(trajectory_name)
             trajectory_data["alignments"] = alignments
             trajectory_data["scalars"] = scalars
             trajectory_data["scalar_ranges"] = scalar_ranges
-            trajectory_data["per_t_scalars"] = per_t_scalars
-            trajectory_data["per_t_scalar_ranges"] = per_t_scalar_ranges
             trajectory_data["dms"] = dms
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
@@ -250,7 +228,6 @@ function get_data_alt(trajectory_name)
     else
         return error("Data folder does not exist.")
     end
-
     return trajectory_data
 end
 

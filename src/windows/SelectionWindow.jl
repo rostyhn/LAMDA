@@ -18,8 +18,8 @@ function build_selection_window(
     widgets,
     invariantRange,
     matColLabel,
-    per_t_scalars,
-    per_t_scalar_ranges,
+    #per_t_scalars,
+    #per_t_scalar_ranges,
     calculators,
     trajectory_name,
     inspector;

@@ -62,7 +62,7 @@ function go(trajectory_name::String; kwargs...)
     set_theme!(UI_THEME)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
-    window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
+    @time window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
 
     # TODO: always set to first monitor so its consistent
     # Passing GLFW.Monitor doesn't work for some reason
@@ -78,7 +78,12 @@ function clear_vars()
     GC.gc(true)
 end
 
-function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutoff::Float64=0.3, align_with=nothing)
+function main_window(active_trajectory,
+    screen_ref;
+    chunk_size=100,
+    init_h_cutoff::Float64=0.3,
+    align_with=nothing)
+
     stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
     scalars = active_trajectory["scalars"]
     scalar_ranges = active_trajectory["scalar_ranges"]
@@ -87,7 +92,6 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     distanceMatrices = active_trajectory["distanceMatrices"]
 
     alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
-    alignedPositions = active_trajectory["alignedPositions"] # positions as points
     kdTrees = active_trajectory["kdTrees"]
 
     alignments = active_trajectory["alignments"]
@@ -97,27 +101,20 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     transitionSequence = active_trajectory["reduced_transitions"]
     trajectory_name = active_trajectory["name"]
 
-    per_t_scalar_ranges = active_trajectory["per_t_scalar_ranges"]
-    per_t_scalars = active_trajectory["per_t_scalars"]
-
     # absolute index for volume data
     t_to_idx = Dict{Transition,Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
     rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
-
-    per_t_scalars["t_to_idx"] = t_to_idx
-    per_t_scalar_ranges["t_to_idx"] = (1, length(active_trajectory["transitions"]))
 
     h_cutoff::Observable{Float64} = Observable(float(init_h_cutoff))
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
     cluster_data = @lift begin
         clustering = hclust($dm, linkage=:ward, branchorder=:barjoseph)
-        rm = zeros(Float32, size($dm))
+        rm = view($dm, clustering.order, clustering.order)
         # gets the correct idx 
         t_to_mtx = Dict{Transition,Int}()
         mtx_to_t = Dict{Int,Transition}()
         for (i, r) in enumerate(clustering.order)
-            rm[i, :] .= $dm[r, :][clustering.order]
             t_to_mtx[transitionSequence[r]] = i
             mtx_to_t[i] = transitionSequence[r]
         end
@@ -188,7 +185,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             # find reference t
             m = $dm
             gi = map(x -> $(cluster_data).t_to_mtx[x], g)
-            dist_sum = map(x -> sum(m[x, :][gi]), gi)
+            dist_sum = map(x -> sum(view(m, x, gi)), gi)
             reps[clusterIdx] = g[argmin(dist_sum)]
         end
 
@@ -223,26 +220,21 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
     @time for (key, positions) in alignedPositionsMatrices
         p1, p2 = positions
 
-        for row in 1:length(p1[:, 1])
-            if minX > min(p1[row, 1], p2[row, 1])
-                minX = min(p1[row, 1], p2[row, 1])
-            end
-            if maxX < max(p1[row, 1], p2[row, 1])
-                maxX = max(p1[row, 1], p2[row, 1])
-            end
-            if minY > min(p1[row, 2], p2[row, 2])
-                minY = min(p1[row, 2], p2[row, 2])
-            end
-            if maxY < max(p1[row, 2], p2[row, 2])
-                maxY = max(p1[row, 2], p2[row, 2])
-            end
-            if minZ > min(p1[row, 3], p2[row, 3])
-                minZ = min(p1[row, 3], p2[row, 3])
-            end
-            if maxZ < max(p1[row, 3], p2[row, 3])
-                maxZ = max(p1[row, 3], p2[row, 3])
-            end
-        end
+        minX1, maxX1 = extrema(view(p1, :, 1))
+        minY1, maxY1 = extrema(view(p1, :, 2))
+        minZ1, maxZ1 = extrema(view(p1, :, 3))
+
+        minX2, maxX2 = extrema(view(p2, :, 1))
+        minY2, maxY2 = extrema(view(p2, :, 2))
+        minZ2, maxZ2 = extrema(view(p2, :, 3))
+
+        minX = min(minX, min(minX1, minX2))
+        minY = min(minY, min(minY1, minY2))
+        minZ = min(minZ, min(minZ1, minZ2))
+
+        maxX = max(maxX, max(maxX1, maxX2))
+        maxY = max(maxY, max(maxY1, maxY2))
+        maxZ = max(maxZ, max(maxZ1, maxZ2))
     end
 
     # should be cached
@@ -322,7 +314,7 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         if !is_cached
             println("Calculating volume data for $(key); will be saved as $(hash(key))...")
 
-            alignedPos = map(x -> alignedPositions[x][1], abs_t_seq)
+            alignedPos = map(x -> alignedPositionsMatrices[x][1], abs_t_seq)
             kd = map(x -> kdTrees[x][1], abs_t_seq)
             invariants = map(x -> active_trajectory[$selected_invariant][x], abs_t_seq)
 
@@ -420,11 +412,10 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
             ts_idx = map(x -> rel_t_to_idx[x], ts)
             features = alignments[selected_alignment[]]
 
-            dist_sum = map(x -> sum(dm[][x, :][ts_idx]), ts_idx)
+            dist_sum = map(x -> sum(view(dm[], x, ts_idx)), ts_idx)
             ref_t_idx = argmin(dist_sum)
 
             ref_t = ts[ref_t_idx]
-
             return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
         else
             return Dict()
@@ -667,8 +658,8 @@ function main_window(active_trajectory, screen_ref; chunk_size=100, init_h_cutof
         widgets,
         invariantRange,
         active_trajectory["selected_dm_name"],
-        active_trajectory["per_t_scalars"],
-        active_trajectory["per_t_scalar_ranges"],
+        #active_trajectory["per_t_scalars"],
+        #active_trajectory["per_t_scalar_ranges"],
         calculators,
         active_trajectory["name"],
         ds

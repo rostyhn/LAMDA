@@ -114,7 +114,8 @@ function branch(cd::ClusterData, root::Set{Int})
         for i in 1:length(idx)
             push!(corrected_children, c)
         end
-        lines = map(x -> cd.lines[x], idx)
+
+        lines = view(cd.lines, idx)
         h = maximum(map(x -> x[2][2], lines))
         heights[c] = h
         append!(new_lines, lines)
