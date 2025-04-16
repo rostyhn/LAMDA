@@ -301,7 +301,7 @@ function main_window(active_trajectory,
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
 
     selected_invariant = Observable("t1")
-    @time volumeData = @lift begin
+    @time volumeData::Observable{Matrix{Float32}} = @lift begin
         key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
         w = length($sampleRanges[1])
         h = length($sampleRanges[2])
@@ -377,6 +377,7 @@ function main_window(active_trajectory,
 
         volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(abs_t_seq)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
+        @show typeof(volData)
         #make it symmetric 
         #maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
         #volRange[] = (-maximumRange, maximumRange)
@@ -406,6 +407,7 @@ function main_window(active_trajectory,
         return (absInvMin, absInvMax)
     end
 
+    # https://docs.julialang.org/en/v1.12-dev/manual/performance-tips/#man-performance-captured
     # convenience function to avoid passing around all the data
     function calc_alignment(ts)
         if !isempty(ts)
@@ -433,16 +435,21 @@ function main_window(active_trajectory,
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time, alignment)
         t_ap = create_position_alignment_observer(transition, alignment)
-        return simple_atom_view!(scene, t_ap,
-            lift((x, y) -> scalars[x][y], selected_scalar, transition),
-            lift(x -> scalar_ranges[x], selected_scalar),
-            atom_cmap,
-            time)
+        res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap
+            simple_atom_view!(scene, t_ap,
+                lift((x, y) -> scalars[x][y], selected_scalar, transition),
+                lift(x -> scalar_ranges[x], selected_scalar),
+                atom_cmap,
+                time)
+        end
+        return res
     end
 
     function render_volume_view(scene::Makie.Scene, transition::Observable{Transition})
         # directly indexing the mmap creates a copy, need to use a view
-        vvd = view(volumeData[], :, t_to_idx[transition[]])
+        vvd = let volumeData = volumeData
+            view(volumeData[], :, t_to_idx[transition[]])
+        end
         vd = reshape(vvd,
             (
                 length(sampleRanges[][1]),

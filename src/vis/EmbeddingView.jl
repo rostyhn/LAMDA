@@ -47,12 +47,6 @@ function embedding_view!(
         end
     end
 
-    on(data, update=true) do d
-        reset_limits!(ax)
-        center!(ax.scene)
-        # markersize_4d = inv(ax.scene.camera.projectionview[]) * Point4f(markersize, markersize, 0, 0)
-    end
-
     ins = DataInspector(umap_nodes)
     t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
 
@@ -69,6 +63,9 @@ function embedding_view!(
         empty!(frame_colors[]) # update frame colors
         GC.gc(true)
 
+        reset_limits!(ax)
+        center!(ax.scene)
+
         for (i, t) in enumerate($data[1])
             pos = position_on_plot(umap_nodes, i, apply_transform=false)
             # x, y is in global pixel coords
@@ -84,13 +81,6 @@ function embedding_view!(
                 clear=true,
                 size=(ms, ms))
             cam3d!(ax3d)
-
-            #=on(events(ax3d).window_open) do e
-                if !e
-                    empty!(ax3d)
-                    Makie.free(ax3d)
-                end
-            end=#
 
             # sets to color of original leaves
             frame_color = Observable(colors[][i])
