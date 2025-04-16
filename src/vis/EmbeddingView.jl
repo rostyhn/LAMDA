@@ -11,7 +11,7 @@ function embedding_view!(
     cluster_info;
     highlight_borders=Observable(false),
     on_click=(x) -> (),
-    markersize=100,
+    markersize=Observable(100),
 )
     ax = Axis(loc, backgroundcolor=:transparent)
     #=on(highlight_borders, update=true) do hb
@@ -35,7 +35,18 @@ function embedding_view!(
         color=:transparent,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
 
-    markersize_4d = Point4f(markersize, markersize, 0, 0)
+    markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
+
+    on(events(ax.scene).keyboardbutton) do event
+        if ispressed(ax.scene, Exclusively(Keyboard.page_up))
+            markersize[] = markersize[] + 25
+            notify(markersize)
+        elseif ispressed(ax.scene, Exclusively(Keyboard.page_down))
+            markersize[] = markersize[] - 25
+            notify(markersize)
+        end
+    end
+
     on(data, update=true) do d
         reset_limits!(ax)
         center!(ax.scene)
@@ -63,7 +74,7 @@ function embedding_view!(
             # x, y is in global pixel coords
             x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
             # calculate shifted size of marker
-            ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d))[1]
+            ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
             vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
 
             ax3d = Scene(ax.scene,
@@ -163,9 +174,9 @@ function embedding_view!(
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
-    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits) do xlim, ylim
+    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d) do xlim, ylim, mkr
         if length(views[]) == length(data[][4])
-            ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d))[1]
+            ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             for (i, (scene, rendered)) in enumerate(views[])
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)
                 x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
