@@ -26,28 +26,24 @@ function embedding_view!(
     end=#
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
-
     campixel!(ax.scene)
 
     # invisible scatter plot to set up camera
     umap_nodes = scatter!(ax,
         lift(x -> x[4], data),
         marker=:rect,
-        color=:red,
+        color=:transparent,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
 
-    @lift begin
-        @show $data[4]
-        # campixel!(ax.scene)
+    markersize_4d = Point4f(markersize, markersize, 0, 0)
+    on(data, update=true) do d
         reset_limits!(ax)
         center!(ax.scene)
+        # markersize_4d = inv(ax.scene.camera.projectionview[]) * Point4f(markersize, markersize, 0, 0)
     end
 
     ins = DataInspector(umap_nodes)
-    center!(ax.scene)
-
     t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
-    markersize_4d = Point4f(markersize, markersize, 0, 0)
 
     frame_colors = Ref([])
     views = Observable([])
@@ -163,8 +159,6 @@ function embedding_view!(
             end
             GC.gc(true)
         end
-        reset_limits!(ax)
-        center!(ax.scene)
         enable_interactions(ax)
     end
 
