@@ -56,16 +56,16 @@ export go
 function go(trajectory_name::String; kwargs...)
     clear_vars()
     GLMakie.closeall() #close all windows for rerun!
-    monitor = GLFW.GetPrimaryMonitor()
-    GLMakie.activate!(monitor=monitor)
+    GLMakie.activate!()
 
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(UI_THEME)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
     window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
-    screen = GLMakie.Screen(title="LAMDA - Reduction Window", monitor=monitor)
+    screen = GLMakie.Screen(title="LAMDA - Reduction Window")
     screen_ref[] = screen
+
     display(screen, window)
 end
 
@@ -680,6 +680,7 @@ function main_window(active_trajectory,
     minimize_screen(screen_ref[])
     screen = GLMakie.Screen(title="LAMDA - Selection Window")
     display(screen, window)
+    move_window(screen)
 
     close(screen_ref[])
 

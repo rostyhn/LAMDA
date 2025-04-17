@@ -318,10 +318,25 @@ function set_text(txtbox, s)
     txtbox.stored_string[] = s
 end
 
-function minimize_screen(s::GLMakie.Screen; m=GLFW.GetPrimaryMonitor())
-    vd = GLFW.GetVideoMode(m)
+function minimize_screen(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
+    vd = GLFW.GetVideoMode(monitor)
     h = div(vd.height, 2)
     w = div(vd.width, 2)
     # should place the window in the top left corner of the screen
-    GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), 0.0, vd.height, w, h, GLFW.DONT_CARE)
+    GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), 0.0, 0.0, w, h, GLFW.DONT_CARE)
+end
+
+function move_window(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
+    vd = GLFW.GetVideoMode(monitor)
+    mp = GLFW.GetMonitorPos(monitor)
+    h = div(vd.height, 2)
+    w = div(vd.width, 2)
+    GLFW.HideWindow(s.glscreen)
+    #GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), mp.x, mp.y, w, h, GLFW.DONT_CARE)
+    GLFW.SetWindowMonitor(s.glscreen, monitor, mp.x, mp.y, vd.width, vd.height, vd.refreshrate)
+    yield()
+
+    GLFW.ShowWindow(s.glscreen)
+    @show s.glscreen, GLFW.GetWindowMonitor(s.glscreen)
+    #minimize_screen(s, monitor=monitor)
 end

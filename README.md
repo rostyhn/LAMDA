@@ -2,7 +2,7 @@
 Uses julia `1.11.4`.
 
 ## Setup 
-You need to install the Python environment manager `poetry`([https://python-poetry.org/]); once it is installed, run `poetry install`. There is a bug that needs to be patched in GLMakie, run `julia patch.jl`. 
+You need to install the Python environment manager `poetry`([https://python-poetry.org/]); once it is installed, run `poetry install`. 
 
 To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
 
