@@ -1,14 +1,14 @@
-function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
+function build_reduction_window(active_trajectory::Trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
     set_theme!(UI_THEME)
     window = Figure(size=(1920, 1080))
 
     menu_bar = top_bar(window, "Reduction", 2)
 
     # only need transitions and distance matrix
-    dms::Dict{String,Matrix{Float32}} = active_trajectory["dms"]
-    transitionSequence::Vector{Transition} = active_trajectory["transitions"]
+    dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
+    transitionSequence::Vector{Transition} = active_trajectory.transitions
 
-    t_to_idx = Dict{Transition,Int}(reverse.(enumerate(transitionSequence)))
+    t_to_idx::Dict{Transition,Int} = active_trajectory.t_to_idx
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
@@ -172,12 +172,15 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     on(go_btn.clicks) do n
-        active_trajectory["selected_dm"] = Observable(reduced[][1])
-        active_trajectory["reduced_transitions"] = reduced[][2]
-        active_trajectory["selected_dm_name"] = selected_dm[]
         empty!(window)
         GC.gc(true)
-        on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
+        on_click(active_trajectory,
+            screen_ref,
+            Observable(reduced[][1]),
+            reduced[][2],
+            selected_dm[];
+            init_h_cutoff=init_h_cutoff,
+            kwargs...)
     end
 
     Colorbar(window[4, 1:2],

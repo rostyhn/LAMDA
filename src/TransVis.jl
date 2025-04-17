@@ -52,17 +52,30 @@ include("windows/ClusterWindow.jl")
 include("windows/NoteWindow.jl")
 include("windows/SettingsWindow.jl")
 
+function __init__()
+    py"""
+    import pickle
+
+    def load_pickle(fpath):
+        with open(fpath, "rb") as f:
+            data = pickle.load(f)
+        return data
+    """o
+
+    @pyinclude(joinpath(dirname(@__FILE__), "ase_processing.py"))
+    GLMakie.activate!()
+end
+
 export go
 function go(trajectory_name::String; kwargs...)
     clear_vars()
     GLMakie.closeall() #close all windows for rerun!
-    GLMakie.activate!()
 
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(UI_THEME)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
-    window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
+    @time window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
     screen = GLMakie.Screen(title="LAMDA - Reduction Window")
     screen_ref[] = screen
 
@@ -76,31 +89,29 @@ function clear_vars()
     GC.gc(true)
 end
 
-function main_window(active_trajectory,
-    screen_ref;
+function main_window(active_trajectory::Trajectory,
+    screen_ref,
+    dm,
+    transitionSequence,
+    selected_dm_name,
+    ;
     chunk_size=100,
     init_h_cutoff::Float64=0.3,
     align_with=nothing)
 
-    stretchedPrincipalAxes = active_trajectory["stretchedPrincipalAxes"]
-    scalars = active_trajectory["scalars"]
-    scalar_ranges = active_trajectory["scalar_ranges"]
-
-    connectivity = active_trajectory["connectivity"]
-    distanceMatrices = active_trajectory["distanceMatrices"]
-
-    alignedPositionsMatrices = active_trajectory["alignedPositionsMatrices"] # positions as matrices
-    kdTrees = active_trajectory["kdTrees"]
-
-    alignments = active_trajectory["alignments"]
-
-    dm = active_trajectory["selected_dm"]
-
-    transitionSequence = active_trajectory["reduced_transitions"]
-    trajectory_name = active_trajectory["name"]
+    (;
+        stretchedPrincipalAxes,
+        scalars,
+        scalar_ranges,
+        alignedPositionsMatrices,
+        kdTrees,
+        alignments,
+        name,
+        t_to_idx,
+        transitions
+    ) = active_trajectory
 
     # absolute index for volume data
-    t_to_idx = Dict{Transition,Int}(reverse.(collect(enumerate(active_trajectory["transitions"]))))
     rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
 
     h_cutoff::Observable{Float64} = Observable(float(init_h_cutoff))
@@ -236,7 +247,7 @@ function main_window(active_trajectory,
     end
 
     # should be cached
-    bondDeltas = Dict{Transition,Matrix{Float32}}()
+    #=bondDeltas = Dict{Transition,Matrix{Float32}}()
     absAvgBonds = Dict{Transition,Array{Float32}}()
     bonds = Dict()
     bdMin = floatmax(Float32)
@@ -247,18 +258,22 @@ function main_window(active_trajectory,
     println("Calculating bonds...")
     @showprogress for t in transitionSequence
         s1, s2 = t
-        dm1 = distanceMatrices[s1]
-        dm2 = distanceMatrices[s2]
+        println("access matrix")
+        @time dm1 = distanceMatrices[s1]
+        @time dm2 = distanceMatrices[s2]
 
         # for now it's total delta
-        bd = dm2 - dm1
-        vals = vec(bd)
+        println("sub")
+        @time bd = dm2 - dm1
+        @time vals = vec(bd)
 
-        bdMin = min(bdMin, minimum(vals))
-        bdMax = max(bdMax, maximum(vals))
+        println("min max")
+        @time bdMin = min(bdMin, minimum(vals))
+        @time bdMax = max(bdMax, maximum(vals))
 
+        println("avg")
         avgs = Vector{Float32}(undef, length(bd[:, 1]))
-        for (i, r) in enumerate(eachrow(bd * connectivity[t[1]]))
+        @time for (i, r) in enumerate(eachrow(bd * connectivity[t[1]]))
             cartesians = length(findall(!iszero, r))
             avgs[i] = sum(abs.(r)) / cartesians
         end
@@ -266,12 +281,8 @@ function main_window(active_trajectory,
         avgMax = max(avgMax, maximum(avgs))
 
         absAvgBonds[t] = avgs
-        bondDeltas[t] = bd
         bonds[t] = calc_bonds(connectivity[t[1]])
-    end
-
-    scalars["absAvgBonds"] = absAvgBonds
-    scalar_ranges["absAvgBonds"] = (avgMin, avgMax)
+    end=#
 
     molGrid = Figure()
     Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
@@ -299,22 +310,22 @@ function main_window(active_trajectory,
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
 
     selected_invariant = Observable("t1")
-    @time volumeData::Observable{Matrix{Float32}} = @lift begin
-        key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", trajectory_name)
+    volumeData::Observable{Matrix{Float32}} = @lift begin
+        key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", name)
         w = length($sampleRanges[1])
         h = length($sampleRanges[2])
         d = length($sampleRanges[3])
 
         # calculate volume data for all transitions just once
-        abs_t_seq = active_trajectory["transitions"]
-
         fp, is_cached = get_mmap_file(key)
         if !is_cached
             println("Calculating volume data for $(key); will be saved as $(hash(key))...")
 
-            alignedPos = map(x -> alignedPositionsMatrices[x][1], abs_t_seq)
-            kd = map(x -> kdTrees[x][1], abs_t_seq)
-            invariants = map(x -> active_trajectory[$selected_invariant][x], abs_t_seq)
+            alignedPos = map(x -> alignedPositionsMatrices[x][1], transitions)
+            kd = map(x -> kdTrees[x][1], transitions)
+
+            iv = select_invariant(active_trajectory, $selected_invariant)
+            invariants = map(x -> iv[x], transitions)
 
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
@@ -332,10 +343,10 @@ function main_window(active_trajectory,
                 volMax = floatmin(Float32)
 
                 processed = 0
-                prog = Progress(length(abs_t_seq))
+                prog = Progress(length(transitions))
                 update!(prog, processed)
 
-                chunks = collect(Iterators.partition(eachindex(abs_t_seq), chunk_size))
+                chunks = collect(Iterators.partition(eachindex(transitions), chunk_size))
 
                 # 500 seconds at the fastest
                 io = open(fp, "a")
@@ -373,9 +384,8 @@ function main_window(active_trajectory,
             end
         end
 
-        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(abs_t_seq)), shared=false, grow=false)
+        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(transitions)), shared=false, grow=false)
         volRange[] = read_volume_cache(key)
-        @show typeof(volData)
         #make it symmetric 
         #maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
         #volRange[] = (-maximumRange, maximumRange)
@@ -399,7 +409,8 @@ function main_window(active_trajectory,
     Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     invariantRange = @lift begin
-        vals = values(active_trajectory[$selected_invariant])
+        iv = select_invariant(active_trajectory, $selected_invariant)
+        vals = values(iv)
         absInvMin = minimum(minimum.(vals))
         absInvMax = maximum(maximum.(vals))
         return (absInvMin, absInvMax)
@@ -662,11 +673,11 @@ function main_window(active_trajectory,
         render_views,
         widgets,
         invariantRange,
-        active_trajectory["selected_dm_name"],
+        selected_dm_name,
         #active_trajectory["per_t_scalars"],
         #active_trajectory["per_t_scalar_ranges"],
         calculators,
-        active_trajectory["name"],
+        name,
         ds
     )
 
@@ -677,10 +688,8 @@ function main_window(active_trajectory,
     # create inspector after render to avoid bugs
     ds[] = DataInspector(window)
 
-    minimize_screen(screen_ref[])
     screen = GLMakie.Screen(title="LAMDA - Selection Window")
     display(screen, window)
-    move_window(screen)
 
     close(screen_ref[])
 

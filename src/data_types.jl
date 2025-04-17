@@ -5,6 +5,36 @@ const MaybeObservable{T} = Observable{Maybe{T}}
 const State = Int16
 const Transition = Tuple{Int16,Int16}
 
+@kwdef struct Trajectory
+    name::String
+    transitions::Vector{Transition}
+    alignedPositionsMatrices::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}
+    kdTrees::Dict{Transition,Tuple{KDTree,KDTree}}
+    t1::Dict{Transition,Vector{Float32}}
+    t2::Dict{Transition,Vector{Float32}}
+    t3::Dict{Transition,Vector{Float32}}
+    stretchedPrincipalAxes::Dict{Transition,Vector{Vector{Vec3f}}}
+    dms::Dict{String,Matrix{Float32}}
+    scalars::Dict{String,Dict{Transition,Array{Float32}}}
+    scalar_ranges::Dict{String,Tuple{Float32,Float32}}
+    alignments::Dict{String,Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}}
+    t_to_idx::Dict{Transition,Int}
+end
+
+function select_invariant(active_trajectory::Trajectory, selection::String)
+    if selection == "t1"
+        iv = active_trajectory.t1
+    elseif selection == "t2"
+        iv = active_trajectory.t2
+    elseif selection == "t3"
+        iv = active_trajectory.t3
+    else
+        error("Invalid invariant selected")
+    end
+
+    return iv
+end
+
 @kwdef struct ClusterInfo
     groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx
     assignments::Vector{Int}

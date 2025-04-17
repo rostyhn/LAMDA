@@ -31,7 +31,7 @@ function get_data_folders(path)
     return dirs
 end
 
-function readDistanceMatrixFolder(folder)
+function readDistanceMatrixFolder(folder)::Dict{String,Matrix{Float32}}
     dms = Dict{String,Matrix{Float32}}()
     for dmf in readdir(folder, join=true)
         # each distance matrix should be in a folder with the matrix
@@ -99,27 +99,18 @@ function get_data_alt(trajectory_name)
             # if any do not exist, compute them in python before continuing
             if any(x -> !isfile(x), data_pickles)
                 @show "Processing ASE data..."
-                @pyinclude(joinpath(dirname(@__FILE__), "ase_processing.py"))
                 py"process_dataset"(transitions, ase_pickle, t)
             end
 
-            py"""
-            import pickle
-            def load_pickle(fpath):
-                with open(fpath, "rb") as f:
-                    data = pickle.load(f)
-                return data
-            """
-            load_pickle = py"load_pickle"
+            load_pickle = py"load_pickle"o
 
             # seems like Pickle.jl fails here
-            distanceMatrices = Dict{State,Matrix{Float32}}(load_pickle(distances_pickle))
-            connectivity = Dict{State,Matrix{Float32}}(load_pickle(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
-            rawAlignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(load_pickle(alignedPositions_pickle))
+
+            # PyDicts are slow to access
+            rawAlignedPositionsMatrices = pycall(load_pickle, PyDict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}, alignedPositions_pickle)
 
             # convert to point3fs & generate kd trees
             println("Computing KDTrees.")
-            alignedPositions = Dict{Transition,Tuple{Vector{Point3f},Vector{Point3f}}}()
             alignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}()
             # https://github.com/KristofferC/NearestNeighbors.jl
             # can store kdTrees as indices only, relinking positions when needed
@@ -134,13 +125,13 @@ function get_data_alt(trajectory_name)
 
                 alignedPositionsMatrices[t] = (p1, p2)
 
-                #alignedPositions[t] = (pp1, pp2)
                 kdTrees[t] = (KDTree(p1; reorder=false), KDTree(p2; reorder=false))
             end
+            rawAlignedPositionsMatrices = nothing
 
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
-                @time trajectory_data = JLD2.jldopen(cache_file) do file
+                @time invariants = JLD2.jldopen(cache_file) do file
                     Dict{String,Any}(file["trajectory_data"])
                 end
             else
@@ -153,21 +144,13 @@ function get_data_alt(trajectory_name)
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
-                trajectory_data = Dict{String,Any}("t1" => t1,
+                invariants = Dict{String,Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
-                @time JLD2.jldsave("$(cache_file)"; trajectory_data,)
+                @time JLD2.jldsave("$(cache_file)"; invariants,)
             end
-
-            # no need to cache data that is already available
-            trajectory_data["distanceMatrices"] = distanceMatrices
-            trajectory_data["connectivity"] = connectivity
-            trajectory_data["transitions"] = transitions
-            trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
-            trajectory_data["kdTrees"] = kdTrees
-            trajectory_data["name"] = trajectory_name
 
             # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")
@@ -217,11 +200,18 @@ function get_data_alt(trajectory_name)
                 return error("Alignment folder not found.")
             end
 
-            # TODO: check for correctness
-            trajectory_data["alignments"] = alignments
-            trajectory_data["scalars"] = scalars
-            trajectory_data["scalar_ranges"] = scalar_ranges
-            trajectory_data["dms"] = dms
+            trajectory_data = Trajectory(name=trajectory_name, transitions=transitions,
+                alignedPositionsMatrices=alignedPositionsMatrices,
+                kdTrees=kdTrees,
+                t1=invariants["t1"],
+                t2=invariants["t2"],
+                t3=invariants["t3"],
+                stretchedPrincipalAxes=invariants["stretchedPrincipalAxes"],
+                dms=dms,
+                scalars=scalars,
+                scalar_ranges=scalar_ranges,
+                alignments=alignments,
+                t_to_idx=Dict(reverse.(collect(enumerate(transitions)))))
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
         end

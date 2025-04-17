@@ -22,9 +22,9 @@ function computeTransitionInvariants(
 )::Tuple{Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Float32}},
     Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Vector{Vec3f}}}}
 
-    transitionInvariants1 = Dict{Transition,Vector}()
-    transitionInvariants2 = Dict{Transition,Vector}()
-    transitionInvariants3 = Dict{Transition,Vector}()
+    transitionInvariants1 = Dict{Transition,Vector{Float32}}()
+    transitionInvariants2 = Dict{Transition,Vector{Float32}}()
+    transitionInvariants3 = Dict{Transition,Vector{Float32}}()
     stretchedPrincipalAxes = Dict{Transition,Vector{Vector{Vec3f}}}()
 
     @showprogress for t in transitions
