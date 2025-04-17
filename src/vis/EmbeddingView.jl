@@ -231,7 +231,7 @@ function embedding_view!(
                 l = nothing
             end
             empty!(hover_listener)
-            off(c_listener)
+            #off(c_listener)
             c_listener = nothing
 
             for (ax3d, rendered) in views[]

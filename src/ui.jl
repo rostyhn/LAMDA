@@ -317,3 +317,11 @@ function set_text(txtbox, s)
     txtbox.displayed_string[] = s
     txtbox.stored_string[] = s
 end
+
+function minimize_screen(s::GLMakie.Screen; m=GLFW.GetPrimaryMonitor())
+    vd = GLFW.GetVideoMode(m)
+    h = div(vd.height, 2)
+    w = div(vd.width, 2)
+    # should place the window in the top left corner of the screen
+    GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), 0.0, vd.height, w, h, GLFW.DONT_CARE)
+end

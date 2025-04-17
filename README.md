@@ -15,6 +15,12 @@ To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` sh
 | `align_with` | `String` | sets the initial feature values used to align the transitions |
 | `distance_matrix` | `String` | sets which distance matrix to initially render |
 
+Until my pull request gets accepted, you need to patch GLMakie. In `GLMakie/src/Screen.jl` you need to change lines 407-408 to
+```
+vd = GLFW.GetVideoMode(config.monitor)
+GLFW.SetWindowMonitor(glw, config.monitor, 0.0, 0.0, vd.width, vd.height, vd.refreshrate)
+```
+
 ## Expected data format 
 Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** The following is an example data directory: 
 ```

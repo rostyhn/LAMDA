@@ -22,6 +22,7 @@ using FixedPointNumbers
 using MathTeXEngine
 using NetworkLayout
 
+using GLFW
 using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie
 using CairoMakie # for saving plots w/ SVG
 using GLMakie: Screen, apply_transform, ScreenConfig
@@ -32,7 +33,6 @@ using Clustering: Clustering, hclust, cutree, kmedoids
 using NearestNeighbors
 using UMAP
 
-#using GLFW
 include("constants.jl")
 include("data_types.jl")
 include("io.jl")
@@ -56,17 +56,15 @@ export go
 function go(trajectory_name::String; kwargs...)
     clear_vars()
     GLMakie.closeall() #close all windows for rerun!
-    GLMakie.activate!()
+    monitor = GLFW.GetPrimaryMonitor()
+    GLMakie.activate!(monitor=monitor)
 
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(UI_THEME)
 
     screen_ref = Ref{Maybe{Screen}}(nothing)
-    @time window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
-
-    # TODO: always set to first monitor so its consistent
-    # Passing GLFW.Monitor doesn't work for some reason
-    screen = GLMakie.Screen(title="LAMDA - Reduction Window")
+    window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
+    screen = GLMakie.Screen(title="LAMDA - Reduction Window", monitor=monitor)
     screen_ref[] = screen
     display(screen, window)
 end
@@ -676,11 +674,14 @@ function main_window(active_trajectory,
     # creating screen after the window is built prevents subtle bugs
     # such as interactions being trigged before the window is rendered 
     =#
+    # create inspector after render to avoid bugs
+    ds[] = DataInspector(window)
+
+    minimize_screen(screen_ref[])
     screen = GLMakie.Screen(title="LAMDA - Selection Window")
     display(screen, window)
 
-    # create inspector after render to avoid bugs
-    ds[] = DataInspector(window)
     close(screen_ref[])
+
 end
 end # close module
