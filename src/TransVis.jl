@@ -92,8 +92,8 @@ end
 function main_window(active_trajectory::Trajectory,
     screen_ref,
     dm,
-    transitionSequence,
-    selected_dm_name,
+    transitionSequence::Vector{Transition},
+    selected_dm_name::String,
     ;
     chunk_size=100,
     init_h_cutoff::Float64=0.3,
@@ -110,6 +110,7 @@ function main_window(active_trajectory::Trajectory,
         t_to_idx,
         transitions
     ) = active_trajectory
+    @show typeof(alignments)
 
     # absolute index for volume data
     rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
@@ -246,44 +247,6 @@ function main_window(active_trajectory::Trajectory,
         maxZ = max(maxZ, max(maxZ1, maxZ2))
     end
 
-    # should be cached
-    #=bondDeltas = Dict{Transition,Matrix{Float32}}()
-    absAvgBonds = Dict{Transition,Array{Float32}}()
-    bonds = Dict()
-    bdMin = floatmax(Float32)
-    bdMax = floatmin(Float32)
-    avgMin = floatmax(Float32)
-    avgMax = floatmin(Float32)
-
-    println("Calculating bonds...")
-    @showprogress for t in transitionSequence
-        s1, s2 = t
-        println("access matrix")
-        @time dm1 = distanceMatrices[s1]
-        @time dm2 = distanceMatrices[s2]
-
-        # for now it's total delta
-        println("sub")
-        @time bd = dm2 - dm1
-        @time vals = vec(bd)
-
-        println("min max")
-        @time bdMin = min(bdMin, minimum(vals))
-        @time bdMax = max(bdMax, maximum(vals))
-
-        println("avg")
-        avgs = Vector{Float32}(undef, length(bd[:, 1]))
-        @time for (i, r) in enumerate(eachrow(bd * connectivity[t[1]]))
-            cartesians = length(findall(!iszero, r))
-            avgs[i] = sum(abs.(r)) / cartesians
-        end
-        avgMin = min(avgMin, minimum(avgs))
-        avgMax = max(avgMax, maximum(avgs))
-
-        absAvgBonds[t] = avgs
-        bonds[t] = calc_bonds(connectivity[t[1]])
-    end=#
-
     molGrid = Figure()
     Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
     sg = SliderGrid(molGrid[4, 2:3],
@@ -419,18 +382,23 @@ function main_window(active_trajectory::Trajectory,
     # https://docs.julialang.org/en/v1.12-dev/manual/performance-tips/#man-performance-captured
     # convenience function to avoid passing around all the data
     function calc_alignment(ts)
-        if !isempty(ts)
-            ts_idx = map(x -> rel_t_to_idx[x], ts)
-            features = alignments[selected_alignment[]]
+        res = let rel_t_to_idx = rel_t_to_idx, alignments = alignments, dm = dm, alignedPositionsMatrices = alignedPositionsMatrices,
+            selected_alignment = selected_alignment
 
-            dist_sum = map(x -> sum(view(dm[], x, ts_idx)), ts_idx)
-            ref_t_idx = argmin(dist_sum)
+            if !isempty(ts)
+                ts_idx = map(x -> rel_t_to_idx[x], ts)
+                features = alignments[selected_alignment[]]
 
-            ref_t = ts[ref_t_idx]
-            return calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
-        else
-            return Dict()
+                dist_sum = map(x -> sum(view(dm[], x, ts_idx)), ts_idx)
+                ref_t_idx = argmin(dist_sum)
+
+                ref_t = ts[ref_t_idx]
+                calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+            else
+                Dict()
+            end
         end
+        return res
     end
 
 
@@ -674,8 +642,6 @@ function main_window(active_trajectory::Trajectory,
         widgets,
         invariantRange,
         selected_dm_name,
-        #active_trajectory["per_t_scalars"],
-        #active_trajectory["per_t_scalar_ranges"],
         calculators,
         name,
         ds
@@ -694,4 +660,5 @@ function main_window(active_trajectory::Trajectory,
     close(screen_ref[])
 
 end
+
 end # close module

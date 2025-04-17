@@ -30,7 +30,7 @@ function embedding_view!(
 
     # invisible scatter plot to set up camera
     umap_nodes = scatter!(ax,
-        lift(x -> x[4], data),
+        lift(x -> x[3], data),
         marker=:rect,
         color=:transparent,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
@@ -59,7 +59,7 @@ function embedding_view!(
         for (ax3d, rendered) in views[]
             Makie.free(ax3d)
         end
-        empty!(views[])
+        empty!(views.val)
         empty!(frame_colors[]) # update frame colors
         GC.gc(true)
 
@@ -120,7 +120,7 @@ function embedding_view!(
                     on_click(t)
                 end
             end
-            push!(views[], (ax3d, rendered))
+            push!(views.val, (ax3d, rendered))
             push!(frame_colors[], frame_color)
         end
         t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
@@ -128,7 +128,8 @@ function embedding_view!(
     end
 
     onany(selected_render, views; update=true) do sr, v
-        if length(v) == length(data[][4])
+        @show "re-rendering"
+        if length(v) == length(data[][3])
             for (i, (ax3d, rendered)) in enumerate(v)
                 t = data[][1][i]
                 foreach(x -> delete!(ax3d, x), rendered[])
@@ -143,14 +144,14 @@ function embedding_view!(
                         Observable(t),
                         selected_scalar,
                         atom_time,
-                        Observable(data[][3]))
+                        Observable(data[][2]))
                     rendered[] = [s]
                 else
                     inspector = DataInspector(ax3d)
                     il, is, plots = render_views["Superquadric"](ax3d,
                         Observable(t),
                         inspector,
-                        Observable(data[][3]))
+                        Observable(data[][2]))
                     rendered[] = plots
                 end
                 center!(ax3d)
@@ -165,7 +166,7 @@ function embedding_view!(
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d) do xlim, ylim, mkr
-        if length(views[]) == length(data[][4])
+        if length(views[]) == length(data[][3])
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             for (i, (scene, rendered)) in enumerate(views[])
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)

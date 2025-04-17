@@ -114,7 +114,7 @@ function build_cluster_window(
     lm, embedding = layout_menu(window, cluster_data)
 
     embedding_view!(window[2, 1:2],
-        lift((x, y) -> (x.ts, x.mat, x.alignment, y), cluster_data, embedding),
+        lift((x, y) -> (x.ts, x.alignment, y), cluster_data, embedding),
         scene_selector,
         scalar_selector,
         time,

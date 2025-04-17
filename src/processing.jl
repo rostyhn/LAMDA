@@ -18,7 +18,7 @@ end
 function computeTransitionInvariants(
     transitions::Vector{Transition},
     alignedPositions::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}},
-    distances::Dict{Int16,Matrix{Float32}}
+    distances::PyDict{State,Matrix{Float32}}
 )::Tuple{Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Float32}},
     Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Vector{Vec3f}}}}
 

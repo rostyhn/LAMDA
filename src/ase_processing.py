@@ -1,6 +1,8 @@
 import numpy as np
 import copy
 import pickle
+import os
+
 from ase import neighborlist
 
 
@@ -47,31 +49,45 @@ def process_dataset(t_list, sf, df):
     distances = {}
     connectivity = {}
     for (s_id, a) in ase_dict.items():
-        distances[s_id] = np.array(a.get_all_distances())
+        distances[s_id] = np.array(a.get_all_distances()).astype(np.float32) 
         nl = neighborlist.build_neighbor_list(a)
         connectivity[s_id] = np.array(nl.get_connectivity_matrix(sparse=False))
    
     # calculate alignment for transitions
     aligned_positions = {} 
     t_ase_dict = {}
+    avgBondDelta = {}
     for t in t_list:
         s1id, s2id = t
 
         s1a = ase_dict[s1id]
         s2a = ase_dict[s2id]
-       
+
         s2c = align(s1a, s2a)
         t_ase_dict[t] = (s1a,s2c)
-        aligned_positions[t] = (s1a.get_positions(), s2c.get_positions())
+        aligned_positions[t] = s1a.get_positions().astype(np.float32), s2c.get_positions().astype(np.float32)
 
+        bd = np.abs(distances[s2id] - distances[s1id]) 
+        avgBondDelta[t] = np.mean(bd * connectivity[s1id], axis=1).astype(np.float32)
+        
     with open(f'{df}/distances.pickle', 'wb') as f:
         pickle.dump(distances, f)
-
-    with open(f'{df}/connectivity.pickle', 'wb') as f:
-        pickle.dump(connectivity, f)
 
     with open(f'{df}/aligned_positions.pickle', 'wb') as f:
         pickle.dump(aligned_positions, f)
 
     with open(f'{df}/t_ase_dict.pickle', 'wb') as f:
         pickle.dump(t_ase_dict, f)
+
+    scalarsf = f'{df}/scalars'
+    if not os.path.exists(scalarsf):
+        os.mkdir(scalarsf)
+
+    with open(f'{scalarsf}/absAvgBonds.pickle', 'wb') as f:
+        pickle.dump(avgBondDelta, f)
+
+    del distances
+    del connectivity
+    del aligned_positions
+    del t_ase_dict
+    del avgBondDelta

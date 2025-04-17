@@ -92,9 +92,8 @@ function get_data_alt(trajectory_name)
             ase_pickle = joinpath(t, "ase_dict.pickle")
 
             distances_pickle = joinpath(t, "distances.pickle")
-            connectivity_pickle = joinpath(t, "connectivity.pickle")
             alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
-            data_pickles = [distances_pickle, connectivity_pickle, alignedPositions_pickle]
+            data_pickles = [alignedPositions_pickle, distances_pickle]
 
             # if any do not exist, compute them in python before continuing
             if any(x -> !isfile(x), data_pickles)
@@ -104,9 +103,6 @@ function get_data_alt(trajectory_name)
 
             load_pickle = py"load_pickle"o
 
-            # seems like Pickle.jl fails here
-
-            # PyDicts are slow to access
             rawAlignedPositionsMatrices = pycall(load_pickle, PyDict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}, alignedPositions_pickle)
 
             # convert to point3fs & generate kd trees
@@ -140,6 +136,7 @@ function get_data_alt(trajectory_name)
                     mkdir(cachePath)
                 end
 
+                distanceMatrices = pycall(load_pickle, PyDict{State,Matrix{Float32}}, distances_pickle)
                 println("Calculating transition invariants.")
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
@@ -149,6 +146,7 @@ function get_data_alt(trajectory_name)
                     "t3" => t3,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
+                distanceMatrices = nothing
                 @time JLD2.jldsave("$(cache_file)"; invariants,)
             end
 
@@ -212,6 +210,7 @@ function get_data_alt(trajectory_name)
                 scalar_ranges=scalar_ranges,
                 alignments=alignments,
                 t_to_idx=Dict(reverse.(collect(enumerate(transitions)))))
+            GC.gc(true)
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
         end
