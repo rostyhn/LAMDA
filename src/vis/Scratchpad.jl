@@ -5,7 +5,7 @@ function scratchpad!(
     loc,
     selected_transitions::Observable{Set{Transition}},
     cluster_info::Observable{ClusterInfo},
-    cluster_data::Observable{ClusterData},
+    cluster_data::ClusterData,
     render_views,
     render_selection,
     scalar_selection,
@@ -242,7 +242,7 @@ function scratchpad!(
                         return set_color_alpha(cluster_color($(cluster_info), obj), 0.6)
                     else
                         # gets the assigned cluster color
-                        return set_color_alpha(cluster_color($(cluster_data), obj), 0.6)
+                        return set_color_alpha(cluster_color(cluster_data, obj), 0.6)
                     end
                 end
 
@@ -321,7 +321,7 @@ function scratchpad!(
                         foreach(x -> delete!(ax3d, x), plt_rendered)
                         empty!(plt_rendered)
                         if rs == "Volume"
-                            v_lo, v_hi = render_views[rs](ax3d, Observable(obj))
+                            v_lo, v_hi = render_views[rs](ax3d, obj)
                             plt_rendered = [v_lo, v_hi]
                         elseif rs == "Atom"
                             s = render_views["Atom"](ax3d,

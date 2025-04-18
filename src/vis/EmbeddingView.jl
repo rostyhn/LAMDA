@@ -54,9 +54,13 @@ function embedding_view!(
     views = Observable([])
 
     @lift begin
+        @show "re-rendering"
+        disable_interactions(ax)
         hovered[] = nothing
         notify(hovered)
-        for (ax3d, rendered) in views[]
+
+        # instead of clearing everything, why don't we keep them and only delete non-existing ones?
+        for ax3d in views[]
             Makie.free(ax3d)
         end
         empty!(views.val)
@@ -66,6 +70,7 @@ function embedding_view!(
         reset_limits!(ax)
         center!(ax.scene)
 
+        alignment = Observable(data[][2])
         for (i, t) in enumerate($data[1])
             pos = position_on_plot(umap_nodes, i, apply_transform=false)
             # x, y is in global pixel coords
@@ -99,7 +104,6 @@ function embedding_view!(
                 inspectable=false
             )
 
-            rendered = Ref([])
             m_events = addmouseevents!(ax3d)
             on(m_events.obs) do event
                 if event.type === MouseEventTypes.over
@@ -120,39 +124,57 @@ function embedding_view!(
                     on_click(t)
                 end
             end
-            push!(views.val, (ax3d, rendered))
+
+            # initial render
+            sr = selected_render[]
+            if sr == "Volume"
+                render_views[sr](ax3d, t)
+            elseif sr == "Atom"
+                render_views["Atom"](ax3d,
+                    Observable(t),
+                    selected_scalar,
+                    atom_time,
+                    alignment)
+            else
+                inspector = DataInspector(ax3d)
+                render_views["Superquadric"](ax3d,
+                    Observable(t),
+                    inspector,
+                    alignment)
+            end
+            center!(ax3d)
+            yield()
+
+            push!(views.val, ax3d)
             push!(frame_colors[], frame_color)
         end
         t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
         notify(views)
+        enable_interactions(ax)
+
     end
 
-    onany(selected_render, views; update=true) do sr, v
-        @show "re-rendering"
-        if length(v) == length(data[][3])
-            for (i, (ax3d, rendered)) in enumerate(v)
+    on(selected_render) do sr
+        disable_interactions(ax)
+        if length(views[]) == length(data[][3])
+            alignment = Observable(data[][2])
+            for (i, ax3d) in enumerate(views[])
                 t = data[][1][i]
-                foreach(x -> delete!(ax3d, x), rendered[])
-                empty!(rendered[])
+                foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
                 if sr == "Volume"
-                    #=(v_lo, v_hi), vd = render_views[sr](ax3d, Observable(t))
-                    push!(observables[], vd)=#
-                    v_lo, v_hi = render_views[sr](ax3d, Observable(t))
-                    rendered[] = [v_lo, v_hi]
+                    render_views[sr](ax3d, Observable(t))
                 elseif sr == "Atom"
-                    s = render_views["Atom"](ax3d,
+                    render_views["Atom"](ax3d,
                         Observable(t),
                         selected_scalar,
                         atom_time,
-                        Observable(data[][2]))
-                    rendered[] = [s]
+                        alignment)
                 else
                     inspector = DataInspector(ax3d)
-                    il, is, plots = render_views["Superquadric"](ax3d,
+                    render_views["Superquadric"](ax3d,
                         Observable(t),
                         inspector,
-                        Observable(data[][2]))
-                    rendered[] = plots
+                        alignment)
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up
@@ -168,7 +190,7 @@ function embedding_view!(
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d) do xlim, ylim, mkr
         if length(views[]) == length(data[][3])
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
-            for (i, (scene, rendered)) in enumerate(views[])
+            for (i, scene) in enumerate(views[])
                 pos = position_on_plot(umap_nodes, i, apply_transform=false)
                 x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
 
@@ -235,7 +257,7 @@ function embedding_view!(
             #off(c_listener)
             c_listener = nothing
 
-            for (ax3d, rendered) in views[]
+            for ax3d in views[]
                 empty!(ax3d)
                 Makie.free(ax3d)
             end

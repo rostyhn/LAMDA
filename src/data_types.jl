@@ -80,7 +80,7 @@ function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
     # sortperm! doesn't mutate the arguments, spent a long time to figure this out
     s = sortperm(mtx_idx)
     t_to_mtx = Dict(reverse.(enumerate(ts[s])))
-    return view(cd.matrix, mtx_idx[s], mtx_idx[s]), t_to_mtx
+    return view(cd.matrix, view(mtx_idx, s), view(mtx_idx, s)), t_to_mtx
 end
 
 # we want to color transitions by their currently assigned cluster determined by the cutoff
@@ -93,7 +93,7 @@ function cluster_color(cd::ClusterData, c::Set{Int})
 end
 
 function get_transitions(t_list, cluster::Set{Int})::Vector{Transition}
-    return t_list[collect(cluster)]
+    return view(t_list, collect(cluster))
 end
 
 function get_parent(cd::ClusterData, cluster::Set{Int})::Set{Int}

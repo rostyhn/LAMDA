@@ -1,7 +1,7 @@
 function build_cluster_window(
     clusters::Observable{Set{Int}},
     cluster_data::Observable{SingleClusterData},
-    all_cluster_data::Observable{ClusterData},
+    all_cluster_data::ClusterData,
     cluster_info::ClusterInfo,
     scalars,
     mat_range,
@@ -80,7 +80,7 @@ function build_cluster_window(
     function update_colors(cutoff)
         cut_clusters = Ref([])
         clusters_above_cutoff(clusters[],
-            all_cluster_data[],
+            all_cluster_data,
             cluster_data[],
             cutoff,
             cut_clusters)
@@ -96,7 +96,7 @@ function build_cluster_window(
             end
         end
 
-        colors[] = map(x -> cluster_color(all_cluster_data[], x), rel_ts_to_c)
+        colors[] = map(x -> cluster_color(all_cluster_data, x), rel_ts_to_c)
         notify(colors)
     end
 
@@ -252,7 +252,7 @@ function layout_menu(window, cluster_data)
                     metric=:precomputed,
                     min_dist=1,
                     n_neighbors=min(length(ts) - 1, 15)))
-                points = map(x -> Point2f(x), eachrow(em))
+                points = eachrow(em)
             else
                 points = Point2f[]
                 for (i, t) in enumerate(ts)

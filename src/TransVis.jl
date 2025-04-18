@@ -118,42 +118,41 @@ function main_window(active_trajectory::Trajectory,
     h_cutoff::Observable{Float64} = Observable(float(init_h_cutoff))
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-    cluster_data = @lift begin
-        clustering = hclust($dm, linkage=:ward, branchorder=:barjoseph)
-        rm = view($dm, clustering.order, clustering.order)
-        # gets the correct idx 
-        t_to_mtx = Dict{Transition,Int}()
-        mtx_to_t = Dict{Int,Transition}()
-        for (i, r) in enumerate(clustering.order)
-            t_to_mtx[transitionSequence[r]] = i
-            mtx_to_t[i] = transitionSequence[r]
-        end
 
-        # get minimum and maximum of entire matrix for cmap
-        fl = vec($dm)
-        h_range[] = extrema(clustering.heights)
-        notify(h_range)
-
-        c2idx, c_to_parent, parent_to_c = get_hierarchy(clustering)
-        # render dendrogram once so that we can use any piece of it in the cluster window
-        lines, clusters, c2lx = treepositions(clustering, 0.0)
-
-        return ClusterData(clustering=clustering,
-            matrix=rm,
-            c2idx=c2idx,
-            clusters=clusters,
-            lines=lines,
-            c2lx=c2lx,
-            c_to_parent=c_to_parent,
-            parent_to_c=parent_to_c,
-            m_extrema=(extrema(fl)),
-            t_to_mtx=t_to_mtx,
-            mtx_to_t=mtx_to_t)
+    clustering = hclust(dm, linkage=:ward, branchorder=:barjoseph)
+    rm = view(dm, clustering.order, clustering.order)
+    # gets the correct idx 
+    t_to_mtx = Dict{Transition,Int}()
+    mtx_to_t = Dict{Int,Transition}()
+    for (i, r) in enumerate(clustering.order)
+        t_to_mtx[transitionSequence[r]] = i
+        mtx_to_t[i] = transitionSequence[r]
     end
+
+    # get minimum and maximum of entire matrix for cmap
+    fl = vec(dm)
+    h_range[] = extrema(clustering.heights)
+    notify(h_range)
+
+    c2idx, c_to_parent, parent_to_c = get_hierarchy(clustering)
+    # render dendrogram once so that we can use any piece of it in the cluster window
+    lines, clusters, c2lx = treepositions(clustering, 0.0)
+
+    cluster_data = ClusterData(clustering=clustering,
+        matrix=rm,
+        c2idx=c2idx,
+        clusters=clusters,
+        lines=lines,
+        c2lx=c2lx,
+        c_to_parent=c_to_parent,
+        parent_to_c=parent_to_c,
+        m_extrema=(extrema(fl)),
+        t_to_mtx=t_to_mtx,
+        mtx_to_t=mtx_to_t)
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
     cluster_info = @lift begin
-        assignments = cutree($(cluster_data).clustering, h=$h_cutoff)
+        assignments = cutree(cluster_data.clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Transition}}()
         igroups = Dict{Int,Vector{Int}}()
         # current assigned cluster to idx
@@ -177,7 +176,7 @@ function main_window(active_trajectory::Trajectory,
         for (idx, g) in igroups
             c = Set(g)
             a2c[idx] = c
-            ccidx2cidx[idx] = ($cluster_data).c2idx[c]
+            ccidx2cidx[idx] = cluster_data.c2idx[c]
         end
 
         #=
@@ -193,14 +192,13 @@ function main_window(active_trajectory::Trajectory,
         reps = Dict{Int,Transition}()
         for (clusterIdx, g) in groups
             # find reference t
-            m = $dm
-            gi = map(x -> $(cluster_data).t_to_mtx[x], g)
-            dist_sum = map(x -> sum(view(m, x, gi)), gi)
+            gi = map(x -> cluster_data.t_to_mtx[x], g)
+            dist_sum = map(x -> sum(view(dm, x, gi)), gi)
             reps[clusterIdx] = g[argmin(dist_sum)]
         end
 
         # instead of rendering the dendrogram twice like this and keeping two copies in memory, could modify dendrogram render to show lines under the cutoff differently
-        lines, clusters, c2lx = treepositions($(cluster_data).clustering, $h_cutoff)
+        lines, clusters, c2lx = treepositions(cluster_data.clustering, $h_cutoff)
         return ClusterInfo(groups=groups,
             representatives=reps,
             assignments=assignments,
@@ -389,7 +387,7 @@ function main_window(active_trajectory::Trajectory,
                 ts_idx = map(x -> rel_t_to_idx[x], ts)
                 features = alignments[selected_alignment[]]
 
-                dist_sum = map(x -> sum(view(dm[], x, ts_idx)), ts_idx)
+                dist_sum = map(x -> sum(view(dm, x, ts_idx)), ts_idx)
                 ref_t_idx = argmin(dist_sum)
 
                 ref_t = ts[ref_t_idx]
@@ -422,10 +420,10 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_volume_view(scene::Makie.Scene, transition::Observable{Transition})
+    function render_volume_view(scene::Makie.Scene, transition::Transition)
         # directly indexing the mmap creates a copy, need to use a view
         vvd = let volumeData = volumeData
-            view(volumeData[], :, t_to_idx[transition[]])
+            view(volumeData[], :, t_to_idx[transition])
         end
         vd = reshape(vvd,
             (
@@ -438,53 +436,57 @@ function main_window(active_trajectory::Trajectory,
     end
 
     function render_movement_view_ts(scene, ts, time, alignment, correlationThreshold)
-        d = @lift begin
-            posValsTup = map(t -> apply_alignment($alignment[t], alignedPositionsMatrices[t]), $ts)
+        res = let alignedPositionsMatrices = alignedPositionsMatrices, cluster_data = cluster_data, kernelWidth = kernelWidth
 
-            distances, t_to_mtx = get_local_matrix(cluster_data[], $ts)
-            R = kmedoids(distances, 1)
-            representativeIdx = first(R.medoids)
+            d = @lift begin
+                posValsTup = map(t -> apply_alignment($alignment[t], alignedPositionsMatrices[t]), $ts)
 
-            positions = [Point3f.(eachrow(p)) for p in first.(posValsTup)]
-            refPositions = positions[representativeIdx] # chose the median in the future
-            velocities = last.(posValsTup) .- first.(posValsTup)
+                distances, t_to_mtx = get_local_matrix(cluster_data, $ts)
+                R = kmedoids(distances, 1)
+                representativeIdx = first(R.medoids)
 
-            vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
-            correlationMeasure = zeros(Float32, length(refPositions))
+                positions = [Point3f.(eachrow(p)) for p in first.(posValsTup)]
+                refPositions = positions[representativeIdx] # chose the median in the future
+                velocities = last.(posValsTup) .- first.(posValsTup)
 
-            num_neighbors = 50
-            clusterKd = KDTree.(positions)
-            for pId in eachindex(refPositions)
-                vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
-                for t in eachindex(clusterKd)
+                vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
+                correlationMeasure = zeros(Float32, length(refPositions))
 
-                    knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
-                    uValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
-                    vValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
-                    wValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
-                    vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
-                    vectorList[t] = Point3f(uValue, vValue, wValue)
+                num_neighbors = 50
+                clusterKd = KDTree.(positions)
+                for pId in eachindex(refPositions)
+                    vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
+                    for t in eachindex(clusterKd)
+
+                        knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
+                        uValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 1])
+                        vValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 2])
+                        wValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), positions[t][knn, :], kernelWidth[]) .* velocities[t][knn, 3])
+                        vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
+                        vectorList[t] = Point3f(uValue, vValue, wValue)
+                    end
+                    meanV = mean(vectorList)
+                    for v in vectorList
+                        correlationMeasure[pId] += (dot(meanV, v)) / (dot(meanV, meanV) + dot(v, v))
+                    end
+                    correlationMeasure[pId] *= 1.0 / length(vectorList)
+                    correlationMeasure[pId] += 0.5
                 end
-                meanV = mean(vectorList)
-                for v in vectorList
-                    correlationMeasure[pId] += (dot(meanV, v)) / (dot(meanV, meanV) + dot(v, v))
-                end
-                correlationMeasure[pId] *= 1.0 / length(vectorList)
-                correlationMeasure[pId] += 0.5
+
+                inits = first.(posValsTup)[representativeIdx]
+                fins = last.(posValsTup)[representativeIdx]
+                return (inits, fins), vd, correlationMeasure
             end
-
-            inits = first.(posValsTup)[representativeIdx]
-            fins = last.(posValsTup)[representativeIdx]
-            return (inits, fins), vd, correlationMeasure
+            simple_arrow_view!(scene,
+                lift(x -> x[1], d),
+                time,
+                CLUSTER_CONSENSUS_COLORMAP,
+                lift(x -> x[2], d),
+                lift(x -> x[3], d),
+                correlationThreshold)
         end
 
-        return simple_arrow_view!(scene,
-            lift(x -> x[1], d),
-            time,
-            CLUSTER_CONSENSUS_COLORMAP,
-            lift(x -> x[2], d),
-            lift(x -> x[3], d),
-            correlationThreshold)
+        return res
     end
 
     function render_superquadrics_view(scene, transition, inspector, alignment)
@@ -629,7 +631,6 @@ function main_window(active_trajectory::Trajectory,
     window = build_selection_window(transitionSequence,
         rel_t_to_idx,
         num_atoms,
-        dm,
         volRange,
         volume_cmap,
         cluster_data,

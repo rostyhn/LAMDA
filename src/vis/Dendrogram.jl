@@ -146,7 +146,7 @@ function dendrogram!(ax,
 
         colors = []
         for c in clusters
-            color = cluster_color(cluster_data[], c)
+            color = cluster_color(to_value(cluster_data), c)
             push!(colors, set_color_alpha(color, 0.6))
         end
 
@@ -201,7 +201,7 @@ function dendrogram!(ax,
 
         if !isnothing(hov)
             children = Ref([])
-            dfs(cluster_data[], hov, children)
+            dfs(to_value(cluster_data), hov, children)
             for c in children[]
                 if c in keys(c_dict[])
                     idx = c_dict[][Set(c)]

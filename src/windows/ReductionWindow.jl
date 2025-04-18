@@ -176,7 +176,7 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
         GC.gc(true)
         on_click(active_trajectory,
             screen_ref,
-            Observable(reduced[][1]),
+            reduced[][1],
             reduced[][2],
             selected_dm[];
             init_h_cutoff=init_h_cutoff,

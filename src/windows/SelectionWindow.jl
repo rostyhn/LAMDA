@@ -5,10 +5,9 @@ function build_selection_window(
     t_list,
     rel_t_to_idx::Dict{Transition,Int},
     num_atoms,
-    dm,
     volRange,
     vol_cmap,
-    cluster_data::Observable{ClusterData},
+    cluster_data::ClusterData,
     cluster_info::Observable{ClusterInfo},
     scalars,
     h_cutoff,
@@ -74,7 +73,7 @@ function build_selection_window(
 
     # can be more clever
     function cw_on_up(cc)
-        parent = get_parent(cluster_data[], cc[])
+        parent = get_parent(cluster_data, cc[])
         if parent != cc[]
             cc[] = parent
             notify(cc)
@@ -82,7 +81,7 @@ function build_selection_window(
     end
 
     function cw_on_downleft(cc)
-        children = get_children(cluster_data[], cc[])
+        children = get_children(cluster_data, cc[])
         if !isnothing(children)
             lc, rc = children
             if lc != cc[]
@@ -93,7 +92,7 @@ function build_selection_window(
     end
 
     function cw_on_downright(cc)
-        children = get_children(cluster_data[], cc[])
+        children = get_children(cluster_data, cc[])
         if !isnothing(children)
             lc, rc = children
             if rc != cc[]
@@ -109,9 +108,9 @@ function build_selection_window(
     function on_show_cluster_click(clusters)
         cc = Observable(clusters)
         scd = @lift begin
-            ref_t = find_group_centroid($cc, cluster_data[], t_list)
+            ref_t = find_group_centroid($cc, cluster_data, t_list)
             ts = get_transitions(t_list, $cc)
-            mat, t_to_mtx = get_local_matrix(cluster_data[], ts)
+            mat, t_to_mtx = get_local_matrix(cluster_data, ts)
             alignment = calculators["Alignment"](ts)
 
             return buildSingleClusterData(
@@ -120,7 +119,7 @@ function build_selection_window(
                 ts=ts,
                 mat=mat,
                 alignment=alignment,
-                cluster_data=cluster_data[],
+                cluster_data=cluster_data,
                 cluster_info=cluster_info[],
                 rel_t_to_idx=rel_t_to_idx,
                 t_to_mtx=t_to_mtx)
@@ -133,7 +132,7 @@ function build_selection_window(
             cluster_data,
             cluster_info[],
             scalars,
-            cluster_data[].m_extrema,
+            cluster_data.m_extrema,
             render_views,
             widgets,
             bins,
@@ -200,8 +199,8 @@ function build_selection_window(
         on_cutoff_line_drag=update_cutoff,
         colormap=CLUSTER_COLORS)
 
-    hm = heatmap!(hm_ax, lift(x -> x.matrix, cluster_data),
-        colorrange=lift(x -> x.m_extrema, cluster_data),
+    hm = heatmap!(hm_ax, cluster_data.matrix,
+        colorrange=cluster_data.m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
     hm_m_events = addmouseevents!(hm_ax.scene)
 
@@ -209,7 +208,7 @@ function build_selection_window(
         if e.type === MouseEventTypes.leftdown
             plot, _ = pick(hm_ax)
             if !isnothing(plot)
-                ord = cluster_data[].mtx_to_t
+                ord = cluster_data.mtx_to_t
                 xy = mouseposition(hm_ax)
                 i, j = Int.(round.(xy))
                 t1 = ord[i]
@@ -229,7 +228,7 @@ function build_selection_window(
     @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
         for (c, ts) in $(cluster_info).groups
-            t_to_mtx = $(cluster_data).t_to_mtx
+            t_to_mtx = cluster_data.t_to_mtx
             m_idx = map(x -> t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
@@ -267,7 +266,7 @@ function build_selection_window(
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     hm_last_bBox::Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
     on(hovered_cluster) do hc
-        res = calc_cluster_bounding_box(hc, cluster_data[], cluster_data[].t_to_mtx, hm_last_bBox)
+        res = calc_cluster_bounding_box(hc, cluster_data, cluster_data.t_to_mtx, hm_last_bBox)
         hm_last_bBox = res
     end
 
@@ -292,7 +291,7 @@ function build_selection_window(
 
     dGrid[3, 1] = Colorbar(window,
         vertical=false,
-        colorrange=lift(x -> x.m_extrema, cluster_data),
+        colorrange=cluster_data.m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     linkxaxes!(hm_ax, graph_ax)
@@ -338,7 +337,7 @@ function build_selection_window(
         if export_menu.selection[] == "All"
             export_all(trajectory_name,
                 cluster_info[],
-                cluster_data[],
+                cluster_data,
                 t_list,
                 cluster_annotations[],
                 ep;
