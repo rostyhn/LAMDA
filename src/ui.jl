@@ -201,21 +201,21 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
     v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
 
-    lo_sq = Observable(sq[][v_lo[]])
-    lo_col = Observable(colors[][v_lo[]])
+    lo_sq = Observable(view(sq[], v_lo[]))
+    lo_col = Observable(view(colors[], v_lo[]))
 
-    hi_sq = Observable(sq[][v_hi[]])
-    hi_col = Observable(colors[][v_hi[]])
+    hi_sq = Observable(view(sq[], v_hi[]))
+    hi_col = Observable(view(colors[], v_hi[]))
 
     on(v_lo) do idx
-        lo_sq.val = sq[][idx]
-        lo_col[] = colors[][idx]
+        lo_sq.val = view(sq[], idx)
+        lo_col[] = view(colors, idx)
         notify(lo_sq)
     end
 
     on(v_hi) do idx
-        hi_sq.val = sq[][idx]
-        hi_col[] = colors[][idx]
+        hi_sq.val = view(sq, idx)
+        hi_col[] = view(colors, idx)
         notify(hi_sq)
     end
 
@@ -223,12 +223,8 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         scene,
         lo_sq,
         color=lo_col,
-        #highclip=:transparent,
-        #transparency=true,
-        # shading=NoShading,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
-        # fxaa=false
     )
     m_lo.inspectable[] = false
 
@@ -236,12 +232,8 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         scene,
         hi_sq,
         color=hi_col,
-        #lowclip=:transparent,
-        # transparency=true,
-        # shading=NoShading,
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
-        # fxaa=false
     )
     v = meshscatter!(scene,
         points;
@@ -256,25 +248,6 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     cam_listener = on(lo_sq) do ls
         update_cam!(parent_scene(m_lo))
     end
-
-    # no other way around this other than this super ugly way, 
-    # makie renders this as one plot, which the inspector grabs a bounding box around
-    #=sqHoverListener = on(events(scene).mouseposition) do mp
-        if is_mouseinside(scene)
-            # might be able to use onpick()
-            plot, idx = pick(scene)
-            if plot != Nothing
-                pos = position_on_plot(plot, idx)
-                if !isnan(pos)
-                    inspector.plot.text[] = string(plot.color[][idx])
-                    inspector.plot.visible[] = true
-                    inspector.plot.position = mp
-                end
-            end
-            return Consume(true)
-        end
-        return Consume(false)
-    end=#
 
     update_cam!(parent_scene(m_lo))
     return [cam_listener], [], [m_lo, m_hi, v]

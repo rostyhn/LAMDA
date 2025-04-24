@@ -172,9 +172,7 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     on(go_btn.clicks) do n
-        empty!(window)
-        GC.gc(true)
-        on_click(active_trajectory,
+        @time on_click(active_trajectory,
             screen_ref,
             reduced[][1],
             reduced[][2],

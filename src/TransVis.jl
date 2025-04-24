@@ -68,7 +68,7 @@ end
 
 export go
 function go(trajectory_name::String; kwargs...)
-    clear_vars()
+    GC.gc(true)
     GLMakie.closeall() #close all windows for rerun!
 
     active_trajectory = get_data_alt(trajectory_name)
@@ -80,13 +80,6 @@ function go(trajectory_name::String; kwargs...)
     screen_ref[] = screen
 
     display(screen, window)
-end
-
-function clear_vars()
-    for x in Base.@locals
-        x = nothing
-    end
-    GC.gc(true)
 end
 
 function main_window(active_trajectory::Trajectory,
@@ -492,15 +485,15 @@ function main_window(active_trajectory::Trajectory,
     function render_superquadrics_view(scene, transition, inspector, alignment)
         t_ap = create_position_alignment_observer(transition, alignment)
 
-        invariant = lift((x, y) -> active_trajectory[x][y], selected_invariant, transition)
+        invariant = lift((x, y) -> select_invariant(active_trajectory, x)[y], selected_invariant, transition)
         points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
         spa = lift(x -> stretchedPrincipalAxes[x], transition)
 
         colors = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, invariant)
-        sq = Observable(superquadric.(1.0, points[], spa[], 3.0, 0.1)[:]
-        )
-        calc_sq = on(spa, update=true, weak=true) do s
-            sq[] = superquadric.(1.0, points[], s, 3.0, 0.1)[:]
+
+        sq = Observable(collect(superquadric.(1.0, points[], spa[], 3.0, 0.1)))
+        calc_sq = on(spa, weak=true) do s
+            sq[] = collect(superquadric.(1.0, points[], s, 3.0, 0.1))
         end
 
         il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
@@ -565,7 +558,6 @@ function main_window(active_trajectory::Trajectory,
     function atom_widgets(init_time, figure, grid)
         gg = GridLayout(grid[end+1, :])
 
-        opts = sort(collect(keys(scalars)))
         time, t_slider = time_slider(init_time, figure)
 
         gg[1, 1:2] = t_slider
@@ -585,7 +577,7 @@ function main_window(active_trajectory::Trajectory,
         scalar_range = lift(x -> scalar_ranges[x], scalar_selection)
 
         currentRange = Observable((0.0, 1.0))
-        currentCMap = Observable(to_colormap(:reds))
+        currentCMap = Observable(atom_cmap)
 
         onany(render_selection, scalar_range, volRange, volume_cmap, update=true) do rs, sr, vr, vc
             if rs == "Volume" || rs == "Superquadric"
