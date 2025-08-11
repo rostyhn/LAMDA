@@ -1,5 +1,3 @@
-using PyCall
-
 function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
     #s2 changes s1 stays
     s = mean(x, dims=1)
@@ -18,10 +16,8 @@ end
 
 function check_directory_format(dir)
     contents = readdir(dir)
-    return "distances.pickle" in contents &&
-           "transitions.pickle" in contents &&
-           "connectivity.pickle" in contents &&
-           "aligned_positions.pickle" in contents
+    return "ase_dict.pickle" in contents &&
+           "transitions.pickle" in contents
 end
 
 function get_data_folders(path)
@@ -35,8 +31,8 @@ function get_data_folders(path)
     return dirs
 end
 
-function readDistanceMatrixFolder(folder)
-    dms = Dict()
+function readDistanceMatrixFolder(folder)::Dict{String,Matrix{Float32}}
+    dms = Dict{String,Matrix{Float32}}()
     for dmf in readdir(folder, join=true)
         # each distance matrix should be in a folder with the matrix
         dm_name = basename(dmf)
@@ -84,27 +80,33 @@ function get_data_alt(trajectory_name)
     cachePath = joinpath(rootPath, "cache")
 
     if isdir(dataPath)
-        trajectories = Dict(map(x -> (basename(x), x), get_data_folders(dataPath)))
+        trajectories = Dict{String,String}(map(x -> (basename(x), x), get_data_folders(dataPath)))
 
         if trajectory_name in keys(trajectories)
             t = trajectories[trajectory_name]
 
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
-
-            # TODO: make sure these exist!
-            distances_pickle = joinpath(t, "distances.pickle")
-            connectivity_pickle = joinpath(t, "connectivity.pickle")
             transitions_pickle = joinpath(t, "transitions.pickle")
-            alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
-
-            distanceMatrices = Dict{Int16,Matrix{Float32}}(Pickle.npyload(distances_pickle))
-            connectivity = Dict{Int16,Matrix{Float32}}(Pickle.npyload(connectivity_pickle)) # i,j == 1 iff atoms i,j are connected 
             transitions = Vector{Transition}(Pickle.npyload(transitions_pickle))
-            rawAlignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(alignedPositions_pickle))
+
+            ase_pickle = joinpath(t, "ase_dict.pickle")
+
+            distances_pickle = joinpath(t, "distances.pickle")
+            alignedPositions_pickle = joinpath(t, "aligned_positions.pickle")
+            data_pickles = [alignedPositions_pickle, distances_pickle]
+
+            # if any do not exist, compute them in python before continuing
+            if any(x -> !isfile(x), data_pickles)
+                @show "Processing ASE data..."
+                py"process_dataset"(transitions, ase_pickle, t)
+            end
+
+            load_pickle = py"load_pickle"o
+
+            rawAlignedPositionsMatrices = pycall(load_pickle, PyDict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}, alignedPositions_pickle)
 
             # convert to point3fs & generate kd trees
             println("Computing KDTrees.")
-            alignedPositions = Dict{Transition,Tuple{Vector{Point3f},Vector{Point3f}}}()
             alignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}()
             # https://github.com/KristofferC/NearestNeighbors.jl
             # can store kdTrees as indices only, relinking positions when needed
@@ -119,15 +121,14 @@ function get_data_alt(trajectory_name)
 
                 alignedPositionsMatrices[t] = (p1, p2)
 
-                pp1, pp2 = (map(x -> Point3f(x), eachrow(p1)), map(x -> Point3f(x), eachrow(p2)))
-                alignedPositions[t] = (pp1, pp2)
-                kdTrees[t] = (KDTree(pp1), KDTree(pp2))
+                kdTrees[t] = (KDTree(p1; reorder=false), KDTree(p2; reorder=false))
             end
+            rawAlignedPositionsMatrices = nothing
 
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 println("Loading $(trajectory_name) from cache.")
-                @time trajectory_data = JLD2.jldopen(cache_file) do file
-                    Dict{Any,Any}(file["trajectory_data"])
+                @time invariants = JLD2.jldopen(cache_file) do file
+                    Dict{String,Any}(file["trajectory_data"])
                 end
             else
                 println("Calculating data for $(trajectory_name).")
@@ -135,26 +136,19 @@ function get_data_alt(trajectory_name)
                     mkdir(cachePath)
                 end
 
+                distanceMatrices = pycall(load_pickle, PyDict{State,Matrix{Float32}}, distances_pickle)
                 println("Calculating transition invariants.")
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
 
-                trajectory_data = Dict{Any,Any}("t1" => t1,
+                invariants = Dict{String,Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
                     "stretchedPrincipalAxes" => stretchedPrincipalAxes)
 
-                @time JLD2.jldsave("$(cache_file)"; trajectory_data,)
+                distanceMatrices = nothing
+                @time JLD2.jldsave("$(cache_file)"; invariants,)
             end
-
-            # no need to cache data that is already available
-            trajectory_data["distanceMatrices"] = distanceMatrices
-            trajectory_data["connectivity"] = connectivity
-            trajectory_data["transitions"] = transitions
-            trajectory_data["alignedPositionsMatrices"] = alignedPositionsMatrices
-            trajectory_data["alignedPositions"] = alignedPositions
-            trajectory_data["kdTrees"] = kdTrees
-            trajectory_data["name"] = trajectory_name
 
             # can probably clean this up to use one generic function
             dmf = joinpath(t, "dms")
@@ -167,8 +161,8 @@ function get_data_alt(trajectory_name)
                 return error("No distance matrices found.")
             end
 
-            scalars = Dict()
-            scalar_ranges = Dict()
+            scalars = Dict{String,Dict{Transition,Array{Float32}}}()
+            scalar_ranges = Dict{String,Tuple{Float32,Float32}}()
             # load in scalars if present
             scalarf = joinpath(t, "scalars")
             if isdir(scalarf)
@@ -188,27 +182,9 @@ function get_data_alt(trajectory_name)
                 println("No scalars folder found, ignoring.")
             end
 
-            per_t_scalars = Dict()
-            per_t_scalar_ranges = Dict()
-            # load in scalars if present
-            tscalarf = joinpath(t, "per_t_scalars")
-            if isdir(tscalarf)
-                println("Loading per-transition scalars...")
-                for sf in readdir(tscalarf, join=true)
-                    fname, ext = splitext(sf)
-                    if isfile(sf) && ext == ".pickle"
-                        d = Dict{Transition,Float32}(Pickle.npyload(sf))
-                        per_t_scalars[basename(fname)] = d
-                        per_t_scalar_ranges[basename(fname)] = extrema(collect(values(d)))
-                    end
-                end
-            else
-                println("No scalars folder found, ignoring.")
-            end
-
             # load in alignment features
             alignmentf = joinpath(t, "alignment")
-            alignments = Dict()
+            alignments = Dict{String,Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}}()
 
             if isdir(alignmentf)
                 for af in readdir(alignmentf, join=true)
@@ -222,20 +198,25 @@ function get_data_alt(trajectory_name)
                 return error("Alignment folder not found.")
             end
 
-            # TODO: check for correctness
-            trajectory_data["alignments"] = alignments
-            trajectory_data["scalars"] = scalars
-            trajectory_data["scalar_ranges"] = scalar_ranges
-            trajectory_data["per_t_scalars"] = per_t_scalars
-            trajectory_data["per_t_scalar_ranges"] = per_t_scalar_ranges
-            trajectory_data["dms"] = dms
+            trajectory_data = Trajectory(name=trajectory_name, transitions=transitions,
+                alignedPositionsMatrices=alignedPositionsMatrices,
+                kdTrees=kdTrees,
+                t1=invariants["t1"],
+                t2=invariants["t2"],
+                t3=invariants["t3"],
+                stretchedPrincipalAxes=invariants["stretchedPrincipalAxes"],
+                dms=dms,
+                scalars=scalars,
+                scalar_ranges=scalar_ranges,
+                alignments=alignments,
+                t_to_idx=Dict(reverse.(collect(enumerate(transitions)))))
+            GC.gc(true)
         else
             return error("Trajectory \"$(trajectory_name)\" not found in data folder.")
         end
     else
         return error("Data folder does not exist.")
     end
-
     return trajectory_data
 end
 
@@ -247,7 +228,7 @@ function get_mmap_file(key)
     return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end
 
-function export_cluster(trajectory_name, path, cluster, ca, ci)
+function export_cluster(trajectory_name, path, cluster, ca, cd, ci, t_list)
     cluster_name = get_val(ca, "titles", cluster)
     cluster_notes = get(ca["notes"], cluster, nothing)
 
@@ -262,15 +243,15 @@ function export_cluster(trajectory_name, path, cluster, ca, ci)
         write(nf, cluster_notes)
     end
 
-    children = get_children(ci, cluster)
-    if !isnothing(children)
+    # this will break export
+    children = get_children(cd, cluster)
+    if !isnothing(children) && all(map(x -> x in ci.clusters, collect(children)))
         lc, rc = children
-        export_cluster(trajectory_name, cp, lc, ca, ci)
-        export_cluster(trajectory_name, cp, rc, ca, ci)
+        export_cluster(trajectory_name, cp, lc, ca, cd, ci, t_list)
+        export_cluster(trajectory_name, cp, rc, ca, cd, ci, t_list)
     else
-
         # get children of cluster
-        ts = get_transitions(ci, cluster)
+        ts = get_transitions(t_list, cluster)
         dpath = get_ase_dict_path(trajectory_name)
         export_t = export_transitions()
         export_t(dpath, cp, ts)
@@ -301,7 +282,7 @@ function export_transitions()
     return py"export_transitions"
 end
 
-function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, ca, exportPath; overwrite=false)
+function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, t_list, ca, exportPath; overwrite=false)
     if !isdir(exportPath)
         mkdir(exportPath)
     else
@@ -311,7 +292,7 @@ function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, ca, expor
         end
     end
 
-    root = get_root(ci)
-    export_cluster(trajectory_name, exportPath, root, ca, ci)
+    root = get_root(cd)
+    export_cluster(trajectory_name, exportPath, root, ca, cd, ci, t_list)
 
 end

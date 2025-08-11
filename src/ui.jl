@@ -1,5 +1,3 @@
-using Makie
-
 function clear_layout(layout::GridLayout)
     # Begin by removing the blocks from the recursive GridLayout structure
     items_to_remove = []
@@ -66,15 +64,15 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
         points[] = points[]
     end
 
-    s = scatter!(scene,
+    s = meshscatter!(scene,
         points;
         color=colors,
         colorrange=scalar_range,
         lowclip=:transparent,
         colormap=cmap,
-        depthsorting=true, # depth sorting slows things down a lot... what if we passed the points sorted by z order?
-        #inspector_label=(self, i, p) -> "Atom $(i); weight: $(self.color[][i])",
-        markersize=30)
+        ssao=true,
+        transparency=true,
+        markersize=0.7)
 
     s.inspectable[] = false
     update_cam!(parent_scene(s))
@@ -82,65 +80,66 @@ function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Fl
     return s
 end
 
-function simple_arrow_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, time::Observable{Float64}, cmap, vel::Observable{Vector{GeometryBasics.Point{3,Float32}}}, mobilityClusters::Observable{Vector{Float32}})
-    int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
-    velocities = lift(x -> 20.0 * x, vel)
+function simple_arrow_view!(scene,
+    ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}},
+    time::Observable{Float64},
+    cmap,
+    vel::Observable{Vector{GeometryBasics.Point{3,Float32}}},
+    correlation::Observable{Vector{Float32}},
+    corrThreshold::Observable{Float64})
 
-    velocityMagnitudes = lift(x -> norm.(x), velocities)
-    magnitudeRange = lift(x -> extrema(x), velocityMagnitudes)
-    points = Observable(Point3f.(eachrow(int_pos[])))
+    # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time) # median is moving for debugging
 
-    colorVector = Observable(Vector{Makie.ColorTypes.RGBA{Float64}}(undef, length(velocities[])))
-
-    on(int_pos) do ip
-        points.val = Point3f.(eachrow(ip))
-        points[] = points[]
-        velocities[] = velocities[]
+    # use this function to set any variables that need to be equal length in a makie plot, need velocities, points and colors
+    # i know its annoying to use a tuple, but its the only way to prevent crashes
+    d = @lift begin
+        points = Point3f.(eachrow($ap[1])) .+ ($vel .* $time)
+        velocities = $vel .* ($correlation .>= Ref($corrThreshold))
+        return points, velocities, $correlation
     end
 
-    atom_mobility_clusters_cmap = resample_cmap(:seaborn_bright, 20)
-
-    getAlpha(value, clusterId, range) = clusterId == 1 ? 0 : max(get(cmap, floor(Int32, min((value - range[1]) / (range[2] - range[1]), 1.0) * 99) + 1, ColorTypes.RGBA(0, 0, 0, -1.0)).alpha, 0.0)
-
-    colorVector[] = ColorTypes.RGBA{Float64}.(
-        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :r),
-        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :g),
-        getproperty.(atom_mobility_clusters_cmap[trunc.(Int32, mobilityClusters[])], :b),
-        getAlpha.(velocityMagnitudes[], trunc.(Int32, mobilityClusters[]), Ref(magnitudeRange[]))) # ugliest solution i could think of....
-
-    s = arrows!(scene, points, velocities;
-        color=colorVector,
+    h = arrows!(scene,
+        lift(x -> x[1], d),
+        lift(x -> x[2], d);
+        color=lift(x -> x[3], d),
         arrowsize=1.2,
+        colorrange=lift(x -> (x, 1.0), corrThreshold),
+        colormap=cmap,
+        lowclip=:transparent,
         transparency=true,
         inspectable=false,
     )
 
-    h = meshscatter!(scene,
-        points;
-        color=:gray,
-        colorrange=(1, 1),
+    v = meshscatter!(scene,
+        lift(x -> x[1], d);
+        color=lift(x -> x[3], d),
+        colorrange=lift(x -> (0.0, x), corrThreshold),
         marker=:Sphere,
-        alpha=0.3,
+        colormap=:gist_yarg,
         lowclip=:transparent,
         highclip=:transparent,
         transparency=true,
         inspectable=false,
         markersize=0.2)
 
-    h = meshscatter!(scene,
-        points;
-        color=colorVector,
+    s = meshscatter!(scene,
+        lift(x -> x[1], d);
+        color=lift(x -> x[3], d),
         marker=:Sphere,
         transparency=true,
         inspectable=false,
+        lowclip=:transparent,
+        colormap=cmap,
+        colorrange=lift(x -> (x, 1.0), corrThreshold),
         markersize=0.7)
 
     update_cam!(parent_scene(s))
+    center!(parent_scene(s))
 
-    return s
+    return h, s, v
 end
 
-function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; update=false)
+function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
     t = Observable(Transformation())
 
     v_lo = volume!(scene,
@@ -156,6 +155,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         transparency=true,
         transformation=t,
         shading=NoShading,
+        inspectable=false,
         colorrange=lift(x -> (x[1], 0.0), volumeRange))
 
     v_hi = volume!(scene,
@@ -171,7 +171,9 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         transparency=true,
         shading=NoShading,
         transformation=t,
+        inspectable=false,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
+
 
     # FIXME sometimes the volume will get rotated so hard it disappears
     # could be a floating point precision issue?
@@ -189,10 +191,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation; 
         update_cam!(parent_scene(v_lo))
     end=#
 
-    v_hi.inspectable[] = false
-    v_lo.inspectable[] = false
-
-    update_cam!(parent_scene(v_lo))
+    # update_cam!(parent_scene(v_lo))
 
     return v_lo, v_hi
 end
@@ -202,21 +201,21 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
     v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
 
-    lo_sq = Observable(sq[][v_lo[]])
-    lo_col = Observable(colors[][v_lo[]])
+    lo_sq = Observable(view(sq[], v_lo[]))
+    lo_col = Observable(view(colors[], v_lo[]))
 
-    hi_sq = Observable(sq[][v_hi[]])
-    hi_col = Observable(colors[][v_hi[]])
+    hi_sq = Observable(view(sq[], v_hi[]))
+    hi_col = Observable(view(colors[], v_hi[]))
 
     on(v_lo) do idx
-        lo_sq.val = sq[][idx]
-        lo_col[] = colors[][idx]
+        lo_sq.val = view(sq[], idx)
+        lo_col[] = view(colors, idx)
         notify(lo_sq)
     end
 
     on(v_hi) do idx
-        hi_sq.val = sq[][idx]
-        hi_col[] = colors[][idx]
+        hi_sq.val = view(sq, idx)
+        hi_col[] = view(colors, idx)
         notify(hi_sq)
     end
 
@@ -224,11 +223,8 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         scene,
         lo_sq,
         color=lo_col,
-        highclip=:transparent,
-        transparency=true,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
-        fxaa=false
     )
     m_lo.inspectable[] = false
 
@@ -236,39 +232,25 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         scene,
         hi_sq,
         color=hi_col,
-        lowclip=:transparent,
-        transparency=true,
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
-        fxaa=false
     )
+    v = meshscatter!(scene,
+        points;
+        color=:gray,
+        marker=:Sphere,
+        transparency=true,
+        inspectable=false,
+        markersize=0.2)
+
     m_hi.inspectable[] = false
 
     cam_listener = on(lo_sq) do ls
         update_cam!(parent_scene(m_lo))
     end
 
-    # no other way around this other than this super ugly way, 
-    # makie renders this as one plot, which the inspector grabs a bounding box around
-    #=sqHoverListener = on(events(scene).mouseposition) do mp
-        if is_mouseinside(scene)
-            # might be able to use onpick()
-            plot, idx = pick(scene)
-            if plot != Nothing
-                pos = position_on_plot(plot, idx)
-                if !isnan(pos)
-                    inspector.plot.text[] = string(plot.color[][idx])
-                    inspector.plot.visible[] = true
-                    inspector.plot.position = mp
-                end
-            end
-            return Consume(true)
-        end
-        return Consume(false)
-    end=#
-
     update_cam!(parent_scene(m_lo))
-    return [cam_listener], [], [m_lo, m_hi]
+    return [cam_listener], [], [m_lo, m_hi, v]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
@@ -307,4 +289,27 @@ end
 function set_text(txtbox, s)
     txtbox.displayed_string[] = s
     txtbox.stored_string[] = s
+end
+
+function minimize_screen(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
+    vd = GLFW.GetVideoMode(monitor)
+    h = div(vd.height, 2)
+    w = div(vd.width, 2)
+    # should place the window in the top left corner of the screen
+    GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), 0.0, 0.0, w, h, GLFW.DONT_CARE)
+end
+
+function move_window(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
+    vd = GLFW.GetVideoMode(monitor)
+    mp = GLFW.GetMonitorPos(monitor)
+    h = div(vd.height, 2)
+    w = div(vd.width, 2)
+    GLFW.HideWindow(s.glscreen)
+    #GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), mp.x, mp.y, w, h, GLFW.DONT_CARE)
+    GLFW.SetWindowMonitor(s.glscreen, monitor, mp.x, mp.y, vd.width, vd.height, vd.refreshrate)
+    yield()
+
+    GLFW.ShowWindow(s.glscreen)
+    @show s.glscreen, GLFW.GetWindowMonitor(s.glscreen)
+    #minimize_screen(s, monitor=monitor)
 end

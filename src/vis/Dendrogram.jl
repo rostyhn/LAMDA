@@ -1,6 +1,3 @@
-using Makie
-using StatsBase
-
 function get_st_clusters(merge, i, clusterIdx)
     if i < 0
         return Set(clusterIdx[-i])
@@ -15,22 +12,53 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
+# basically assigns each cluster a unique id
+function get_hierarchy(hc)
+    c2idx = Dict{Set{Int},Int}()
+    clusterIdx = collect(eachindex(hc.order))
+    c_to_parent = Dict{Set{Int},Set{Int}}()
+    parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
+
+    for i in 1:size(hc.merges, 1)
+        pg = get_st_clusters(hc.merges, i, clusterIdx)
+        c2idx[pg] = i
+
+        lt = hc.merges[i, 1]
+        rt = hc.merges[i, 2]
+
+        lg = get_st_clusters(hc.merges, lt, clusterIdx)
+        rg = get_st_clusters(hc.merges, rt, clusterIdx)
+
+        if lt < 0
+            c2idx[lg] = i
+        end
+        if rt < 0
+            c2idx[rg] = i
+        end
+
+        c_to_parent[lg] = pg
+        c_to_parent[rg] = pg
+        parent_to_c[pg] = (lg, rg)
+
+    end
+
+    return c2idx, c_to_parent, parent_to_c
+end
+
+# renders the clustering at the specified cutoff value
 function treepositions(hc, cutoff)::Tuple{
     Vector{Any},
     Vector{Set{Int}},
-    Dict{Set{Int},Set{Int}},
-    Dict{Set{Int},Tuple{Set{Int},Set{Int}}},
     Dict{Set{Int},Vector{Int}}}
 
-    clusterIdx = cutree(hc; h=cutoff)
+    # guarantees consistent labelling with main cluster info 
+    clusterIdx = collect(eachindex(hc.order))
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
 
     lines = []
     clusters = []
-    c_to_parent = Dict{Set{Int},Set{Int}}()
-    parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
-    c_to_idx = Dict{Set{Int},Vector{Int}}()
+    c2lx = Dict{Set{Int},Vector{Int}}()
     lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
@@ -57,72 +85,69 @@ function treepositions(hc, cutoff)::Tuple{
             push!(lines, (Point2(x2, max(cutoff, y2)), Point2(x2, ypos)))
             push!(clusters, rg)
 
-            lg_ar = get(c_to_idx, lg, [])
-            rg_ar = get(c_to_idx, rg, [])
-            pg_ar = get(c_to_idx, pg, [])
+            lg_ar = get(c2lx, lg, [])
+            rg_ar = get(c2lx, rg, [])
+            pg_ar = get(c2lx, pg, [])
 
-            c_to_idx[lg] = push!(lg_ar, lx - 1)
-            c_to_idx[rg] = push!(rg_ar, lx + 1)
-            c_to_idx[pg] = push!(pg_ar, lx)
+            c2lx[lg] = push!(lg_ar, lx - 1)
+            c2lx[rg] = push!(rg_ar, lx + 1)
+            c2lx[pg] = push!(pg_ar, lx)
 
-            c_to_parent[lg] = pg
-            c_to_parent[rg] = pg
-            parent_to_c[pg] = (lg, rg)
             lx += 3
         end
     end
 
-    return lines, clusters, c_to_parent, parent_to_c, c_to_idx
+    return lines, clusters, c2lx
 end
 
 # gets line positions for a specified branch in the dendrogram 
-function branch(ci::ClusterInfo, root::Set{Int})
+function branch(cd::ClusterData, root::Set{Int})
     children = Ref([])
-    dfs(ci, root, children)
+    dfs(cd, root, children)
 
     new_lines = []
     corrected_children = []
 
+    heights = Dict{Set{Int},Float64}()
     for c in children[]
-        idx = ci.c_to_idx[c]
+        idx = cd.c2lx[c]
         for i in 1:length(idx)
             push!(corrected_children, c)
         end
-        append!(new_lines, map(x -> ci.lines[x], idx))
+
+        lines = view(cd.lines, idx)
+        h = maximum(map(x -> x[2][2], lines))
+        heights[c] = h
+        append!(new_lines, lines)
     end
 
-    return corrected_children, new_lines
+    return corrected_children, new_lines, heights
 end
 
 function dendrogram!(ax,
     cluster_info,
+    cluster_data,
     hovered::MaybeObservable{Set{Int}},
     cluster_annotations;
     hover_callbackfn=(x -> ()),
     colormap=:tab20,
     rootcolor=:black,
     on_click=(x -> ()),
+    on_cutoff_line_drag=(x -> ()),
+    cutoff_reset=false,
     kwargs...)
 
     ax.xgridvisible = false
     ax.ygridvisible = false
 
-    cmap = to_colormap(colormap)
-
     dendrogram = @lift begin
         clusters = $(cluster_info).clusters
         lines = $(cluster_info).lines
-        cutoff = $(cluster_info).cutoff
 
         colors = []
         for c in clusters
-            if length(c) == 1
-                clusterIdx = first(collect(c))
-                color = cmap[mod1(clusterIdx, length(cmap))]
-            else
-                color = to_color(rootcolor)
-            end
-            push!(colors, set_color_alpha(color, 0.3))
+            color = cluster_color(to_value(cluster_data), c)
+            push!(colors, set_color_alpha(color, 0.6))
         end
 
         # to get label idx just divide by 2
@@ -130,18 +155,18 @@ function dendrogram!(ax,
             return clusters[div(i, 2)]
         end
 
-        all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines))
+        all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines), init=[])
         min_x, max_x = extrema(all_x)
-        all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines))
+        all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines), init=[])
         min_y, max_y = extrema(all_y)
-        cutoff_line = ([min_x, max_x], [min_y, min_y])
+        cut_line = ([min_x, max_x], [min_y, min_y])
 
         cl_to_idx = Dict{Set{Int},Int}()
         for (i, c) in enumerate(clusters)
             cl_to_idx[c] = i
         end
 
-        return lines, colors, cutoff_line, cl_to_idx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
+        return lines, colors, cut_line, cl_to_idx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
     end
 
     highlighted = []
@@ -154,7 +179,7 @@ function dendrogram!(ax,
 
     function on_hover(plt, idx, pos)
         cl = dendrogram[][5](2)
-        if div(idx, 2) < length(dendrogram[][6])
+        if div(idx, 2) <= length(dendrogram[][6])
             cl = dendrogram[][5](idx)
         end
         hover_callbackfn(cl)
@@ -175,14 +200,18 @@ function dendrogram!(ax,
         empty!(highlighted)
 
         if !isnothing(hov)
-            for c in collect(hov)
-                if Set(c) in keys(c_dict[])
+            children = Ref([])
+            dfs(to_value(cluster_data), hov, children)
+            for c in children[]
+                if c in keys(c_dict[])
                     idx = c_dict[][Set(c)]
                     ogColor = d_colors.val[idx]
                     d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
                     push!(highlighted, (idx, ogColor))
                 end
             end
+            # mark children for gc, don't trust julia to do anything
+            children = nothing
         end
         d_colors[] = d_colors[]
         notify(d_colors)
@@ -196,38 +225,84 @@ function dendrogram!(ax,
 
     m_events = addmouseevents!(ax.scene)
 
+    cutoff_line::Observable{Tuple{Vector{Float64},Vector{Float64}}} = Observable(dendrogram[][3])
+
+    on(dendrogram) do d
+        # reset cutoff line
+        if cutoff_reset
+            cutoff_line[] = (d[3][1], [0, 0])
+        else
+            cutoff_line[] = (d[3][1], cutoff_line[][2])
+        end
+    end
+
+    cutoff_hovered = Observable(false)
+    dragging = Ref(false)
+
+    # add cutoff line
+    l = lines!(ax,
+        lift(x -> x[1], cutoff_line),
+        lift(x -> x[2], cutoff_line);
+        linewidth=5,
+        color=lift(x -> (x) ? to_color(colorant"#D3D3D3") : to_color(:grey), cutoff_hovered))
+    l.inspectable[] = false
+
     on(m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
-            if !isnothing(hovered[])
+            if !isnothing(hovered[]) && !cutoff_hovered[]
                 on_click(hovered[])
             end
         elseif e.type === MouseEventTypes.over
-            mp = mouseposition_px(ax.scene)
-            plot, idx = pick(ax, mp, 10)
+            plot, idx = pick(ax, 10)
             if isnothing(plot) && !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
             end
+
+            if plot == l
+                cutoff_hovered[] = true
+            else
+                cutoff_hovered[] = false
+            end
+        elseif e.type === MouseEventTypes.leftdoubleclick
+            cc = deepcopy(d_colors[])
+            d_colors[] = map(x -> set_color_alpha(x, 1.0), d_colors[])
+            notify(d_colors)
+            save("$(time()).pdf", ax.scene, backend=CairoMakie, update=false)
+            d_colors[] = cc
+            notify(d_colors)
         elseif e.type == MouseEventTypes.out
             if !isnothing(hovered[])
                 hovered.val = nothing
                 notify(hovered)
             end
+        elseif e.type == MouseEventTypes.leftdragstart
+            mp = mouseposition(ax.scene)
+            plot, idx = pick(ax, mp)
+            if cutoff_hovered[]
+                dragging[] = true
+            end
+        elseif e.type == MouseEventTypes.leftdrag
+            if dragging[]
+                px, py = float.(mouseposition(ax))
+                y = max(0.0, py)
+                cutoff_line[] = (cutoff_line[][1], [y, y])
+                notify(cutoff_line)
+            end
+        elseif e.type == MouseEventTypes.leftdragstop
+            if dragging[]
+                px, py = float.(mouseposition(ax))
+                dragging[] = false
+                on_cutoff_line_drag(max(0.0, py))
+            end
         end
     end
-
-    # add cutoff line
-    l = lines!(ax, lift(x -> x[3][1], dendrogram), lift(x -> x[3][2], dendrogram);
-        linestyle=:dash,
-        color=:grey)
-
-    l.inspectable[] = false
 
     # add listeners to reset limits whenever something changes
     @lift begin
         xlo, xhi = $dendrogram[7]
         ylo, yhi = $dendrogram[8]
         xlims!(ax, (xlo - 1), (xhi + 1))
-        ylims!(ax, (0.0, yhi + 0.1))
+        ylims!(ax, (-5, yhi + 0.1))
     end
 end

@@ -6,22 +6,22 @@ You need to install the Python environment manager `poetry`([https://python-poet
 
 To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
 
-`go` has some keyword parameters as well. 
+`go` has some keyword parameters as well.
+
 | parameter | type | purpose |
+|-----------|------|---------|
 | `chunk_size` | `Int` | sets how many volumes get processed at a time |
 | `init_h_cutoff` | `Float` | sets the initial height cutoff value for the clustering |
 | `align_with` | `String` | sets the initial feature values used to align the transitions |
 | `distance_matrix` | `String` | sets which distance matrix to initially render |
 
+ 
 ## Expected data format 
 Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** The following is an example data directory: 
 ```
 trajectory_name/ # used as input to go()
-    distances.pickle # atom-atom distance matrices per state; Dict{Int,Matrix{Float}}
     transitions.pickle # list of transitions; Vector{Tuple{Int,Int}}
-    connectivity.pickle # atom-atom connectivity per state; Dict{Int, Matrix{Float}}
-    aligned_positions.pickle # positions per transition; Dict{Tuple{Int,Int}, Matrix{Float}}
-    t_ase_dict.pickle # ASE data per transition; Dict{Tuple{Int,Int}, Tuple{Atoms, Atoms}}
+    ase_dict.pickle # ASE data per state; Dict{Int, Atoms}
 
     dms/ 
         - some_distance_metric/
@@ -29,7 +29,7 @@ trajectory_name/ # used as input to go()
     alignment/
         - some_features.pickle # alignment features; Dict{Tuple{Int, Int}, Tuple{Matrix{Float}, Matrix{Float}}
     scalars/ # optional
-        - some_scalar.pickle # per-atom scalar values; Dict{Tuple{Int,Int}, Tuple{Vector{Float},Vector{Float}}}
+        - some_scalar.pickle # per-atom scalar values; Dict{Tuple{Int,Int}, Vector{Float}}
     per_t_scalars/ # optional
         - some_scalar.pickle # per-transition scalar values; Dict{Tuple{Int,Int}, Float}}
 

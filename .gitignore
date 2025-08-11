@@ -7,3 +7,5 @@ export/
 .ipynb_checkpoints
 .venv/
 poetry.lock
+
+.pdf

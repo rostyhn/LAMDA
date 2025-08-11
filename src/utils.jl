@@ -1,4 +1,3 @@
-using GLMakie: ScreenConfig
 function pair_array(v)
     pairs = Vector{Pair{Any,Any}}()
     for i in 1:length(v)-1
@@ -69,8 +68,8 @@ function set_color_alpha(c, a)
     return RGBAf(c.r, c.g, c.b, a)
 end
 
-function cycle_colormap(i, cmap)
-    return cmap[mod1(i, length(cmap))]
+function cycle_colormap(i, cmap; alpha=1.0)
+    return set_color_alpha(cmap[mod1(i, length(cmap))], alpha)
 end
 
 # leaving this an example

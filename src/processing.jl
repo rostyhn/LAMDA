@@ -1,6 +1,3 @@
-using StatsBase, SparseArrays, Distances, LinearAlgebra
-using ProgressMeter
-
 function buildBonds(positions, bondDelta, connectivity)
     cartesians = findall(isone, connectivity)
     indices = Tuple.(cartesians)
@@ -14,61 +11,20 @@ function calc_bonds(connectivity)
     return Tuple.(findall(isone, connectivity))
 end
 
-
-# Moment feature map
-function moment_map(diagram, max_level, H::Int64)
-    # For H0, just compute lifetime moments
-    if H == 0
-        numMoments = max_level
-        mu = zeros(numMoments)
-        #y = persistenceDiagram[:,2] - persistenceDiagram[:,1]
-        y = persistence.(diagram[H+1])
-        pop!(y)
-        #@show last(y)
-        for i = 1:max_level
-            mu[i] = sum((y .^ i)) / sqrt(factorial(i))
-        end
-        return mu
-    else
-        numMoments = Int(max_level * (max_level + 1) / 2)
-        mu = zeros(numMoments)
-
-        mcount = 1
-        x = birth.(diagram[H+1])
-        y = persistence.(diagram[H+1])
-
-        for i = 1:max_level
-            for j = 1:i
-                mu[mcount] = sum((x .^ (i - j)) .* (y .^ j)) * sqrt(binomial(i, j) / factorial(i))
-                mcount += 1
-            end
-        end
-
-        return mu
-    end
-end
-
 function invLerp(a, b, v)
     return (v - a) / (b - a)
-end
-
-function moment_map(diagram, max_level)
-    M0 = moment_map(diagram, max_level, 0)
-    M1 = moment_map(diagram, max_level, 1)
-    M2 = moment_map(diagram, max_level, 2)
-    return vcat(M0, M1, M2)
 end
 
 function computeTransitionInvariants(
     transitions::Vector{Transition},
     alignedPositions::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}},
-    distances::Dict{Int16,Matrix{Float32}}
+    distances::PyDict{State,Matrix{Float32}}
 )::Tuple{Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Float32}},
     Dict{Transition,Vector{Float32}},Dict{Transition,Vector{Vector{Vec3f}}}}
 
-    transitionInvariants1 = Dict{Transition,Vector}()
-    transitionInvariants2 = Dict{Transition,Vector}()
-    transitionInvariants3 = Dict{Transition,Vector}()
+    transitionInvariants1 = Dict{Transition,Vector{Float32}}()
+    transitionInvariants2 = Dict{Transition,Vector{Float32}}()
+    transitionInvariants3 = Dict{Transition,Vector{Float32}}()
     stretchedPrincipalAxes = Dict{Transition,Vector{Vector{Vec3f}}}()
 
     @showprogress for t in transitions
@@ -90,10 +46,10 @@ function computeTransitionInvariants(
                     continue
                 end
 
-                deltaXmn = aPos1[n, :] - aPos1[m, :]
+                deltaXmn = view(aPos1, n, :) - view(aPos1, m, :)
                 D = D + (deltaXmn * transpose(deltaXmn) * weights[m, n])
 
-                deltaxmn = aPos2[n, :] - aPos2[m, :]
+                deltaxmn = view(aPos2, n, :) - view(aPos2, m, :)
                 A = A + (deltaxmn * transpose(deltaXmn) * weights[m, n])
             end
             F[m] = A * inv(D)
@@ -130,17 +86,3 @@ function computeTransitionInvariants(
     return transitionInvariants1, transitionInvariants2, transitionInvariants3, stretchedPrincipalAxes
 
 end
-
-"""
-sort_transitions(rel, seq, dm)
-sorts transitions relative to their distance to the specified transition using
-distance matrix dm
-"""
-function sort_transitions(rel::Transition, seq::Vector{Transition}, dm::Matrix{Float32})
-    # get row of rel
-    idx = findfirst(item -> item == rel, seq)
-    row = dm[idx, :]
-
-    return map((x) -> x[2], sort(collect(zip(row, seq)), by=first))
-end
-

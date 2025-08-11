@@ -1,4 +1,3 @@
-using Observables
 const TITLE_HOTKEY = Keyboard.t
 
 function scratchpad!(
@@ -6,7 +5,7 @@ function scratchpad!(
     loc,
     selected_transitions::Observable{Set{Transition}},
     cluster_info::Observable{ClusterInfo},
-    cluster_data::Observable{ClusterData},
+    cluster_data::ClusterData,
     render_views,
     render_selection,
     scalar_selection,
@@ -16,12 +15,21 @@ function scratchpad!(
     rel_t_to_idx,
     calculators,
     cluster_annotations,
-    window_inspector;
+    window_inspector,
+    c2corr;
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
     on_click=(x) -> (),
-    markersize=150
-)
+    markersize=200)
+
+    plot_theme = Theme(MeshScatter=(inspectable=false, markercolor=to_color(:blue)),
+        fontsize=18.0,
+        inspectable=true,
+        markercolor=to_color(:blue))
+
+    ct = Makie.merge(theme_latexfonts(), plot_theme)
+
+    set_theme!(ct)
     ax = Axis(loc, backgroundcolor=:transparent, title="Scratchpad")
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
@@ -31,10 +39,6 @@ function scratchpad!(
     # run once on creation to bind axis
     reset_limits!(ax)
     center!(ax.scene)
-
-    ins = DataInspector(ax)
-
-    cluster_cmap = to_colormap(CLUSTER_COLORS)
 
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
     idx_to_obj = Observable{Vector{Union{Set{Int},Transition}}}(Union{Set{Int},Transition}[]) # gets transition from plotted idx
@@ -135,7 +139,7 @@ function scratchpad!(
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
         scene = views[][v_idx]
-
+        # Makie.free seems to destroy theme object...
         Makie.free(scene)
         delete!(obj_to_idx[], obj)
     end
@@ -161,33 +165,16 @@ function scratchpad!(
         end
     end
 
-
-    on(cluster_info) do ci
-        clusters = filter(x -> x isa Set{Int}, collect(keys(obj_to_idx[])))
-        for c in clusters
-            delete_obj!(c, rendered_idxes, views, obj_to_idx, num_objs)
-        end
-
-        assignments = ci.assignments
-        #=for t in keys(rt_to_idx)
-            plt_idx = rt_to_idx[t]
-            t_idx = rel_t_to_idx[t]
-            node_color = cycle_colormap(assignments[t_idx], cluster_cmap)
-            colors.val[plt_idx] = set_color_alpha(node_color, 0.6)
-        end=#
-        empty!(selected_clusters[])
-        selected_clusters[] = selected_clusters[]
-    end
-
-
     nodes = scatter!(ax, points, marker=:rect, visible=false)
     nodes.inspectable[] = false
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
     # guarantees updated version of clusterinfo
-    function get_t_cluster(idx)
-        x = lift(y -> Set(y.assignments[idx]), cluster_info)
+    function get_t_cluster(obj)
+        # gets current cluster assigned to idx
+        idx = rel_t_to_idx[obj]
+        x = lift(y -> y.a2c[y.assignments[idx]], cluster_info)
         xval = x[]
         Observables.clear(x)
         return xval
@@ -218,7 +205,11 @@ function scratchpad!(
     end
 
     viewports = Ref([])
+    frame_colors = Ref([])
     on(idx_to_obj) do idxes
+        # @show Makie.current_default_theme()
+        # @show ax.scene.theme
+
         ts = collect(selected_transitions[])
         s_alignment = Observable(calculators["Alignment"](ts))
         for (idx, obj) in enumerate(idxes)
@@ -234,14 +225,38 @@ function scratchpad!(
                 # viewports need to be in data space
                 push!(viewports[], pos)
 
-                ax3d = Scene(ax.scene, show_axis=false,
+                set_theme!(ct)
+                ax3d = Scene(ax.scene,
+                    show_axis=false,
                     viewport=vp,
-                    backgroundcolor=:black,
+                    backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
                     clear=true,
                     size=(ms, ms))
 
                 cam3d!(ax3d)
                 translate!(ax3d, 0, 0, 100)
+
+                frame_color = @lift begin
+                    if obj isa Transition
+                        # get the currently assigned color of this transition
+                        return set_color_alpha(cluster_color($(cluster_info), obj), 0.6)
+                    else
+                        # gets the assigned cluster color
+                        return set_color_alpha(cluster_color(cluster_data, obj), 0.6)
+                    end
+                end
+
+                frame = wireframe!(
+                    ax3d,
+                    Rect2f(-1, -1, 2, 2),
+                    transformation=(:xy, 0),
+                    color=frame_color,
+                    overdraw=true,
+                    linewidth=10,
+                    space=:clip,
+                    depth_shift=1.0e-3,
+                    inspectable=false
+                )
 
                 inspector = DataInspector(ax3d)
                 m_events = addmouseevents!(ax3d)
@@ -251,12 +266,11 @@ function scratchpad!(
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
                         deactivate_interaction!(ax, :create_text)
-                        show_inspector(obj)
+                        #show_inspector(obj)
 
                         if obj isa Transition
                             hovered[] = obj
-                            t_idx = rel_t_to_idx[obj]
-                            cluster = get_t_cluster(t_idx)
+                            cluster = get_t_cluster(obj)
                             notify(hovered)
                         else
                             cluster = obj
@@ -266,7 +280,6 @@ function scratchpad!(
                     elseif event.type === MouseEventTypes.out
                         hovered[] = nothing
                         notify(hovered)
-                        hide_inspector()
                         hovered_cluster[] = nothing
                         notify(hovered_cluster)
 
@@ -295,8 +308,7 @@ function scratchpad!(
                     elseif event.type === MouseEventTypes.leftdoubleclick
                         cluster = obj
                         if obj isa Transition
-                            t_idx = rel_t_to_idx[obj]
-                            cluster = get_t_cluster(t_idx)
+                            cluster = get_t_cluster(obj)
                         end
                         on_click(cluster)
                     end
@@ -309,10 +321,11 @@ function scratchpad!(
                         foreach(x -> delete!(ax3d, x), plt_rendered)
                         empty!(plt_rendered)
                         if rs == "Volume"
-                            v_lo, v_hi = render_views[rs](ax3d, Observable(obj))
+                            v_lo, v_hi = render_views[rs](ax3d, obj)
                             plt_rendered = [v_lo, v_hi]
                         elseif rs == "Atom"
-                            s = render_views["Atom"](ax3d, Observable(obj),
+                            s = render_views["Atom"](ax3d,
+                                Observable(obj),
                                 scalar_selection,
                                 atom_time,
                                 s_alignment)
@@ -328,12 +341,14 @@ function scratchpad!(
                         center!(ax3d)
                     end
                 else
-                    ts = get_transitions(cluster_info[], obj)
+                    # get transitions from general cluster object instead of the current one
+                    ts = get_transitions(t_list, obj)
                     alignment = calculators["Alignment"](ts)
-                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment))
+                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment), Observable(c2corr[][obj]))
                     center!(ax3d)
                 end
                 push!(views[], ax3d)
+                push!(frame_colors[], frame_color)
                 push!(rendered_idxes[], plt_idx)
             end
         end
@@ -346,7 +361,7 @@ function scratchpad!(
             pos = position_on_plot(nodes, plt_idx, apply_transform=false)
             x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
 
-            vp = Rect2i(x - (ms[] / 2), y - (ms[] / 2), ms[], ms[])
+            vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
             vp = GeometryBasics.intersect(vp, svp)
             vw = widths(vp)
 
@@ -359,35 +374,44 @@ function scratchpad!(
         end
     end
 
-    highlighted = []
-    on(hovered) do hov
-        for (v_idx) in highlighted
-            views[][v_idx].backgroundcolor[] = to_color(:black)
+    highlighted = Ref([])
+    onany(hovered, hovered_cluster) do hov, hc
+        if isnothing(hov) && isnothing(hc)
+            for (v_idx, ogColor) in highlighted[]
+                frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
+            end
+            empty!(highlighted[])
         end
-        empty!(highlighted)
 
         if !isnothing(hov) && hov in keys(obj_to_idx[])
             v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx].backgroundcolor[] = to_color(:grey)
-            push!(highlighted, v_idx)
+            ogColor = frame_colors[][v_idx][]
+            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+            push!(highlighted[], (v_idx, ogColor))
+        end
+
+        if !isnothing(hc)
+            ts = filter(x -> x isa Transition, collect(keys(obj_to_idx[])))
+            for t in ts
+                c = get_cluster_of_transition(cluster_info[], t)
+                if length(intersect(c, hc)) > 0
+                    v_idx = obj_to_idx[][t] - 1
+                    ogColor = frame_colors[][v_idx][]
+                    frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+                    push!(highlighted[], (v_idx, ogColor))
+                end
+            end
+
+            if hc in keys(obj_to_idx[])
+                v_idx = obj_to_idx[][hc] - 1
+                ogColor = frame_colors[][v_idx][]
+                frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+                push!(highlighted[], (v_idx, ogColor))
+            end
         end
     end
 
-    highlighted_clusters = []
-    on(hovered_cluster) do hov
-        for (v_idx) in highlighted_clusters
-            views[][v_idx].backgroundcolor[] = to_color(:black)
-        end
-        empty!(highlighted_clusters)
-
-        if !isnothing(hov) && hov in keys(obj_to_idx[])
-            v_idx = obj_to_idx[][hov] - 1
-            views[][v_idx].backgroundcolor[] = to_color(:grey)
-            push!(highlighted_clusters, v_idx)
-        end
-    end
-
-    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=idx_to_obj)
+    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=obj_to_idx)
 end
 
 @kwdef mutable struct Scratchpad
@@ -413,10 +437,12 @@ function group_scratchpad(s::Scratchpad)
     for (bIdx, box) in enumerate(boxes)
         title = string(bIdx)
         children = Union{Set{Int},Transition,String,Int}[]
-        for (idx, vp) in enumerate(s.views[])
+        for (obj, idx) in s.objs[]
+            v_idx = idx - 1
+            vp = s.views[][v_idx]
             # seen lets us place things at bottom level
             if vp in box && !(idx in seen)
-                push!(children, s.objs[][idx])
+                push!(children, obj)
                 push!(seen, idx)
             end
         end
@@ -447,9 +473,9 @@ function group_scratchpad(s::Scratchpad)
     top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
 
     loose = Union{Set{Int},Transition,String}[]
-    for (i, c) in enumerate(s.objs[])
-        if !(i in seen)
-            push!(loose, c)
+    for (obj, idx) in s.objs[]
+        if !(idx in seen)
+            push!(loose, obj)
         end
     end
 
@@ -462,30 +488,30 @@ function group_scratchpad(s::Scratchpad)
     return top_level, hierarchy, loose, titles
 end
 
-function export_scratchpad(s, ci, ep, dpath)
+function export_scratchpad(s, t_list, ep, dpath)
     # export loose data in top folder
     top_level, hierarchy, loose, titles = group_scratchpad(s)
     if !isempty(loose)
-        export_scratchpad_children(dpath, ep, loose, ci)
+        export_scratchpad_children(dpath, ep, loose, t_list)
     end
 
     for b in top_level
-        export_scratchpad_children_recurse(b, hierarchy, ci, ep, dpath, titles)
+        export_scratchpad_children_recurse(b, hierarchy, t_list, ep, dpath, titles)
     end
 end
 
-function export_scratchpad_children_recurse(bIdx, hierarchy, ci, parent_dir, dpath, titles)
+function export_scratchpad_children_recurse(bIdx, hierarchy, t_list, parent_dir, dpath, titles)
     cf = joinpath(parent_dir, titles[bIdx])
     if !isdir(cf)
         mkdir(cf)
     end
     children = hierarchy[bIdx]
-    export_scratchpad_children(dpath, cf, children, ci)
+    export_scratchpad_children(dpath, cf, children, t_list)
     bChildren = filter(x -> x isa Int, children)
-    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, ci, cf, dpath, titles), bChildren)
+    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, t_list, cf, dpath, titles), bChildren)
 end
 
-function export_scratchpad_children(dpath, p, children, ci)
+function export_scratchpad_children(dpath, p, children, t_list)
     # write notes in folder
     notes = filter(x -> x isa String, children)
     if !isempty(notes)
@@ -499,7 +525,7 @@ function export_scratchpad_children(dpath, p, children, ci)
     clusters = filter(x -> x isa Set{Int}, children)
     transitions = filter(x -> x isa Transition, children)
 
-    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(ci, x), clusters), init=[]))
+    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(t_list, x), clusters), init=[]))
 
     if !isempty(ts)
         export_t = export_transitions()

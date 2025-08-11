@@ -1,16 +1,14 @@
-function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
-    window = Figure(size=(400, 400))
+function build_reduction_window(active_trajectory::Trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
+    set_theme!(UI_THEME)
+    window = Figure(size=(1920, 1080))
 
     menu_bar = top_bar(window, "Reduction", 2)
 
     # only need transitions and distance matrix
-    dms = active_trajectory["dms"]
-    transitionSequence = active_trajectory["transitions"]
+    dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
+    transitionSequence::Vector{Transition} = active_trajectory.transitions
 
-    t_to_idx = Dict()
-    for (i, t) in enumerate(transitionSequence)
-        t_to_idx[t] = i
-    end
+    t_to_idx::Dict{Transition,Int} = active_trajectory.t_to_idx
 
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
@@ -28,7 +26,6 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     end
 
     cluster_groups = @lift begin
-
         # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
         assignments = cutree($clustering, h=$h_cutoff)
         groups = Dict{Int,Vector{Int}}()
@@ -48,17 +45,14 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
         m = dms[$selected_dm]
-        rm = zeros(Float32, size(m))
-
         # gets the correct idx 
+        rm = view(m, $clustering.order, $clustering.order)
         idx_to_mtx = zeros(Int, size(m)[1])
         for (i, r) in enumerate($clustering.order)
-            rm[i, :] .= m[r, :][$clustering.order]
             idx_to_mtx[r] = i
         end
-
         # get minimum and maximum of entire matrix for cmap
-        fl = vec(m)
+        fl = vec(m) #vec doesn't allocate
         return rm, idx_to_mtx, (minimum(fl), maximum(fl))
     end
 
@@ -80,7 +74,12 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
 
     go_btn = Button(window, label="Explore")
 
-    control_grid[1, 1] = hgrid!(Label(window, "Selected distance matrix"), dm_menu, cutoff_label, cutoff_tb, go_btn)
+    control_grid[1, 1] = hgrid!(
+        Label(window, "Selected matrix"),
+        dm_menu,
+        cutoff_label,
+        cutoff_tb,
+        go_btn)
 
     hist_ax = Axis(control_grid[2, 1],
         title="Average intra-cluster distance",
@@ -92,13 +91,16 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    hm = heatmap!(hm_ax, lift(x -> x[1], reordered_matrix), colorrange=lift(x -> x[3], reordered_matrix))
+    hm = heatmap!(hm_ax,
+        lift(x -> x[1], reordered_matrix),
+        colorrange=lift(x -> x[3], reordered_matrix),
+        colormap=DISTANCE_MATRIX_COLORMAP)
 
     # draw clusters on screen and also calculate some stats on each group
     rendered_clusters = []
     avgs = @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        cmap = to_colormap(CLUSTER_COLORS)
+        cmap = CLUSTER_COLORMAP
         avgs = []
         for (c, ts_idx) in $cluster_groups
             idx_to_mtx = $reordered_matrix[2]
@@ -108,8 +110,7 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
             hi = maximum(m_idx)
 
             p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[mod1(c, length(cmap))])
-            mat = $reordered_matrix[1]
-            vals = mat[m_idx, m_idx]
+            vals = view($reordered_matrix[1], m_idx, m_idx)
             utri = triu!(trues(size(vals)))
 
             push!(avgs, mean(vec(vals[utri])))
@@ -130,17 +131,16 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     # apply reduction
     reduced = @lift begin
         n = length(collect(keys($cluster_groups)))
-        redmat = zeros(Float32, (n, n))
-        red_t_list = []
-        red_t_to_idx = Dict()
+        red_t_list = Transition[]
+        red_t_to_idx = Dict{Transition,Int}()
         idxes = zeros(Int, n)
         for (i, (clusterIdx, g)) in enumerate($cluster_groups)
             # find reference t
             m = dms[$selected_dm]
-            dist_sum = map(x -> sum(m[x, :][g]), g)
+            dist_sum = map(x -> sum(view(m, x, g)), g)
             ref_t_idx = argmin(dist_sum)
 
-            ts = map(x -> transitionSequence[x], g)
+            ts = view(transitionSequence, g)
 
             ref_t = ts[ref_t_idx]
             t_idx = t_to_idx[ref_t] # get absolute transitionSequence index
@@ -149,14 +149,15 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
             push!(red_t_list, ref_t)
             red_t_to_idx[ref_t] = i
             idxes[i] = mtx_idx
-
         end
 
-        for (i, mtx_idx) in enumerate(idxes)
-            redmat[i, :] .= $reordered_matrix[1][mtx_idx, idxes]
-        end
+        redmat = view($reordered_matrix[1], idxes, idxes)
 
-        return redmat, red_t_list # will still need to order, but this can be done later
+        # should just do this here and pass it down to main instead of doing it twice
+        clustering = hclust(redmat, linkage=:ward, branchorder=:barjoseph)
+        rm = view(redmat, clustering.order, clustering.order)
+
+        return redmat, red_t_list, rm
     end
 
     red_hm_ax = Axis(window[3, 2],
@@ -166,18 +167,25 @@ function build_reduction_window(active_trajectory, on_click, screen_ref; init_h_
     hidedecorations!(red_hm_ax)
     deregister_interaction!(red_hm_ax, :rectanglezoom)
 
-    red_hm = heatmap!(red_hm_ax, lift(x -> x[1], reduced), colorrange=lift(x -> x[3], reordered_matrix))
+    red_hm = heatmap!(red_hm_ax, lift(x -> x[3], reduced),
+        colorrange=lift(x -> x[3], reordered_matrix),
+        colormap=DISTANCE_MATRIX_COLORMAP)
 
     on(go_btn.clicks) do n
-        active_trajectory["selected_dm"] = Observable(reduced[][1])
-        active_trajectory["reduced_transitions"] = reduced[][2]
-        active_trajectory["selected_dm_name"] = selected_dm[]
-        empty!(window)
-        GC.gc()
-        on_click(active_trajectory, screen_ref; init_h_cutoff=init_h_cutoff, kwargs...)
+        @time on_click(active_trajectory,
+            screen_ref,
+            reduced[][1],
+            reduced[][2],
+            selected_dm[];
+            init_h_cutoff=init_h_cutoff,
+            kwargs...)
     end
 
-    Colorbar(window[4, 1:2], limits=lift(x -> x[3], reordered_matrix), label="Distances", vertical=false)
+    Colorbar(window[4, 1:2],
+        limits=lift(x -> x[3], reordered_matrix),
+        label="Distances",
+        vertical=false,
+        colormap=DISTANCE_MATRIX_COLORMAP)
 
     #linkaxes!(hm_ax, red_hm_ax)
 
