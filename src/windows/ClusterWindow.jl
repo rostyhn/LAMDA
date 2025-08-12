@@ -127,11 +127,17 @@ function build_cluster_window(
         highlight_borders=hb,
         on_click=on_transition_select)
 
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations PGDOWN - Decrease size of visualizations ARROW UP - Show parent cluster"
+
     rg = hgrid!(render_menu, scalar_menu)
+
+    lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
+    colsize!(lg, 1, Auto(true, 4))
+    colsize!(lg, 2, Auto(false))
 
     window[3, 1:2] = hgrid!(
         vgrid!(rg, cbar),
-        vgrid!(t_slider, hgrid!(lm, btn_centroid))
+        vgrid!(lg, hgrid!(lm, btn_centroid))
     )
 
     mat_grid = GridLayout()
@@ -167,7 +173,6 @@ function build_cluster_window(
     dendrogram_ax = Axis(mat_grid[2, 1], tellwidth=false, tellheight=false)
     deregister_interaction!(dendrogram_ax, :rectanglezoom)
     hidedecorations!(dendrogram_ax)
-
 
     dendrogram!(dendrogram_ax,
         cluster_data,

@@ -313,3 +313,15 @@ function move_window(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
     @show s.glscreen, GLFW.GetWindowMonitor(s.glscreen)
     #minimize_screen(s, monitor=monitor)
 end
+
+function inline_image(fig, img, tooltip::String)
+    sc = Scene(fig.scene)
+    campixel!(sc)
+    ax = Axis(sc, aspect=AxisAspect(1))
+    hidedecorations!(ax)
+    hidespines!(ax)
+    disable_interactions(ax)
+    
+    image!(ax, rotr90(img), inspector_label=(x,y,z) -> tooltip)
+    return ax
+end

@@ -104,15 +104,15 @@ function snapshot_view(render_fn)
 end
 
 function disable_interactions(ax)
-    deactivate_interaction!(ax, :limitreset)
-    deactivate_interaction!(ax, :dragpan)
-    deactivate_interaction!(ax, :scrollzoom)
+    for x in keys(interactions(ax))
+        deactivate_interaction!(ax, x)
+    end
 end
 
 function enable_interactions(ax)
-    activate_interaction!(ax, :limitreset)
-    activate_interaction!(ax, :dragpan)
-    activate_interaction!(ax, :scrollzoom)
+    for x in keys(interactions(ax))
+        activate_interaction!(ax, x)
+    end
 end
 
 function filesafestr(s::String)

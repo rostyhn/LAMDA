@@ -22,10 +22,14 @@ function scratchpad!(
     on_click=(x) -> (),
     markersize=200)
 
-    plot_theme = Theme(MeshScatter=(inspectable=false, markercolor=to_color(:blue)),
+    plot_theme = Theme(MeshScatter=(
+            inspectable=false,
+            markercolor=to_color(:blue)
+        ),
         fontsize=18.0,
         inspectable=true,
-        markercolor=to_color(:blue))
+        markercolor=to_color(:blue)
+    )
 
     ct = Makie.merge(theme_latexfonts(), plot_theme)
 

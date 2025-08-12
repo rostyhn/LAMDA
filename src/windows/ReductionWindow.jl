@@ -3,7 +3,6 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
     window = Figure(size=(1920, 1080))
 
     menu_bar = top_bar(window, "Reduction", 2)
-
     # only need transitions and distance matrix
     dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
     transitionSequence::Vector{Transition} = active_trajectory.transitions
