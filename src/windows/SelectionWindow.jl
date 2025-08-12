@@ -80,26 +80,9 @@ function build_selection_window(
         end
     end
 
-    function cw_on_downleft(cc)
-        children = get_children(cluster_data, cc[])
-        if !isnothing(children)
-            lc, rc = children
-            if lc != cc[]
-                cc[] = lc
-                notify(cc)
-            end
-        end
-    end
-
-    function cw_on_downright(cc)
-        children = get_children(cluster_data, cc[])
-        if !isnothing(children)
-            lc, rc = children
-            if rc != cc[]
-                cc[] = rc
-                notify(cc)
-            end
-        end
+    function switch_cluster(x, cc)
+        cc[] = x
+        notify(cc)
     end
 
 
@@ -108,6 +91,8 @@ function build_selection_window(
     function on_show_cluster_click(clusters)
         cc = Observable(clusters)
         scd = @lift begin
+            # adding a print statement makes it work...
+            print("")
             ref_t = find_group_centroid($cc, cluster_data, t_list)
             ts = get_transitions(t_list, $cc)
             mat, t_to_mtx = get_local_matrix(cluster_data, ts)
@@ -145,8 +130,7 @@ function build_selection_window(
             on_window_hover=on_cluster_window_hover,
             on_cluster_select=on_cluster_select,
             on_up=cw_on_up,
-            on_left=cw_on_downleft,
-            on_right=cw_on_downright,
+            switch_cluster=switch_cluster,
         )
         s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
         display(s, w)

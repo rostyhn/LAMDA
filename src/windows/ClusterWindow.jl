@@ -21,6 +21,7 @@ function build_cluster_window(
     on_right=(x) -> (),
     on_downleft=(x) -> (),
     on_downright=(x) -> (),
+    switch_cluster=(x, y) -> (),
     fig_size=(1920, 1080)
 )
     set_theme!(UI_THEME)
@@ -167,6 +168,7 @@ function build_cluster_window(
     deregister_interaction!(dendrogram_ax, :rectanglezoom)
     hidedecorations!(dendrogram_ax)
 
+
     dendrogram!(dendrogram_ax,
         cluster_data,
         all_cluster_data,
@@ -174,6 +176,7 @@ function build_cluster_window(
         cluster_annotations,
         on_cutoff_line_drag=update_colors;
         cutoff_reset=true,
+        on_click=(x -> switch_cluster(x, clusters)),
         colormap=CLUSTER_COLORS)
 
     hm_ax, hm = heatmap(mat_grid[3, 1],

@@ -12,7 +12,7 @@ function get_st_clusters(merge, i, clusterIdx)
     return union(c_lt, c_rt)
 end
 
-# basically assigns each cluster a unique id
+# assigns each cluster a unique id
 function get_hierarchy(hc)
     c2idx = Dict{Set{Int},Int}()
     clusterIdx = collect(eachindex(hc.order))
