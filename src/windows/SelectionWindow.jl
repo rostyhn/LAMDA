@@ -17,8 +17,6 @@ function build_selection_window(
     widgets,
     invariantRange,
     matColLabel,
-    #per_t_scalars,
-    #per_t_scalar_ranges,
     calculators,
     trajectory_name,
     inspector;
@@ -85,7 +83,7 @@ function build_selection_window(
         notify(cc)
     end
 
-
+    # get rid of cc as an observable, update scd directly
     num_open_windows = 0
     open_cluster_windows = Dict{Int,Screen}()
     function on_show_cluster_click(clusters)

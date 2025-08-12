@@ -32,6 +32,7 @@ using Observables
 using Clustering: Clustering, hclust, cutree, kmedoids
 using NearestNeighbors
 using UMAP
+using MultivariateStats
 
 include("constants.jl")
 include("data_types.jl")

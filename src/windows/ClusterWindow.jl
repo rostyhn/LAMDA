@@ -242,14 +242,17 @@ function build_cluster_window(
 end
 
 function layout_menu(window, cluster_data)
-    opts = ["Grid", "UMAP"]
+    opts = ["MDS", "Grid", "UMAP"]
     m = Menu(window, options=opts, default=first(opts))
     pts = @lift begin
         ms = $(m.selection)
         ts = $(cluster_data).ts
         mat = $(cluster_data).mat
 
-        if ms == "UMAP"
+        if ms == "MDS"
+            mds = fit(MDS, transpose(mat); distances=true, maxoutdim=2)
+            points = Point2f.(eachrow(transpose(predict(mds))))
+        elseif ms == "UMAP"
             if length(ts) > 2
                 em = transpose(umap(transpose(mat), 2;
                     metric=:precomputed,
