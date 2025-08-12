@@ -162,7 +162,7 @@ function embedding_view!(
                 t = data[][1][i]
                 foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
                 if sr == "Volume"
-                    render_views[sr](ax3d, Observable(t))
+                    render_views[sr](ax3d, t)
                 elseif sr == "Atom"
                     render_views["Atom"](ax3d,
                         Observable(t),
