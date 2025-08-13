@@ -127,11 +127,16 @@ end
 
 
 function apply_alignment(rot_tuple, ap_tuple)
-    shift, rot, flip = rot_tuple
-    s1 = (ap_tuple[1] .- shift) * rot
-    s1 = s1 .- mean(s1, dims=1)
-    s2 = (ap_tuple[2] .- shift) * rot
-    s2 = s2 .- mean(s2, dims=1)
+    rot, flip = rot_tuple
+    s1, s2 = ap_tuple
+
+    @show s1
+    s1 = s1 * rot
+    @show s1
+    #s1 = s1 .- mean(s1, dims=1)
+
+    s2 = s2 * rot
+    #s2 = s2 .- mean(s2, dims=1)
 
     init = flip ? s2 : s1
     final = flip ? s1 : s2
@@ -165,8 +170,8 @@ function pure_align(r1, r2)
     Ra = pinv(r1' * r2) * (r1' * r1)
     F = svd(Ra, full=true, alg=LinearAlgebra.QRIteration())
 
-    Ri = F.U * Diagonal([1, 1, -1]) * F.Vt
     Rb = F.U * F.Vt
+    Ri = F.U * Diagonal([1, 1, clamp(det(Rb), -1, 1)]) * F.Vt
 
     if sum((r1 - r2 * Ri) .^ 2) < sum((r1 - r2 * Rb) .^ 2)
         R = Ri
@@ -188,41 +193,48 @@ function find_group_centroid(clusters, cd::ClusterData, t_list)
     return t_list[cd.clustering.order[ref_t_idx]]
 end
 
+function split_delta(d)
+    pos = ifelse.(d .< Float32(0.0), d .^ 1, Float32(0.0))
+    neg = ifelse.(d .> Float32(0.0), d .^ 1, Float32(0.0))
+
+    return (hcat(pos, neg), hcat(-neg, -pos))
+end
+
 function calculate_alignment(ref_t, ts, posMats, features)
-    rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
+    rot = Dict{Transition,Tuple{Matrix{Float32},Bool,Transition}}()
     ref_s1_pos = posMats[ref_t][1]
 
     ref_s1, ref_s2 = ref_t
     ref_diff = features[ref_s2] - features[ref_s1]
-    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(ref_diff)))
-    ref_s1_shift = mean(ref_s1_com, dims=1)
-    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(ref_diff)))
+    split_ref = split_delta(ref_diff)
 
-    rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false, ref_t)
+    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(split_ref[1])))
+    ref_s1_shift = mean(ref_s1_com, dims=1)
+    ref_s1_com = ref_s1_com .- ref_s1_shift
 
     for t in ts
         if t != ref_t
             s1, s2 = t
             t_diff = features[s2] - features[s1]
+            split_diff = split_delta(t_diff)
 
             t_s1_pos = posMats[t][1]
-            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(t_diff)))
+            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(split_diff[1])))
             t_s1_shift = mean(t_s1_com, dims=1)
-            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos .- t_s1_shift, x), eachcol(t_diff)))
-
+            t_s1_com = t_s1_com .- t_s1_shift
             t_s2_pos = posMats[t][2]
-            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(t_diff)))
+            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(split_diff[2])))
             t_s2_shift = mean(t_s2_com, dims=1)
-            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos .- t_s2_shift, x), eachcol(t_diff)))
+            t_s2_com = t_s2_com .- t_s2_shift
 
             R1, res1 = pure_align(ref_s1_com, t_s1_com)
             R2, res2 = pure_align(ref_s1_com, t_s2_com)
 
             R = (res1 < res2) ? R1 : R2
-            shift = (res1 < res2) ? t_s1_shift : t_s2_shift
-            rot[t] = (shift, R, res1 > res2, ref_t)
+            rot[t] = (R, res1 > res2, ref_t)
         end
     end
 
+    rot[ref_t] = (Matrix(1.0I, 3, 3), false, ref_t)
     return rot
 end
