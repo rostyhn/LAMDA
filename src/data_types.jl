@@ -17,7 +17,7 @@ const Transition = Tuple{Int16,Int16}
     dms::Dict{String,Matrix{Float32}}
     scalars::Dict{String,Dict{Transition,Array{Float32}}}
     scalar_ranges::Dict{String,Tuple{Float32,Float32}}
-    alignments::Dict{String,Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}}
+    alignments::Dict{String,Dict{State,Matrix{Float32}}}
     t_to_idx::Dict{Transition,Int}
 end
 

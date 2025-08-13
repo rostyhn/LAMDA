@@ -163,10 +163,10 @@ end
 
 function pure_align(r1, r2)
     Ra = pinv(r1' * r2) * (r1' * r1)
-    U, S, V = svd(Ra, full=true, alg=LinearAlgebra.QRIteration())
+    F = svd(Ra, full=true, alg=LinearAlgebra.QRIteration())
 
-    Ri = U * Diagonal([1, 1, -1]) * V'
-    Rb = U * V'
+    Ri = F.U * Diagonal([1, 1, -1]) * F.Vt
+    Rb = F.U * F.Vt
 
     if sum((r1 - r2 * Ri) .^ 2) < sum((r1 - r2 * Rb) .^ 2)
         R = Ri
@@ -191,24 +191,29 @@ end
 function calculate_alignment(ref_t, ts, posMats, features)
     rot = Dict{Transition,Tuple{Array{Float32},Matrix{Float32},Bool,Transition}}()
     ref_s1_pos = posMats[ref_t][1]
-    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(features[ref_t][1])))
-    ref_s1_shift = mean(ref_s1_com, dims=1)
 
-    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(features[ref_t][1])))
+    ref_s1, ref_s2 = ref_t
+    ref_diff = features[ref_s2] - features[ref_s1]
+    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(ref_diff)))
+    ref_s1_shift = mean(ref_s1_com, dims=1)
+    ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos .- ref_s1_shift, x), eachcol(ref_diff)))
 
     rot[ref_t] = (ref_s1_shift, Matrix(1.0I, 3, 3), false, ref_t)
 
     for t in ts
         if t != ref_t
+            s1, s2 = t
+            t_diff = features[s2] - features[s1]
+
             t_s1_pos = posMats[t][1]
-            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(features[t][1])))
+            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(t_diff)))
             t_s1_shift = mean(t_s1_com, dims=1)
-            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos .- t_s1_shift, x), eachcol(features[t][1])))
+            t_s1_com = reduce(vcat, map(x -> com(t_s1_pos .- t_s1_shift, x), eachcol(t_diff)))
 
             t_s2_pos = posMats[t][2]
-            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(features[t][2])))
+            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(t_diff)))
             t_s2_shift = mean(t_s2_com, dims=1)
-            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos .- t_s2_shift, x), eachcol(features[t][2])))
+            t_s2_com = reduce(vcat, map(x -> com(t_s2_pos .- t_s2_shift, x), eachcol(t_diff)))
 
             R1, res1 = pure_align(ref_s1_com, t_s1_com)
             R2, res2 = pure_align(ref_s1_com, t_s2_com)

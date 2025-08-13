@@ -184,14 +184,14 @@ function get_data_alt(trajectory_name)
 
             # load in alignment features
             alignmentf = joinpath(t, "alignment")
-            alignments = Dict{String,Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}}()
+            alignments = Dict{String,Dict{State,Matrix{Float32}}}()
 
             if isdir(alignmentf)
                 for af in readdir(alignmentf, join=true)
                     fname, ext = splitext(af)
                     if isfile(af) && ext == ".pickle"
                         alignment_name = basename(fname)
-                        alignments[alignment_name] = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}(Pickle.npyload(af))
+                        alignments[alignment_name] = Dict{State,Matrix{Float32}}(Pickle.npyload(af))
                     end
                 end
             else
