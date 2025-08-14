@@ -9,6 +9,7 @@ function embedding_view!(
     hovered_cluster,
     colors,
     cluster_info;
+    point_margin=5,
     highlight_borders=Observable(false),
     on_click=(x) -> (),
     markersize=Observable(100),
@@ -27,15 +28,41 @@ function embedding_view!(
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
     campixel!(ax.scene)
-
     # invisible scatter plot to set up camera
+    markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
+    jittered_points = @lift begin
+        points = $data[3]
+        final = []
+
+        kd = RangeTree(Matrix{Float64}(undef, 2, 0), 0)
+        ms = 0.5
+
+        for p in points
+            # calculate shifted size of marker
+            np = deepcopy(p)
+            found = false
+
+            while !found
+                overlaps = final[AdaptiveKDTrees.RangeSearch.find_in_range(kd, np, ms)]
+                if length(overlaps) == 0
+                    push!(final, np)
+                    AdaptiveKDTrees.RangeSearch.add_point!(kd, np)
+                    found = true
+                else
+                    po = first(overlaps)
+                    dir = po - np
+                    np -= dir
+                end
+            end
+        end
+        return final
+    end
+
     umap_nodes = scatter!(ax,
-        lift(x -> x[3], data),
+        jittered_points,
         marker=:rect,
         color=:transparent,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
-
-    markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
 
     on(events(ax.scene).keyboardbutton) do event
         if ispressed(ax.scene, Exclusively(Keyboard.page_up))

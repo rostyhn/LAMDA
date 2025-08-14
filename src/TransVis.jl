@@ -31,6 +31,8 @@ using Observables
 
 using Clustering: Clustering, hclust, cutree, kmedoids
 using NearestNeighbors
+using AdaptiveKDTrees
+using AdaptiveKDTrees.RangeSearch
 using UMAP
 using MultivariateStats
 

@@ -2,7 +2,7 @@
 
 julia_version = "1.11.4"
 manifest_format = "2.0"
-project_hash = "c9a5b0c8fae1ea3da36047172126b51b2a3fbda3"
+project_hash = "d5300f3391c5364487b07858402bf2e8c4892d2d"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "7927b9af540ee964cc5d1b73293f1eb0b761a3a1"
@@ -45,6 +45,12 @@ weakdeps = ["SparseArrays", "StaticArrays"]
     [deps.Adapt.extensions]
     AdaptSparseArraysExt = "SparseArrays"
     AdaptStaticArraysExt = "StaticArrays"
+
+[[deps.AdaptiveKDTrees]]
+deps = ["LinearAlgebra", "Statistics"]
+path = "/home/frosty/.julia/dev/AdaptiveKDTrees"
+uuid = "68d1b5e8-2215-47d8-a76e-d1727e222b22"
+version = "0.1.0"
 
 [[deps.AdaptivePredicates]]
 git-tree-sha1 = "7e651ea8d262d2d74ce75fdf47c4d63c07dba7a6"

@@ -255,11 +255,11 @@ function layout_menu(window, cluster_data)
         mat = $(cluster_data).mat
 
         if ms == "MDS"
-            mds = fit(MDS, transpose(mat); distances=true, maxoutdim=2)
+            mds = fit(MDS, mat; distances=true, maxoutdim=2)
             points = Point2f.(eachrow(transpose(predict(mds))))
         elseif ms == "UMAP"
             if length(ts) > 2
-                em = transpose(umap(transpose(mat), 2;
+                em = transpose(umap(mat, 2;
                     metric=:precomputed,
                     min_dist=1,
                     n_neighbors=min(length(ts) - 1, 15)))

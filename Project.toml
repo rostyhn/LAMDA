@@ -4,6 +4,7 @@ authors = ["Baldwin Nsonga <nsonga@informatik.uni-leipzig.de>", "Rostyslav Hnaty
 version = "0.1.0"
 
 [deps]
+AdaptiveKDTrees = "68d1b5e8-2215-47d8-a76e-d1727e222b22"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
