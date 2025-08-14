@@ -70,7 +70,7 @@ function embedding_view!(
         reset_limits!(ax)
         center!(ax.scene)
 
-        alignment = Observable(data[][2])
+        alignment = $data[2]
         for (i, t) in enumerate($data[1])
             pos = position_on_plot(umap_nodes, i, apply_transform=false)
             # x, y is in global pixel coords
@@ -128,19 +128,20 @@ function embedding_view!(
             # initial render
             sr = selected_render[]
             if sr == "Volume"
-                render_views[sr](ax3d, t)
+                render_views[sr](ax3d, t, alignment[t])
             elseif sr == "Atom"
                 render_views["Atom"](ax3d,
-                    Observable(t),
+                    t,
                     selected_scalar,
                     atom_time,
-                    alignment)
+                    alignment[t]
+                )
             else
                 inspector = DataInspector(ax3d)
                 render_views["Superquadric"](ax3d,
-                    Observable(t),
+                    t,
                     inspector,
-                    alignment)
+                    alignment[t])
             end
             center!(ax3d)
             yield()
@@ -157,24 +158,24 @@ function embedding_view!(
     on(selected_render) do sr
         disable_interactions(ax)
         if length(views[]) == length(data[][3])
-            alignment = Observable(data[][2])
+            alignment = data[][2]
             for (i, ax3d) in enumerate(views[])
                 t = data[][1][i]
                 foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
                 if sr == "Volume"
-                    render_views[sr](ax3d, t)
+                    render_views[sr](ax3d, t, alignment[t])
                 elseif sr == "Atom"
                     render_views["Atom"](ax3d,
-                        Observable(t),
+                        t,
                         selected_scalar,
                         atom_time,
-                        alignment)
+                        alignment[t])
                 else
                     inspector = DataInspector(ax3d)
                     render_views["Superquadric"](ax3d,
-                        Observable(t),
+                        t,
                         inspector,
-                        alignment)
+                        alignment[t])
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up

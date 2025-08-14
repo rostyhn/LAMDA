@@ -52,21 +52,11 @@ function scene_switcher(scene, grid, selector, select_fn)
     end
 end
 
-function simple_atom_view!(scene, ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}}, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64})
-    int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time)
-
-    # makes it so the atom view can handle points changing
-    colors = Observable(scalars[])
-    points = Observable(Point3f.(eachrow(int_pos[])))
-    onany(int_pos, scalars) do ip, s
-        points.val = Point3f.(eachrow(ip))
-        colors[] = s
-        points[] = points[]
-    end
-
+function simple_atom_view!(scene, ap, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64})
+    points = lift(x -> Point3f.(eachrow((ap[1] + ((ap[2] - ap[1]) .* x)))), time)
     s = meshscatter!(scene,
         points;
-        color=colors,
+        color=scalars,
         colorrange=scalar_range,
         lowclip=:transparent,
         colormap=cmap,
@@ -139,8 +129,13 @@ function simple_arrow_view!(scene,
     return h, s, v
 end
 
-function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
-    t = Observable(Transformation())
+function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation)
+    t = Transformation()
+
+    R, flip = rotation
+    rr = hcat(R, [0, 0, 0])
+    fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+    t.model[] = Float64.(fr)
 
     v_lo = volume!(scene,
         lift(x -> extrema(x[1]), sampleRanges),
@@ -174,22 +169,10 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
         inspectable=false,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
 
-
-    # FIXME sometimes the volume will get rotated so hard it disappears
-    # could be a floating point precision issue?
     # if called before screen is rendered it crashes
-    #=on(rotation, update=update) do rot
-        shift, R, flip, ref_t = rot
-        rr = hcat(R, [0, 0, 0])
-        fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
 
-        # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
-        t[].origin[] = Float64.(shift)
-        t[].model[] = Float64.(fr)
-
-        notify(t)
-        update_cam!(parent_scene(v_lo))
-    end=#
+    # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
+    update_cam!(parent_scene(v_lo))
 
     # update_cam!(parent_scene(v_lo))
 
@@ -198,8 +181,8 @@ end
 
 function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange, inspector)
     # try to only render visible points, helps with point picking when hovering 
-    v_lo = lift((x, y) -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
-    v_hi = lift((x, y) -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(y)))), 2), colors, points)
+    v_lo = lift(x -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(points)))), 2), colors)
+    v_hi = lift(x -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(points)))), 2), colors)
 
     lo_sq = Observable(view(sq[], v_lo[]))
     lo_col = Observable(view(colors[], v_lo[]))
@@ -321,7 +304,7 @@ function inline_image(fig, img, tooltip::String)
     hidedecorations!(ax)
     hidespines!(ax)
     disable_interactions(ax)
-    
-    image!(ax, rotr90(img), inspector_label=(x,y,z) -> tooltip)
+
+    image!(ax, rotr90(img), inspector_label=(x, y, z) -> tooltip)
     return ax
 end

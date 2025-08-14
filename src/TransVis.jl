@@ -362,7 +362,6 @@ function main_window(active_trajectory::Trajectory,
     filterRange = lift(x -> LinRange(x[1], x[2], 100), volRange)
     volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
     Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
-
     invariantRange = @lift begin
         iv = select_invariant(active_trajectory, $selected_invariant)
         vals = values(iv)
@@ -403,10 +402,11 @@ function main_window(active_trajectory::Trajectory,
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time, alignment)
-        t_ap = create_position_alignment_observer(transition, alignment)
-        res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap
+        # t_ap = create_position_alignment_observer(transition, alignment)
+        res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
+            t_ap = apply_alignment(alignment, alignedPositionsMatrices[transition])
             simple_atom_view!(scene, t_ap,
-                lift((x, y) -> scalars[x][y], selected_scalar, transition),
+                lift(x -> scalars[x][transition], selected_scalar),
                 lift(x -> scalar_ranges[x], selected_scalar),
                 atom_cmap,
                 time)
@@ -414,9 +414,9 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_volume_view(scene::Makie.Scene, transition::Transition)
+    function render_volume_view(scene::Makie.Scene, transition::Transition, alignment)
         # directly indexing the mmap creates a copy, need to use a view
-        vvd = let volumeData = volumeData
+        vvd = let volumeData = volumeData, t_to_idx = t_to_idx
             view(volumeData[], :, t_to_idx[transition])
         end
         vd = reshape(vvd,
@@ -426,7 +426,7 @@ function main_window(active_trajectory::Trajectory,
                 length(sampleRanges[][3])
             )
         )
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange)
+        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, alignment)
     end
 
     function render_movement_view_ts(scene, ts, time, alignment, correlationThreshold)
@@ -484,22 +484,17 @@ function main_window(active_trajectory::Trajectory,
     end
 
     function render_superquadrics_view(scene, transition, inspector, alignment)
-        t_ap = create_position_alignment_observer(transition, alignment)
+        t_ap = apply_alignment(alignment, alignedPositionsMatrices[transition])
+        points = Point3f.(eachrow(t_ap[1]))
 
-        invariant = lift((x, y) -> select_invariant(active_trajectory, x)[y], selected_invariant, transition)
-        points = lift(x -> Point3f.(eachrow(x[1])), t_ap)
-        spa = lift(x -> stretchedPrincipalAxes[x], transition)
+        invariant = lift((x) -> select_invariant(active_trajectory, x)[transition], selected_invariant)
+        spa = stretchedPrincipalAxes[transition]
 
-        colors = lift((xx, y) -> map(x -> y[x], eachindex(xx)), points, invariant)
+        colors = lift(y -> map(x -> y[x], eachindex(points)), invariant)
 
-        sq = Observable(collect(superquadric.(1.0, points[], spa[], 3.0, 0.1)))
-        calc_sq = on(spa, weak=true) do s
-            sq[] = collect(superquadric.(1.0, points[], s, 3.0, 0.1))
-        end
-
+        sq = Observable(collect(superquadric.(1.0, points, spa, 3.0, 0.1)))
         il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
 
-        push!(il, calc_sq)
         return il, is, plots
     end
 
@@ -530,7 +525,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure; default="Volume")
+    function render_menu(figure; default="Atom")
         scene_selector = Observable(default)
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,

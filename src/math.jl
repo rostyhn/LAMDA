@@ -130,16 +130,14 @@ function apply_alignment(rot_tuple, ap_tuple)
     rot, flip = rot_tuple
     s1, s2 = ap_tuple
 
-    @show s1
-    s1 = s1 * rot
-    @show s1
+    s1a = s1 * rot
     #s1 = s1 .- mean(s1, dims=1)
 
-    s2 = s2 * rot
+    s2a = s2 * rot
     #s2 = s2 .- mean(s2, dims=1)
 
-    init = flip ? s2 : s1
-    final = flip ? s1 : s2
+    init = flip ? s2a : s1a
+    final = flip ? s1a : s2a
 
     return (init, final)
 end
@@ -166,20 +164,14 @@ function com(p, weights)
     return sum(p .* weights, dims=1) ./ sum(weights)
 end
 
-function pure_align(r1, r2)
-    Ra = pinv(r1' * r2) * (r1' * r1)
-    F = svd(Ra, full=true, alg=LinearAlgebra.QRIteration())
-
-    Rb = F.U * F.Vt
-    Ri = F.U * Diagonal([1, 1, clamp(det(Rb), -1, 1)]) * F.Vt
-
-    if sum((r1 - r2 * Ri) .^ 2) < sum((r1 - r2 * Rb) .^ 2)
-        R = Ri
-    else
-        R = Rb
-    end
-
-    return R, norm(r1 - r2 * R)
+function pure_align(P, Q)
+    # finds transformation from Q to P
+    H = P' * Q
+    # R = sqrt(H' * H) * inv(H) alternate formulation, not always stable
+    F = svd(H, full=true, alg=LinearAlgebra.QRIteration())
+    R = F.U * Diagonal([1, 1, det(F.U) * det(F.Vt)]) * F.Vt
+    # seems like flip step causes volumes to fail
+    return R, norm(P - Q * R)
 end
 
 # finds the centroid between a group of clusters
@@ -222,6 +214,7 @@ function calculate_alignment(ref_t, ts, posMats, features)
             t_s1_com = reduce(vcat, map(x -> com(t_s1_pos, x), eachcol(split_diff[1])))
             t_s1_shift = mean(t_s1_com, dims=1)
             t_s1_com = t_s1_com .- t_s1_shift
+
             t_s2_pos = posMats[t][2]
             t_s2_com = reduce(vcat, map(x -> com(t_s2_pos, x), eachcol(split_diff[2])))
             t_s2_shift = mean(t_s2_com, dims=1)
