@@ -30,16 +30,16 @@ function embedding_view!(
     campixel!(ax.scene)
     # invisible scatter plot to set up camera
     markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
+
+    p = ax.scene.camera.projection[]
     jittered_points = @lift begin
         points = $data[3]
         final = []
 
         kd = RangeTree(Matrix{Float64}(undef, 2, 0), 0)
-        ms = 0.5
-
-        for p in points
-            # calculate shifted size of marker
-            np = deepcopy(p)
+        ms = (p*($markersize_4d))[1]
+        for pt in points
+            np = deepcopy(pt)
             found = false
 
             while !found
@@ -50,18 +50,28 @@ function embedding_view!(
                     found = true
                 else
                     po = first(overlaps)
-                    dir = po - np
-                    np -= dir
+                    dir = (po - np)
+                    #dir = dir ./ norm(dir)
+                    #po_extent = po - (dir .* ms / 2)
+                    #np_extent = np + (dir .* ms / 2)
+                    np -= dir #np_extent - po_extent 
                 end
             end
         end
-        return final
+        return map(x -> Point3f(x[1], x[2], 0.0), final)
     end
+
+    #=   scatter!(ax,
+          lift(x -> x[3], data),
+          marker=:rect,
+          color=:red,
+          inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
+    =#
 
     umap_nodes = scatter!(ax,
         jittered_points,
         marker=:rect,
-        color=:transparent,
+        color=:transparent,#:blue,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
 
     on(events(ax.scene).keyboardbutton) do event
@@ -274,26 +284,27 @@ function embedding_view!(
         end
     end
 
+
     # if I wanted to do this I could just write C
-    on(events(ax.scene).window_open) do e
-        if !e
-            for l in hover_listener
-                off(l)
-                l = nothing
-            end
-            empty!(hover_listener)
-            #off(c_listener)
-            c_listener = nothing
+    #=  on(events(ax.scene).window_open) do e
+         if !e
+             for l in hover_listener
+                 off(l)
+                 l = nothing
+             end
+             empty!(hover_listener)
+             #off(c_listener)
+             c_listener = nothing
 
-            for ax3d in views[]
-                empty!(ax3d)
-                Makie.free(ax3d)
-            end
-            empty!(views[])
-            empty!(frame_colors[]) # update frame colors
-            GC.gc(true)
-        end
-    end
-
+             for ax3d in views[]
+                 empty!(ax3d)
+                 Makie.free(ax3d)
+             end
+             empty!(views[])
+             empty!(frame_colors[]) # update frame colors
+             GC.gc(true)
+         end
+     end
+    =#
     return umap_nodes
 end
