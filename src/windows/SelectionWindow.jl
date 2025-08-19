@@ -337,6 +337,6 @@ function build_selection_window(
     scg[1, 1] = scratchpad_render_menu
     scg[1, 2] = hgrid!(scalar_menu, scratchpad_t_slider)
     scg[2, 1:2] = sc_cbar
-
+    println("Finished selection window")
     return window
 end

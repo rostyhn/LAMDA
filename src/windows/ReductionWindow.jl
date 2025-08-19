@@ -187,6 +187,6 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     #linkaxes!(hm_ax, red_hm_ax)
-
+    println("Finished Reduction Window")
     return window
 end

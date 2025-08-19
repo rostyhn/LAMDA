@@ -1,3 +1,7 @@
+function get_extents(p, size)
+    return p[1] - size / 2, p[1] + size / 2, p[2] - size / 2, p[2] + size / 2
+end
+
 function embedding_view!(
     loc,
     data,
@@ -31,34 +35,51 @@ function embedding_view!(
     # invisible scatter plot to set up camera
     markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
 
-    p = ax.scene.camera.projection[]
+    # debug vars
+    show_alignment = Observable(true)
+    resolve_overlap = Observable(true)
+
     jittered_points = @lift begin
         points = $data[3]
         final = []
 
-        kd = RangeTree(Matrix{Float64}(undef, 2, 0), 0)
-        ms = (p*($markersize_4d))[1]
-        for pt in points
-            np = deepcopy(pt)
-            found = false
+        if $resolve_overlap
+            proj_marker = $(ax.scene.camera.pixel_space) * $markersize_4d
+            ms = max(proj_marker[1], proj_marker[2])
+            kd = RangeTree(Matrix{Float64}(undef, 2, 0), ms / 2)
 
-            while !found
-                overlaps = final[AdaptiveKDTrees.RangeSearch.find_in_range(kd, np, ms)]
-                if length(overlaps) == 0
-                    push!(final, np)
-                    AdaptiveKDTrees.RangeSearch.add_point!(kd, np)
-                    found = true
-                else
-                    po = first(overlaps)
-                    dir = (po - np)
-                    #dir = dir ./ norm(dir)
-                    #po_extent = po - (dir .* ms / 2)
-                    #np_extent = np + (dir .* ms / 2)
-                    np -= dir #np_extent - po_extent 
+            for pt in points
+                np = deepcopy(pt)
+                found = false
+                iter = 0
+                while !found
+                    overlaps = final[AdaptiveKDTrees.RangeSearch.find_in_range(kd, np, ms / sqrt(pi))]
+                    if length(overlaps) == 0 || iter == 100
+                        push!(final, np)
+                        AdaptiveKDTrees.RangeSearch.add_point!(kd, np)
+                        found = true
+                    else
+                        po = first(overlaps)
+                        dminx, dmaxx, dminy, dmaxy = get_extents(np, ms)
+                        sminx, smaxx, sminy, smaxy = get_extents(po, ms)
+
+                        overlap_x = min(dmaxx, smaxx) - max(dminx, sminx)
+                        overlap_y = min(dmaxy, smaxy) - max(dminy, sminy)
+
+                        dir = np - po
+
+                        if overlap_x < overlap_y
+                            np += Point2f(sign(dir[1]) * overlap_x, 0.0)
+                        else
+                            np += Point2f(0.0, sign(dir[2]) * overlap_y)
+                        end
+                    end
+                    iter += 1
                 end
             end
+            return map(x -> Point3f(x[1], x[2], 0.0), final)
         end
-        return map(x -> Point3f(x[1], x[2], 0.0), final)
+        return map(x -> Point3f(x[1], x[2], 0.0), points)
     end
 
     #=   scatter!(ax,
@@ -90,7 +111,6 @@ function embedding_view!(
     frame_colors = Ref([])
     views = Observable([])
 
-    show_alignment = Observable(true)
     on(events(ax).keyboardbutton) do event
         if event.action == Keyboard.press && event.key == Keyboard.f
             show_alignment[] = !show_alignment[]
@@ -101,6 +121,15 @@ function embedding_view!(
                 println("identity")
             end
         end
+        if event.action == Keyboard.press && event.key == Keyboard.o
+            resolve_overlap[] = !resolve_overlap[]
+            if resolve_overlap[]
+                println("fixing overlap")
+            else
+                println("not fixing overlap")
+            end
+        end
+
     end
 
     @lift begin
