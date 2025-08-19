@@ -32,7 +32,7 @@ function embedding_view!(
     markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
 
     p = ax.scene.camera.projection[]
-    #=jittered_points = @lift begin
+    jittered_points = @lift begin
         points = $data[3]
         final = []
 
@@ -59,7 +59,7 @@ function embedding_view!(
             end
         end
         return map(x -> Point3f(x[1], x[2], 0.0), final)
-    end=#
+    end
 
     #=   scatter!(ax,
           lift(x -> x[3], data),
@@ -69,7 +69,7 @@ function embedding_view!(
     =#
 
     umap_nodes = scatter!(ax,
-        lift(x -> x[3], data),
+        jittered_points,
         marker=:rect,
         color=:transparent,#:blue,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
@@ -149,7 +149,7 @@ function embedding_view!(
             end
 
             # sets to color of original leaves
-            frame_color = Observable(colors[][i])
+            frame_color = Observable(set_color_alpha(colors[][i], 0.6))
             # sets to color of assignment 
             # set_color_alpha(cluster_color(cluster_info, t), 0.6))
 
