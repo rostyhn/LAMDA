@@ -403,11 +403,10 @@ function main_window(active_trajectory::Trajectory,
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene, transition, selected_scalar, time, alignment)
+    function render_atom_view(scene, transition, selected_scalar, time)
         # t_ap = create_position_alignment_observer(transition, alignment)
         res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
-            t_ap = apply_alignment(alignment, alignedPositionsMatrices[transition])
-            simple_atom_view!(scene, t_ap,
+            simple_atom_view!(scene, alignedPositionsMatrices[transition],
                 lift(x -> scalars[x][transition], selected_scalar),
                 lift(x -> scalar_ranges[x], selected_scalar),
                 atom_cmap,
@@ -416,7 +415,7 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_volume_view(scene::Makie.Scene, transition::Transition, alignment)
+    function render_volume_view(scene::Makie.Scene, transition::Transition)
         # directly indexing the mmap creates a copy, need to use a view
         vvd = let volumeData = volumeData, t_to_idx = t_to_idx
             view(volumeData[], :, t_to_idx[transition])
@@ -428,7 +427,7 @@ function main_window(active_trajectory::Trajectory,
                 length(sampleRanges[][3])
             )
         )
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange, alignment)
+        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange)
     end
 
     function render_movement_view_ts(scene, ts, time, alignment, correlationThreshold)
@@ -485,18 +484,19 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_superquadrics_view(scene, transition, inspector, alignment)
-        t_ap = apply_alignment(alignment, alignedPositionsMatrices[transition])
-        points = Point3f.(eachrow(t_ap[1]))
+    function render_superquadrics_view(scene, transition, inspector)
+        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes, selected_invariant = selected_invariant
+            t_ap = alignedPositionsMatrices[transition]
+            points = Point3f.(eachrow(t_ap[1]))
 
-        invariant = lift((x) -> select_invariant(active_trajectory, x)[transition], selected_invariant)
-        spa = stretchedPrincipalAxes[transition]
+            invariant = lift((x) -> select_invariant(active_trajectory, x)[transition], selected_invariant)
+            spa = stretchedPrincipalAxes[transition]
 
-        colors = lift(y -> map(x -> y[x], eachindex(points)), invariant)
+            colors = lift(y -> map(x -> y[x], eachindex(points)), invariant)
 
-        sq = Observable(collect(superquadric.(1.0, points, spa, 3.0, 0.1)))
-        il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
-
+            sq = Observable(collect(superquadric.(1.0, points, spa, 3.0, 0.1)))
+            return superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
+        end
         return il, is, plots
     end
 

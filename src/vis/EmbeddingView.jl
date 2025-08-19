@@ -32,7 +32,7 @@ function embedding_view!(
     markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
 
     p = ax.scene.camera.projection[]
-    jittered_points = @lift begin
+    #=jittered_points = @lift begin
         points = $data[3]
         final = []
 
@@ -59,7 +59,7 @@ function embedding_view!(
             end
         end
         return map(x -> Point3f(x[1], x[2], 0.0), final)
-    end
+    end=#
 
     #=   scatter!(ax,
           lift(x -> x[3], data),
@@ -69,7 +69,7 @@ function embedding_view!(
     =#
 
     umap_nodes = scatter!(ax,
-        jittered_points,
+        lift(x -> x[3], data),
         marker=:rect,
         color=:transparent,#:blue,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
@@ -89,6 +89,19 @@ function embedding_view!(
 
     frame_colors = Ref([])
     views = Observable([])
+
+    show_alignment = Observable(true)
+    on(events(ax).keyboardbutton) do event
+        if event.action == Keyboard.press && event.key == Keyboard.f
+            show_alignment[] = !show_alignment[]
+            notify(show_alignment)
+            if show_alignment[]
+                println("aligned")
+            else
+                println("identity")
+            end
+        end
+    end
 
     @lift begin
         @show "re-rendering"
@@ -121,8 +134,19 @@ function embedding_view!(
                 viewport=vp,
                 backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
                 clear=true,
+                camera=cam3d!,
                 size=(ms, ms))
-            cam3d!(ax3d)
+
+            on(show_alignment, update=true) do showAlignment
+                if showAlignment
+                    R, flip = alignment[t]
+                    rr = hcat(R, [0, 0, 0])
+                    fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+                    ax3d.transformation.model[] = Float64.(fr)
+                else
+                    ax3d.transformation.model[] = Matrix(1.0I, 4, 4)
+                end
+            end
 
             # sets to color of original leaves
             frame_color = Observable(colors[][i])
@@ -165,20 +189,19 @@ function embedding_view!(
             # initial render
             sr = selected_render[]
             if sr == "Volume"
-                render_views[sr](ax3d, t, alignment[t])
+                render_views[sr](ax3d, t)
             elseif sr == "Atom"
                 render_views["Atom"](ax3d,
                     t,
                     selected_scalar,
                     atom_time,
-                    alignment[t]
                 )
             else
                 inspector = DataInspector(ax3d)
                 render_views["Superquadric"](ax3d,
                     t,
                     inspector,
-                    alignment[t])
+                )
             end
             center!(ax3d)
             yield()
@@ -195,24 +218,22 @@ function embedding_view!(
     on(selected_render) do sr
         disable_interactions(ax)
         if length(views[]) == length(data[][3])
-            alignment = data[][2]
             for (i, ax3d) in enumerate(views[])
                 t = data[][1][i]
                 foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
                 if sr == "Volume"
-                    render_views[sr](ax3d, t, alignment[t])
+                    render_views[sr](ax3d, t)
                 elseif sr == "Atom"
                     render_views["Atom"](ax3d,
                         t,
                         selected_scalar,
                         atom_time,
-                        alignment[t])
+                    )
                 else
                     inspector = DataInspector(ax3d)
                     render_views["Superquadric"](ax3d,
                         t,
-                        inspector,
-                        alignment[t])
+                        inspector)
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up

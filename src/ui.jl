@@ -129,14 +129,7 @@ function simple_arrow_view!(scene,
     return h, s, v
 end
 
-function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation)
-    t = Transformation()
-
-    R, flip = rotation
-    rr = hcat(R, [0, 0, 0])
-    fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-    t.model[] = Float64.(fr)
-
+function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
     v_lo = volume!(scene,
         lift(x -> extrema(x[1]), sampleRanges),
         lift(x -> extrema(x[2]), sampleRanges),
@@ -148,7 +141,6 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation)
         algorithm=:absorption,
         fxaa=false,
         transparency=true,
-        transformation=t,
         shading=NoShading,
         inspectable=false,
         colorrange=lift(x -> (x[1], 0.0), volumeRange))
@@ -165,7 +157,6 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange, rotation)
         fxaa=false,
         transparency=true,
         shading=NoShading,
-        transformation=t,
         inspectable=false,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
 

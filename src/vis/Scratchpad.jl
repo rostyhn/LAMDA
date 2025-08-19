@@ -211,11 +211,8 @@ function scratchpad!(
     viewports = Ref([])
     frame_colors = Ref([])
     on(idx_to_obj) do idxes
-        # @show Makie.current_default_theme()
-        # @show ax.scene.theme
-
         ts = collect(selected_transitions[])
-        s_alignment = Observable(calculators["Alignment"](ts))
+        alignment = calculators["Alignment"](ts)
         for (idx, obj) in enumerate(idxes)
             plt_idx = idx + 1
             if !(plt_idx in rendered_idxes[])
@@ -235,10 +232,10 @@ function scratchpad!(
                     viewport=vp,
                     backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
                     clear=true,
+                    camera=cam3d!,
                     size=(ms, ms))
 
-                cam3d!(ax3d)
-                translate!(ax3d, 0, 0, 100)
+                # translate!(ax3d, 0, 0, 100) ? 
 
                 frame_color = @lift begin
                     if obj isa Transition
@@ -329,16 +326,14 @@ function scratchpad!(
                             plt_rendered = [v_lo, v_hi]
                         elseif rs == "Atom"
                             s = render_views["Atom"](ax3d,
-                                Observable(obj),
+                                obj,
                                 scalar_selection,
-                                atom_time,
-                                s_alignment)
+                                atom_time)
                             plt_rendered = [s]
                         else
                             il, is, plots = render_views["Superquadric"](ax3d,
-                                Observable(obj),
+                                obj,
                                 inspector,
-                                s_alignment
                             )
                             plt_rendered = plots
                         end
@@ -355,7 +350,16 @@ function scratchpad!(
                 push!(frame_colors[], frame_color)
                 push!(rendered_idxes[], plt_idx)
             end
+            scene = views[][idx]
+            if obj isa Transition
+                center!(scene)
+                R, flip = alignment[obj]
+                rr = hcat(R, [0, 0, 0])
+                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+                scene.transformation.model[] = Float64.(fr)
+            end
         end
+
     end
 
     onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport) do xlim, ylim, pp, svp
