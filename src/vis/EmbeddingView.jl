@@ -135,13 +135,12 @@ function embedding_view!(
     @lift begin
         @show "re-rendering"
         disable_interactions(ax)
-        hovered[] = nothing
-        notify(hovered)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
         for ax3d in views[]
             Makie.free(ax3d)
         end
+
         empty!(views.val)
         empty!(frame_colors[]) # update frame colors
         GC.gc(true)
@@ -149,6 +148,7 @@ function embedding_view!(
         reset_limits!(ax)
         center!(ax.scene)
 
+        t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
         alignment = $data[2]
         for (i, t) in enumerate($data[1])
             pos = position_on_plot(umap_nodes, i, apply_transform=false)
@@ -195,7 +195,7 @@ function embedding_view!(
             )
 
             m_events = addmouseevents!(ax3d)
-            on(m_events.obs) do event
+            mouse_listener = on(m_events.obs) do event
                 if event.type === MouseEventTypes.over
                     #show_data(ins, umap_nodes, i)
                     hovered[] = t
@@ -234,14 +234,14 @@ function embedding_view!(
             end
             center!(ax3d)
             yield()
-
             push!(views.val, ax3d)
             push!(frame_colors[], frame_color)
         end
-        t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
         notify(views)
-        enable_interactions(ax)
+        hovered[] = nothing
+        notify(hovered)
 
+        enable_interactions(ax)
     end
 
     on(selected_render) do sr
@@ -311,6 +311,7 @@ function embedding_view!(
                 frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
             end
             empty!(highlighted[])
+            return
         end
 
         if !isnothing(hov) && hov in data[][1]

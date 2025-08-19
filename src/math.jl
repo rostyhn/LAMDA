@@ -167,9 +167,9 @@ end
 function pure_align(P, Q)
     # finds transformation from Q to P
     H = P' * Q
-    # R = sqrt(H' * H) * inv(H) alternate formulation, not always stable
-    F = svd(H, full=true, alg=LinearAlgebra.QRIteration())
-    R = F.U * Diagonal([1, 1, det(F.U) * det(F.Vt)]) * F.Vt
+    R = sqrt(H' * H) * inv(H) #alternate formulation, not always stable
+    # F = svd(H, full=true, alg=LinearAlgebra.QRIteration())
+    # R = F.U * Diagonal([1, 1, det(F.U) * det(F.Vt)]) * F.Vt
     # seems like flip step causes volumes to fail
     return R, norm(P - Q * R)
 end
