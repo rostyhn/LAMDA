@@ -180,11 +180,11 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     lo_sq = Observable(view(sq, v_lo[]))
     # in what universe is this sane 
     lo_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
-            collect(zip(view(sq, v_lo[]), view(colors[], v_lo[])))), init=[]))
+            collect(zip(view(sq, v_lo[]), view(colors[], v_lo[])))), init=Float32[]))
 
     hi_sq = Observable(view(sq, v_hi[]))
     hi_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
-            collect(zip(view(sq, v_hi[]), view(colors[], v_hi[])))), init=[]))
+            collect(zip(view(sq, v_hi[]), view(colors[], v_hi[])))), init=Float32[]))
 
     on(v_lo) do idx
         meshes = view(sq, idx)
