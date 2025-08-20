@@ -485,10 +485,12 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_superquadrics_view(scene, transition)
+    function render_superquadrics_view(scene, transition, flip=false)
         il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes, selected_invariant = selected_invariant, active_trajectory = active_trajectory
             t_ap = alignedPositionsMatrices[transition]
-            points = Point3f.(eachrow(t_ap[1]))
+            idx = flip ? 2 : 1
+            points = Point3f.(eachrow(t_ap[idx]))
+            # do the invariant values need to be flipped as well?
 
             invariant = lift((x) -> select_invariant(active_trajectory, x)[transition], selected_invariant)
             spa = stretchedPrincipalAxes[transition]
