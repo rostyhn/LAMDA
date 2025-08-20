@@ -88,11 +88,11 @@ function simple_arrow_view!(scene,
         return points, velocities, $correlation
     end
 
-    h = arrows!(scene,
+    h = arrows3d!(scene,
         lift(x -> x[1], d),
         lift(x -> x[2], d);
         color=lift(x -> x[3], d),
-        arrowsize=1.2,
+        markerscale=1.2,
         colorrange=lift(x -> (x, 1.0), corrThreshold),
         colormap=cmap,
         lowclip=:transparent,
@@ -170,26 +170,38 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
     return v_lo, v_hi
 end
 
-function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange, inspector)
+function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange)
     # try to only render visible points, helps with point picking when hovering 
-    v_lo = lift(x -> getindex.(filter(x -> x[1] < -0.01, collect(zip(x, eachindex(points)))), 2), colors)
-    v_hi = lift(x -> getindex.(filter(x -> x[1] > 0.01, collect(zip(x, eachindex(points)))), 2), colors)
 
-    lo_sq = Observable(view(sq[], v_lo[]))
-    lo_col = Observable(view(colors[], v_lo[]))
+    ip = lift(x -> collect(zip(x, eachindex(points))), colors)
+    v_lo = lift(xx -> getindex.(filter(x -> x[1] < -0.01, xx), 2), ip)
+    v_hi = lift(xx -> getindex.(filter(x -> x[1] > 0.01, xx), 2), ip)
 
-    hi_sq = Observable(view(sq[], v_hi[]))
-    hi_col = Observable(view(colors[], v_hi[]))
+    lo_sq = Observable(view(sq, v_lo[]))
+    # in what universe is this sane 
+    lo_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
+            collect(zip(view(sq, v_lo[]), view(colors[], v_lo[])))), init=[]))
+
+    hi_sq = Observable(view(sq, v_hi[]))
+    hi_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
+            collect(zip(view(sq, v_hi[]), view(colors[], v_hi[])))), init=[]))
 
     on(v_lo) do idx
-        lo_sq.val = view(sq[], idx)
-        lo_col[] = view(colors, idx)
+        meshes = view(sq, idx)
+        sel_col = view(colors[], idx)
+        lo_sq.val = meshes
+
+        lo_col[] = reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])), collect(zip(meshes, sel_col))), init=[])
         notify(lo_sq)
     end
 
-    on(v_hi) do idx
-        hi_sq.val = view(sq, idx)
-        hi_col[] = view(colors, idx)
+    on(v_hi, update=true) do idx
+        meshes = view(sq, idx)
+        sel_col = view(colors[], idx)
+        hi_sq.val = meshes
+
+        hi_col[] = reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])), collect(zip(meshes, sel_col))), init=[])
+
         notify(hi_sq)
     end
 
@@ -199,8 +211,8 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         color=lo_col,
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
+        inspectable=false
     )
-    m_lo.inspectable[] = false
 
     m_hi = mesh!(
         scene,
@@ -208,6 +220,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         color=hi_col,
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
+        inspectable=false
     )
     v = meshscatter!(scene,
         points;
@@ -217,14 +230,12 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         inspectable=false,
         markersize=0.2)
 
-    m_hi.inspectable[] = false
-
     cam_listener = on(lo_sq) do ls
         update_cam!(parent_scene(m_lo))
     end
 
     update_cam!(parent_scene(m_lo))
-    return [cam_listener], [], [m_lo, m_hi, v]
+    return [cam_listener], [lo_sq, hi_sq, lo_col, hi_col], [m_lo, m_hi, v]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)

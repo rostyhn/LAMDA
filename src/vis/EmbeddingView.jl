@@ -224,12 +224,11 @@ function embedding_view!(
                     t,
                     selected_scalar,
                     atom_time,
+                    alignment[t][2]
                 )
             else
-                inspector = DataInspector(ax3d)
                 render_views["Superquadric"](ax3d,
                     t,
-                    inspector,
                 )
             end
             center!(ax3d)
@@ -257,12 +256,11 @@ function embedding_view!(
                         t,
                         selected_scalar,
                         atom_time,
+                        data[][2][t][2]
                     )
                 else
-                    inspector = DataInspector(ax3d)
                     render_views["Superquadric"](ax3d,
-                        t,
-                        inspector)
+                        t)
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up
@@ -337,25 +335,25 @@ function embedding_view!(
 
 
     # if I wanted to do this I could just write C
-    #=  on(events(ax.scene).window_open) do e
-         if !e
-             for l in hover_listener
-                 off(l)
-                 l = nothing
-             end
-             empty!(hover_listener)
-             #off(c_listener)
-             c_listener = nothing
+    #=open_listener = on(events(ax.scene).window_open) do e
+        if !e
+            for l in hover_listener
+                off(l)
+                l = nothing
+            end
+            empty!(hover_listener)
+            #off(c_listener)
+            c_listener = nothing
 
-             for ax3d in views[]
-                 empty!(ax3d)
-                 Makie.free(ax3d)
-             end
-             empty!(views[])
-             empty!(frame_colors[]) # update frame colors
-             GC.gc(true)
-         end
-     end
-    =#
+            for ax3d in views[]
+                empty!(ax3d)
+                Makie.free(ax3d)
+            end
+            empty!(views[])
+            empty!(frame_colors[]) # update frame colors
+            GC.gc(true)
+        end
+    end=#
+
     return umap_nodes
 end

@@ -23,9 +23,9 @@ using MathTeXEngine
 using NetworkLayout
 
 using GLFW
-using Makie: MakieCore, ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie
-using CairoMakie # for saving plots w/ SVG
-using GLMakie: Screen, apply_transform, ScreenConfig
+using Makie: ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie
+#using CairoMakie # for saving plots w/ SVG
+using GLMakie: Screen, ScreenConfig
 using GLMakie
 using Observables
 
@@ -403,10 +403,11 @@ function main_window(active_trajectory::Trajectory,
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene, transition, selected_scalar, time)
+    function render_atom_view(scene, transition, selected_scalar, time, flip=false)
         # t_ap = create_position_alignment_observer(transition, alignment)
         res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
-            simple_atom_view!(scene, alignedPositionsMatrices[transition],
+            ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
+            simple_atom_view!(scene, ap,
                 lift(x -> scalars[x][transition], selected_scalar),
                 lift(x -> scalar_ranges[x], selected_scalar),
                 atom_cmap,
@@ -484,18 +485,18 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_superquadrics_view(scene, transition, inspector)
-        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes, selected_invariant = selected_invariant
+    function render_superquadrics_view(scene, transition)
+        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes, selected_invariant = selected_invariant, active_trajectory = active_trajectory
             t_ap = alignedPositionsMatrices[transition]
             points = Point3f.(eachrow(t_ap[1]))
 
             invariant = lift((x) -> select_invariant(active_trajectory, x)[transition], selected_invariant)
             spa = stretchedPrincipalAxes[transition]
 
-            colors = lift(y -> map(x -> y[x], eachindex(points)), invariant)
+            colors = lift(y -> view(y, eachindex(points)), invariant)
 
-            sq = Observable(collect(superquadric.(1.0, points, spa, 3.0, 0.1)))
-            return superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange, inspector)
+            sq = collect(superquadric.(1.0, points, spa, 3.0, 0.1))
+            return superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
         end
         return il, is, plots
     end
