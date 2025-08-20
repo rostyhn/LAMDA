@@ -217,6 +217,7 @@ function embedding_view!(
 
             # initial render
             sr = selected_render[]
+            flip = alignment[t][2]
             if sr == "Volume"
                 render_views[sr](ax3d, t)
             elseif sr == "Atom"
@@ -224,12 +225,12 @@ function embedding_view!(
                     t,
                     selected_scalar,
                     atom_time,
-                    alignment[t][2]
+                    flip
                 )
             else
                 render_views["Superquadric"](ax3d,
                     t,
-                )
+                    flip)
             end
             center!(ax3d)
             yield()
@@ -248,6 +249,8 @@ function embedding_view!(
         if length(views[]) == length(data[][3])
             for (i, ax3d) in enumerate(views[])
                 t = data[][1][i]
+                flip = data[][2][t][2]
+
                 foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
                 if sr == "Volume"
                     render_views[sr](ax3d, t)
@@ -255,12 +258,10 @@ function embedding_view!(
                     render_views["Atom"](ax3d,
                         t,
                         selected_scalar,
-                        atom_time,
-                        data[][2][t][2]
-                    )
+                        atom_time, flip)
                 else
                     render_views["Superquadric"](ax3d,
-                        t)
+                        t, flip)
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up
