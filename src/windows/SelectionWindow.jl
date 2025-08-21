@@ -136,10 +136,14 @@ function build_selection_window(
                 if !isnothing(cluster_cleanup)
                     cluster_cleanup()
                     cluster_cleanup = nothing
+                    Observables.clear(cc)
+                    Observables.clear(scd)
+                    scd = nothing
+                    cc = nothing
                 end
-                Observables.clear(cc)
-                Observables.clear(scd)
                 GC.gc(true)
+                empty!(w)
+                Makie.free(w.scene)
                 final_memory = Sys.free_memory() / 2^20
                 @show init_memory, final_memory
             end
