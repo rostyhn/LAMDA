@@ -16,18 +16,15 @@ function signPow(base, exponent)::Float64
 end
 
 function qz(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
-    x = signPow(cos(theta), alpha) * signPow(sin(phi), beta)
-    y = signPow(sin(theta), alpha) * signPow(sin(phi), beta)
-    z = signPow(cos(phi), beta)
-
-    return Point3f(x, y, z)
+    return Point3f(signPow(cos(theta), alpha) * signPow(sin(phi), beta),
+        signPow(sin(theta), alpha) * signPow(sin(phi), beta),
+        signPow(cos(phi), beta))
 end
 
 function qx(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
-    x = signPow(cos(phi), beta)
-    y = -signPow(sin(theta), alpha) * signPow(sin(phi), beta)
-    z = signPow(cos(theta), alpha) * signPow(sin(phi), beta)
-    return Point3f(x, y, z)
+    return Point3f(signPow(cos(phi), beta),
+        -signPow(sin(theta), alpha) * signPow(sin(phi), beta),
+        signPow(cos(theta), alpha) * signPow(sin(phi), beta))
 
 end
 
@@ -54,23 +51,29 @@ function superquadric(scale::Float64,
     phiRange = [0:resolution:pi;]  #vertical: south -> north
     push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
     thetaRange = [0:resolution:2*pi;] #horizontal: west -> east
+    nPhi = length(phiRange)
+    nTheta = length(thetaRange)
 
+    points = Vector{Point3f}(undef, nPhi * nTheta)
     if cl >= cp
         alpha = signPow((1 - cp), sharpness)
         beta = signPow((1 - cl), sharpness)
-
+        i = 1
         for phi in phiRange
             for theta in thetaRange
-                push!(points, qx(phi, theta, alpha, beta))
+                points[i] = qx(phi, theta, alpha, beta)
+                i += 1
             end
         end
     else
         alpha = (1 - cl)^sharpness
         beta = (1 - cp)^sharpness
 
+        i = 1
         for phi in phiRange
             for theta in thetaRange
-                push!(points, qz(phi, theta, alpha, beta))
+                points[i] = qz(phi, theta, alpha, beta)
+                i += 1
             end
         end
     end
@@ -88,12 +91,12 @@ function superquadric(scale::Float64,
 
     transform = rotationMatrix * scaleMatrix
 
-    points = Ref(transform) .* points .+ Ref(position)
-    nPhi = length(phiRange)
-    nTheta = length(thetaRange)
+    broadcast!(*, points, Ref(transform), points)
+    broadcast!(+, points, points, Ref(position))
 
-    indices = Vector{Tuple{UInt32,UInt32,UInt32}}() # triangles over the points
+    indices = Vector{Tuple{UInt32,UInt32,UInt32}}(undef, (nPhi - 1) * nTheta * 2) # triangles over the points
 
+    i = 1
     for y in 1:(nPhi-1)
         for x in 1:nTheta
 
@@ -105,9 +108,9 @@ function superquadric(scale::Float64,
             p22 = x < nTheta ? (x + 1) + nTheta * y : 1 + nTheta * y # index 
             p32 = x + nTheta * (y)
 
-            push!(indices, (p11, p31, p21))
-            push!(indices, (p32, p22, p12))
-
+            indices[i] = (p11, p31, p21)
+            indices[i+1] = (p32, p22, p12)
+            i += 2
         end
     end
 

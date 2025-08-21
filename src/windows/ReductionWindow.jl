@@ -12,13 +12,10 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
     h_cutoff = Observable(init_h_cutoff)
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-    init_dist_mat = (isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix
-
-    selected_dm = Observable(init_dist_mat)
+    selected_dm = Observable((isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix)
     clustering = @lift begin
         println("Clustering $($selected_dm)...")
-        m = dms[$selected_dm]
-        res = hclust(m, linkage=:ward, branchorder=:barjoseph)
+        res = hclust(dms[$selected_dm], linkage=:ward, branchorder=:barjoseph)
 
         h_range[] = extrema(res.heights)
         notify(h_range)
@@ -60,14 +57,14 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
     window[2, 1:2] = control_grid
 
     dm_menu = Menu(window, options=collect(keys(dms)), default=selected_dm[])
-    on(dm_menu.selection) do val
+    dm_menu_listener = on(dm_menu.selection) do val
         selected_dm[] = val
     end
 
     cutoff_label = Label(window, "Cutoff")
     cutoff_tb = Textbox(window, validator=Float64, placeholder=string(h_cutoff[]))
 
-    on(cutoff_tb.stored_string) do s
+    cutoff_listener = on(cutoff_tb.stored_string) do s
         h_cutoff[] = parse(Float64, s)
         notify(h_cutoff)
     end
@@ -101,10 +98,10 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
     avgs = @lift begin
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
         cmap = CLUSTER_COLORMAP
-        avgs = []
-        for (c, ts_idx) in $cluster_groups
+        avgs = Array{Float32}(undef, length(keys($cluster_groups)))
+        for (i, (c, ts_idx)) in enumerate($cluster_groups)
             idx_to_mtx = $reordered_matrix[2]
-            m_idx = map(x -> idx_to_mtx[x], ts_idx)
+            m_idx = view(idx_to_mtx, ts_idx)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
@@ -112,8 +109,8 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
             p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[mod1(c, length(cmap))])
             vals = view($reordered_matrix[1], m_idx, m_idx)
             utri = triu!(trues(size(vals)))
+            avgs[i] = mean(vec(vals[utri]))
 
-            push!(avgs, mean(vec(vals[utri])))
             push!(rendered_clusters, p)
         end
         return avgs
@@ -124,7 +121,7 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
         color=:grey
     )
 
-    on(avgs) do v
+    avg_listener = on(avgs) do v
         reset_limits!(hist_ax)
     end
 
@@ -179,13 +176,27 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
             selected_dm[];
             init_h_cutoff=init_h_cutoff,
             kwargs...)
+        empty!(window)
+        Makie.free(window.scene)
+        window = nothing
     end
 
     final_cleanup = function ()
         println("Reduction window cleanup")
         off(go_listener)
-        empty!(window)
-        Makie.free(window.scene)
+        off(avg_listener)
+        off(dm_menu_listener)
+        off(cutoff_listener)
+        if !isnothing(window)
+            empty!(window)
+            Makie.free(window.scene)
+            window = nothing
+        end
+
+        go_listener = nothing
+        avg_listener = nothing
+        dm_menu_listener = nothing
+        cutoff_listener = nothing
 
         Observables.clear(selected_dm)
         Observables.clear(cluster_groups)
@@ -200,6 +211,7 @@ function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_
         clustering = nothing
         avgs = nothing
         reordered_matrix = nothing
+        rendered_clusters = nothing
     end
 
     Colorbar(window[4, 1:2],
