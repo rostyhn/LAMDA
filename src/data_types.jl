@@ -21,19 +21,7 @@ const Transition = Tuple{Int16,Int16}
     t_to_idx::Dict{Transition,Int}
 end
 
-function select_invariant(active_trajectory::Trajectory, selection::String)
-    if selection == "t1"
-        iv = active_trajectory.t1
-    elseif selection == "t2"
-        iv = active_trajectory.t2
-    elseif selection == "t3"
-        iv = active_trajectory.t3
-    else
-        error("Invalid invariant selected")
-    end
 
-    return iv
-end
 
 @kwdef struct ClusterInfo
     groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx

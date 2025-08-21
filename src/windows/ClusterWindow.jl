@@ -3,16 +3,12 @@ function build_cluster_window(
     cluster_data::Observable{SingleClusterData},
     all_cluster_data::ClusterData,
     cluster_info::ClusterInfo,
-    scalars,
     mat_range,
     render_views,
     widgets,
-    bins,
     on_transition_select,
     hovered_transition,
     hovered_cluster,
-    inspector_ref::MaybeObservable{DataInspector},
-    calculators,
     cluster_annotations;
     on_cluster_select=(x, y) -> (),
     on_window_hover=(x) -> (),
@@ -114,7 +110,7 @@ function build_cluster_window(
 
     lm, embedding = layout_menu(window, cluster_data)
 
-    embedding_view!(window[2, 1:2],
+    embedding_cleanup = embedding_view!(window[2, 1:2],
         lift((x, y) -> (x.ts, x.alignment, y), cluster_data, embedding),
         scene_selector,
         scalar_selector,
@@ -164,7 +160,7 @@ function build_cluster_window(
         alignment,
         correlation)
 
-    on(btn_centroid_to_scratchpad.clicks) do n
+    to_scratchpad_listener = on(btn_centroid_to_scratchpad.clicks, weak=true) do n
         # save correlation to scratchpad, quick fix for now
         # will have a better solution later
         on_cluster_select(clusters[], correlation[])
@@ -189,14 +185,14 @@ function build_cluster_window(
         colorrange=mat_range,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    on(vals) do v
+    v_listener = on(vals) do v
         reset_limits!(hm_ax)
         center!(hm_ax.scene)
     end
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    on(events(hm_ax).mouseposition) do mp
+    mp_listener = on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
         if is_mouseinside(hm_ax.scene)
             if plot == hm
@@ -212,7 +208,7 @@ function build_cluster_window(
     end
 
     lastBbox = nothing
-    on(hovered_transition) do ht
+    hv_listener = on(hovered_transition) do ht
         if !isnothing(lastBbox)
             delete!(parent_scene(lastBbox), lastBbox)
         end
@@ -222,7 +218,7 @@ function build_cluster_window(
         end
     end
 
-    on(events(window).keyboardbutton) do event
+    keyboard_listener = on(events(window).keyboardbutton) do event
         if ispressed(window, Exclusively(LEFT_KEY))
             on_left(clusters)
         elseif ispressed(window, Exclusively(RIGHT_KEY))
@@ -236,6 +232,38 @@ function build_cluster_window(
         end
     end
 
+    cluster_cleanup = function ()
+        println("Clear inside cluster window")
+        embedding_cleanup()
+        embedding_cleanup = nothing
+
+        update_colors = nothing
+
+        off(keyboard_listener)
+        off(to_scratchpad_listener)
+        off(hv_listener)
+        off(mp_listener)
+        off(v_listener)
+
+        Observables.clear(ts)
+        Observables.clear(alignment)
+
+        Observables.clear(correlation)
+        Observables.clear(vals)
+        Observables.clear(colors)
+
+        ts = nothing
+        alignment = nothing
+        vals = nothing
+        colors = nothing
+
+
+        empty!(centroid_scene)
+        Makie.free(centroid_scene)
+        empty!(window)
+        Makie.free(window.scene)
+    end
+
     #=on(events(window).entered_window) do entered
         if entered
             on_window_hover(clusters[])
@@ -243,7 +271,7 @@ function build_cluster_window(
             on_window_hover(nothing)
         end
     end=#
-    return window
+    return window, cluster_cleanup
 end
 
 function layout_menu(window, cluster_data)

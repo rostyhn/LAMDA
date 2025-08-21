@@ -154,7 +154,6 @@ function dendrogram!(ax,
         function get_cluster(i)
             return clusters[div(i, 2)]
         end
-
         all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines), init=[])
         min_x, max_x = extrema(all_x)
         all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines), init=[])
@@ -219,7 +218,8 @@ function dendrogram!(ax,
 
     ls = linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        color=d_colors,
+        colormap=:rainbow_bgyrm_35_85_c71_n256,
+        color=lift(x -> map(y -> y[1][1], x[1]), dendrogram),
         inspector_label=on_hover,
     )
 

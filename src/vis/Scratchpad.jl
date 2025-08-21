@@ -332,9 +332,7 @@ function scratchpad!(
                             plt_rendered = [s]
                         else
                             il, is, plots = render_views["Superquadric"](ax3d,
-                                obj,
-                                inspector,
-                            )
+                                obj,)
                             plt_rendered = plots
                         end
                         center!(ax3d)

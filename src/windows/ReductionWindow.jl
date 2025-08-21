@@ -1,8 +1,8 @@
-function build_reduction_window(active_trajectory::Trajectory, on_click, screen_ref; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
+function build_reduction_window(active_trajectory::Trajectory, on_click; init_h_cutoff=0.3, distance_matrix=nothing, kwargs...)
     set_theme!(UI_THEME)
     window = Figure(size=(1920, 1080))
 
-    menu_bar = top_bar(window, "Reduction", 2)
+    top_bar(window, "Reduction", 2)
     # only need transitions and distance matrix
     dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
     transitionSequence::Vector{Transition} = active_trajectory.transitions
@@ -13,6 +13,7 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
     init_dist_mat = (isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix
+
     selected_dm = Observable(init_dist_mat)
     clustering = @lift begin
         println("Clustering $($selected_dm)...")
@@ -90,7 +91,7 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    hm = heatmap!(hm_ax,
+    heatmap!(hm_ax,
         lift(x -> x[1], reordered_matrix),
         colorrange=lift(x -> x[3], reordered_matrix),
         colormap=DISTANCE_MATRIX_COLORMAP)
@@ -153,10 +154,8 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
         redmat = view($reordered_matrix[1], idxes, idxes)
 
         # should just do this here and pass it down to main instead of doing it twice
-        clustering = hclust(redmat, linkage=:ward, branchorder=:barjoseph)
-        rm = view(redmat, clustering.order, clustering.order)
-
-        return redmat, red_t_list, rm
+        cluster = hclust(redmat, linkage=:ward, branchorder=:barjoseph)
+        return redmat, red_t_list, cluster
     end
 
     red_hm_ax = Axis(window[3, 2],
@@ -166,18 +165,41 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
     hidedecorations!(red_hm_ax)
     deregister_interaction!(red_hm_ax, :rectanglezoom)
 
-    red_hm = heatmap!(red_hm_ax, lift(x -> x[3], reduced),
+    heatmap!(red_hm_ax, lift(x -> view(x[1], x[3].order, x[3].order), reduced),
         colorrange=lift(x -> x[3], reordered_matrix),
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    on(go_btn.clicks) do n
+    go_listener = on(go_btn.clicks) do n
+        screen = window.scene.current_screens[1]
         @time on_click(active_trajectory,
-            screen_ref,
+            screen,
             reduced[][1],
             reduced[][2],
+            reduced[][3],
             selected_dm[];
             init_h_cutoff=init_h_cutoff,
             kwargs...)
+    end
+
+    final_cleanup = function ()
+        println("Reduction window cleanup")
+        off(go_listener)
+        empty!(window)
+        Makie.free(window.scene)
+
+        Observables.clear(selected_dm)
+        Observables.clear(cluster_groups)
+        Observables.clear(reduced)
+        Observables.clear(clustering)
+        Observables.clear(avgs)
+        Observables.clear(reordered_matrix)
+
+        selected_dm = nothing
+        cluster_groups = nothing
+        reduced = nothing
+        clustering = nothing
+        avgs = nothing
+        reordered_matrix = nothing
     end
 
     Colorbar(window[4, 1:2],
@@ -188,5 +210,5 @@ function build_reduction_window(active_trajectory::Trajectory, on_click, screen_
 
     #linkaxes!(hm_ax, red_hm_ax)
     println("Finished Reduction Window")
-    return window
+    return window, final_cleanup
 end

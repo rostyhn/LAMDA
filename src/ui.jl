@@ -186,7 +186,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     hi_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
             collect(zip(view(sq, v_hi[]), view(colors[], v_hi[])))), init=Float32[]))
 
-    on(v_lo) do idx
+    vlol = on(v_lo, weak=true) do idx
         meshes = view(sq, idx)
         sel_col = view(colors[], idx)
         lo_sq.val = meshes
@@ -195,7 +195,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
         notify(lo_sq)
     end
 
-    on(v_hi, update=true) do idx
+    vhil = on(v_hi, weak=true) do idx
         meshes = view(sq, idx)
         sel_col = view(colors[], idx)
         hi_sq.val = meshes
@@ -235,7 +235,7 @@ function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange
     end
 
     update_cam!(parent_scene(m_lo))
-    return [cam_listener], [lo_sq, hi_sq, lo_col, hi_col], [m_lo, m_hi, v]
+    return [cam_listener, vlol, vhil], [lo_sq, hi_sq, lo_col, hi_col], [m_lo, m_hi, v]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)

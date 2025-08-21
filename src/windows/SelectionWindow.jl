@@ -83,10 +83,9 @@ function build_selection_window(
         notify(cc)
     end
 
-    # get rid of cc as an observable, update scd directly
-    num_open_windows = 0
-    open_cluster_windows = Dict{Int,Screen}()
+    cluster_window_listeners = []
     function on_show_cluster_click(clusters)
+        init_memory = Sys.free_memory() / 2^20
         cc = Observable(clusters)
         scd = @lift begin
             # adding a print statement makes it work...
@@ -97,7 +96,7 @@ function build_selection_window(
             alignment = calculators["Alignment"](ts)
 
             return buildSingleClusterData(
-                cluster=cc[],
+                cluster=$cc,
                 ref_t=ref_t,
                 ts=ts,
                 mat=mat,
@@ -109,21 +108,17 @@ function build_selection_window(
         end
 
         ds::MaybeObservable{DataInspector} = Observable(nothing)
-        w = build_cluster_window(
+        w, cluster_cleanup = build_cluster_window(
             cc,
             scd,
             cluster_data,
             cluster_info[],
-            scalars,
             cluster_data.m_extrema,
             render_views,
             widgets,
-            bins,
             on_transition_select,
             hovered_transition,
             hovered_cluster,
-            ds,
-            calculators,
             cluster_annotations,
             on_window_hover=on_cluster_window_hover,
             on_cluster_select=on_cluster_select,
@@ -133,19 +128,23 @@ function build_selection_window(
         s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
         display(s, w)
 
-        num_open_windows += 1
-        w_idx = num_open_windows
         # create inspector after render to avoid bugs
         ds[] = DataInspector(w)
-        open_cluster_windows[w_idx] = s
-
-        on(events(w).window_open) do e
+        close_listener = on(events(w).window_open) do e
             if !e
-                delete!(open_cluster_windows, w_idx)
-                empty!(w)
+                println("Clear outside cluster window")
+                if !isnothing(cluster_cleanup)
+                    cluster_cleanup()
+                    cluster_cleanup = nothing
+                end
+                Observables.clear(cc)
+                Observables.clear(scd)
                 GC.gc(true)
+                final_memory = Sys.free_memory() / 2^20
+                @show init_memory, final_memory
             end
         end
+        push!(cluster_window_listeners, close_listener)
     end
 
     dGrid = GridLayout()
@@ -181,12 +180,12 @@ function build_selection_window(
         on_cutoff_line_drag=update_cutoff,
         colormap=CLUSTER_COLORS)
 
-    hm = heatmap!(hm_ax, cluster_data.matrix,
+    heatmap!(hm_ax, cluster_data.matrix,
         colorrange=cluster_data.m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
     hm_m_events = addmouseevents!(hm_ax.scene)
 
-    on(hm_m_events.obs) do e
+    hm_m_listener = on(hm_m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
             plot, _ = pick(hm_ax)
             if !isnothing(plot)
@@ -338,5 +337,11 @@ function build_selection_window(
     scg[1, 2] = hgrid!(scalar_menu, scratchpad_t_slider)
     scg[2, 1:2] = sc_cbar
     println("Finished selection window")
-    return window
+
+    cleanup = function ()
+        println("Killing selection")
+        off(hm_m_listener)
+        off.(cluster_window_listeners)
+    end
+    return window, cleanup
 end

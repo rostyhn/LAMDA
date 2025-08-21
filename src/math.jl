@@ -39,9 +39,9 @@ function superquadric(scale::Float64,
 
     points = Vector{Point3f}()
 
-    stretchRatio1 = norm(principalStretches[3])
-    stretchRatio2 = norm(principalStretches[2])
-    stretchRatio3 = norm(principalStretches[1])
+    stretchRatio1 = norm(view(principalStretches, 3))
+    stretchRatio2 = norm(view(principalStretches, 2))
+    stretchRatio3 = norm(view(principalStretches, 1))
 
     stretchDirection1 = principalStretches[3] / stretchRatio1
     stretchDirection2 = principalStretches[2] / stretchRatio2
@@ -75,25 +75,20 @@ function superquadric(scale::Float64,
         end
     end
 
-    scaleMatrix = zeros(3, 3)
-    scaleMatrix[1, 1] = stretchRatio1
-    scaleMatrix[2, 2] = stretchRatio2
-    scaleMatrix[3, 3] = stretchRatio3
+    scaleMatrix = diagm([stretchRatio1 * scale, stretchRatio2 * scale, stretchRatio3 * scale])
 
-    scaleMatrix = scaleMatrix * scale
-
-    rotationMatrix = zeros(3, 3)
-    rotationMatrix[:, 1] = stretchDirection1
-    rotationMatrix[:, 2] = stretchDirection2
-    rotationMatrix[:, 3] = stretchDirection3
+    rotationMatrix = Matrix{Float32}(undef, 3, 3)
+    rotationMatrix[:, 1] .= stretchDirection1
+    rotationMatrix[:, 2] .= stretchDirection2
+    rotationMatrix[:, 3] .= stretchDirection3
 
     if det(rotationMatrix) < 0
-        rotationMatrix[:, 1] = -1 * rotationMatrix[:, 1]
+        rotationMatrix[:, 1] *= -1
     end
 
     transform = rotationMatrix * scaleMatrix
 
-    points = Point3f.(Ref(transform) .* points) .+ Ref(position)
+    points = Ref(transform) .* points .+ Ref(position)
     nPhi = length(phiRange)
     nTheta = length(thetaRange)
 
@@ -102,7 +97,6 @@ function superquadric(scale::Float64,
     for y in 1:(nPhi-1)
         for x in 1:nTheta
 
-            #@show "???"
             p11 = x + nTheta * (y - 1)
             p21 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
             p31 = x + nTheta * (y)
@@ -118,11 +112,8 @@ function superquadric(scale::Float64,
     end
 
     triFaces = TriangleFace.(indices)
-
-    # Create the Mesh
-    mesh = GeometryBasics.Mesh(points, triFaces)
-
-    return mesh
+    m = GeometryBasics.Mesh(points, triFaces)
+    return m
 end
 
 

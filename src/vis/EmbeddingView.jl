@@ -2,6 +2,21 @@ function get_extents(p, size)
     return p[1] - size / 2, p[1] + size / 2, p[2] - size / 2, p[2] + size / 2
 end
 
+function clear_listeners!(d, t)
+    bound = get(d, t, nothing)
+    if !isnothing(bound)
+        off.(bound[1])
+        for x in bound[1]
+            x = nothing
+        end
+        Observables.clear.(bound[2])
+        for x in bound[2]
+            x = nothing
+        end
+        delete!(d, t)
+    end
+end
+
 function embedding_view!(
     loc,
     data,
@@ -109,7 +124,7 @@ function embedding_view!(
     t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
 
     frame_colors = Ref([])
-    views = Observable([])
+    views = Ref([])
 
     on(events(ax).keyboardbutton) do event
         if event.action == Keyboard.press && event.key == Keyboard.f
@@ -132,16 +147,19 @@ function embedding_view!(
 
     end
 
+    all_listeners = Dict{Transition,Any}()
     @lift begin
         @show "re-rendering"
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
         for ax3d in views[]
+            empty!(ax3d)
             Makie.free(ax3d)
+            ax3d = nothing
         end
 
-        empty!(views.val)
+        empty!(views[])
         empty!(frame_colors[]) # update frame colors
         GC.gc(true)
 
@@ -149,8 +167,9 @@ function embedding_view!(
         center!(ax.scene)
 
         t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
-        alignment = $data[2]
-        for (i, t) in enumerate($data[1])
+        alignment = data[][2]
+        @time for (i, t) in enumerate($data[1])
+            clear_listeners!(all_listeners, t)
             pos = position_on_plot(umap_nodes, i, apply_transform=false)
             # x, y is in global pixel coords
             x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
@@ -228,29 +247,29 @@ function embedding_view!(
                     flip
                 )
             else
-                render_views["Superquadric"](ax3d,
+                listeners, obs, _ = render_views["Superquadric"](ax3d,
                     t,
                     flip)
+                all_listeners[t] = (listeners, obs)
             end
             center!(ax3d)
             yield()
-            push!(views.val, ax3d)
+            push!(views[], ax3d)
             push!(frame_colors[], frame_color)
         end
-        notify(views)
         hovered[] = nothing
         notify(hovered)
-
+        GC.gc(true)
         enable_interactions(ax)
     end
 
-    on(selected_render) do sr
+    sr_listener = on(selected_render, weak=true) do sr
         disable_interactions(ax)
         if length(views[]) == length(data[][3])
-            for (i, ax3d) in enumerate(views[])
+            @time for (i, ax3d) in enumerate(views[])
                 t = data[][1][i]
                 flip = data[][2][t][2]
-
+                clear_listeners!(all_listeners, t)
                 foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
                 if sr == "Volume"
                     render_views[sr](ax3d, t)
@@ -260,8 +279,9 @@ function embedding_view!(
                         selected_scalar,
                         atom_time, flip)
                 else
-                    render_views["Superquadric"](ax3d,
+                    listeners, obs, _ = render_views["Superquadric"](ax3d,
                         t, flip)
+                    all_listeners[t] = (listeners, obs)
                 end
                 center!(ax3d)
                 # block for a millisecond so makie can catch up
@@ -336,25 +356,33 @@ function embedding_view!(
 
 
     # if I wanted to do this I could just write C
-    #=open_listener = on(events(ax.scene).window_open) do e
-        if !e
-            for l in hover_listener
-                off(l)
-                l = nothing
-            end
-            empty!(hover_listener)
-            #off(c_listener)
-            c_listener = nothing
-
-            for ax3d in views[]
-                empty!(ax3d)
-                Makie.free(ax3d)
-            end
-            empty!(views[])
-            empty!(frame_colors[]) # update frame colors
-            GC.gc(true)
+    cleanup = function ()
+        println("kill embedding")
+        sr_listener = nothing
+        for l in hover_listener
+            off(l)
+            l = nothing
         end
-    end=#
+        empty!(hover_listener)
+        off(c_listener)
 
-    return umap_nodes
+        for ax3d in views[]
+            empty!(ax3d)
+            Makie.free(ax3d)
+            ax3d = nothing
+        end
+
+        empty!(views[])
+        views = nothing
+        empty!(frame_colors[]) # update frame colors
+        for t in keys(all_listeners)
+            clear_listeners!(all_listeners, t)
+        end
+
+        empty!(ax.scene)
+
+        Observables.clear(data)
+    end
+
+    return cleanup
 end

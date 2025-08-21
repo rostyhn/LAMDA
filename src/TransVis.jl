@@ -21,7 +21,6 @@ using FixedPointNumbers
 
 using MathTeXEngine
 using NetworkLayout
-
 using GLFW
 using Makie: ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie
 #using CairoMakie # for saving plots w/ SVG
@@ -70,31 +69,37 @@ function __init__()
 end
 
 export go
-function go(trajectory_name::String; kwargs...)
-    GC.gc(true)
-    GLMakie.closeall() #close all windows for rerun!
 
+
+function go(trajectory_name::String; kwargs...)
+    init_memory = Sys.free_memory() / 2^20
     active_trajectory = get_data_alt(trajectory_name)
     set_theme!(UI_THEME)
 
-    screen_ref = Ref{Maybe{Screen}}(nothing)
-    @time window = build_reduction_window(active_trajectory, main_window, screen_ref; kwargs...)
+    @time window, final_cleanup = build_reduction_window(active_trajectory, main_window; kwargs...)
     screen = GLMakie.Screen(title="LAMDA - Reduction Window")
-    screen_ref[] = screen
-
     display(screen, window)
+    wait(screen)
+    println("Final cleanup")
+    final_cleanup()
+    final_cleanup = nothing
+    active_trajectory = nothing
+    empty!(window)
+    GLMakie.closeall()
+    GC.gc(true)
+    final_memory = Sys.free_memory() / 2^20
+    @show init_memory, final_memory
 end
 
 function main_window(active_trajectory::Trajectory,
-    screen_ref,
+    screen::GLMakie.Screen,
     dm,
     transitionSequence::Vector{Transition},
-    selected_dm_name::String,
-    ;
+    clustering::Clustering.Hclust{Float32},
+    selected_dm_name::String;
     chunk_size=100,
     init_h_cutoff::Float64=0.3,
     align_with=nothing)
-
     (;
         stretchedPrincipalAxes,
         scalars,
@@ -106,16 +111,26 @@ function main_window(active_trajectory::Trajectory,
         t_to_idx,
         transitions
     ) = active_trajectory
-    @show typeof(alignments)
 
+    function select_invariant(selection::String)
+        if selection == "t1"
+            iv = Ref(active_trajectory.t1)
+        elseif selection == "t2"
+            iv = Ref(active_trajectory.t2)
+        elseif selection == "t3"
+            iv = Ref(active_trajectory.t3)
+        else
+            error("Invalid invariant selected")
+        end
+
+        return iv
+    end
     # absolute index for volume data
     rel_t_to_idx = Dict(reverse.(collect(enumerate(transitionSequence))))
 
     h_cutoff::Observable{Float64} = Observable(float(init_h_cutoff))
     h_range = Observable((floatmin(Float32), floatmax(Float32)))
 
-
-    clustering = hclust(dm, linkage=:ward, branchorder=:barjoseph)
     rm = view(dm, clustering.order, clustering.order)
     # gets the correct idx 
     t_to_mtx = Dict{Transition,Int}()
@@ -281,8 +296,8 @@ function main_window(active_trajectory::Trajectory,
             alignedPos = map(x -> alignedPositionsMatrices[x][1], transitions)
             kd = map(x -> kdTrees[x][1], transitions)
 
-            iv = select_invariant(active_trajectory, $selected_invariant)
-            invariants = map(x -> iv[x], transitions)
+            iv = select_invariant($selected_invariant)
+            invariants = map(x -> iv[][x], transitions)
 
             points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
             for i in eachindex($sampleRanges[1]) # x
@@ -365,8 +380,8 @@ function main_window(active_trajectory::Trajectory,
     volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
     Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
     invariantRange = @lift begin
-        iv = select_invariant(active_trajectory, $selected_invariant)
-        vals = values(iv)
+        iv = select_invariant($selected_invariant)
+        vals = values(iv[])
         absInvMin = minimum(minimum.(vals))
         absInvMax = maximum(maximum.(vals))
         return (absInvMin, absInvMax)
@@ -395,16 +410,9 @@ function main_window(active_trajectory::Trajectory,
     end
 
 
-    function create_position_alignment_observer(transition, alignment)
-        return @lift begin
-            return apply_alignment($alignment[$transition], $alignedPositionsMatrices[$transition])
-        end
-    end
-
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
     function render_atom_view(scene, transition, selected_scalar, time, flip=false)
-        # t_ap = create_position_alignment_observer(transition, alignment)
         res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
             ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
             simple_atom_view!(scene, ap,
@@ -486,21 +494,20 @@ function main_window(active_trajectory::Trajectory,
     end
 
     function render_superquadrics_view(scene, transition, flip=false)
-        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes, selected_invariant = selected_invariant, active_trajectory = active_trajectory
+        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes
             t_ap = alignedPositionsMatrices[transition]
             idx = flip ? 2 : 1
             points = Point3f.(eachrow(t_ap[idx]))
             # do the invariant values need to be flipped as well?
-
-            invariant = lift((x) -> select_invariant(active_trajectory, x)[transition], selected_invariant)
             spa = stretchedPrincipalAxes[transition]
+            colors = lift(x -> view(select_invariant(x)[][transition], eachindex(points)), selected_invariant)
 
-            colors = lift(y -> view(y, eachindex(points)), invariant)
-
+            # both fns allocate a bunch of space
             sq = collect(superquadric.(1.0, points, spa, 3.0, 0.1))
-            return superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
+            il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
+            push!(is, colors)
+            return il, is, plots
         end
-        return il, is, plots
     end
 
     function time_slider(init_time, figure)
@@ -530,7 +537,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure; default="Atom")
+    function render_menu(figure; default="Superquadric")
         scene_selector = Observable(default)
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -621,7 +628,7 @@ function main_window(active_trajectory::Trajectory,
 
     ds::MaybeObservable{DataInspector} = Observable(nothing)
     # atomPositions, stateKDTree, numAtoms, firstTransition 
-    window = build_selection_window(transitionSequence,
+    window, cleanup = build_selection_window(transitionSequence,
         rel_t_to_idx,
         num_atoms,
         volRange,
@@ -647,12 +654,20 @@ function main_window(active_trajectory::Trajectory,
     =#
     # create inspector after render to avoid bugs
     ds[] = DataInspector(window)
-
-    screen = GLMakie.Screen(title="LAMDA - Selection Window")
     display(screen, window)
+    on(events(window).window_open) do e
+        if !e
+            println("Killing main")
+            cleanup()
+            dm = nothing
+            Observables.clear(cluster_info)
+            Observables.clear(volumeData)
 
-    close(screen_ref[])
-
+            empty!(calculators)
+            empty!(widgets)
+            empty!(render_views)
+        end
+    end
 end
 
 end # close module
