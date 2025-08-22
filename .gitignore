@@ -2,6 +2,7 @@ cache/
 *.DS_Store
 .git/
 data/
+build/
 
 export/
 .ipynb_checkpoints
