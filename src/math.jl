@@ -1,4 +1,4 @@
-function getIndexFromSQMesh(i::Int64, resolution::Float64)
+function getIndexFromSQMesh(i::Integer, resolution::AbstractFloat)
 
     #number of points in sq mesh
     #[0:resolution:pi;]
@@ -11,30 +11,28 @@ function getIndexFromSQMesh(i::Int64, resolution::Float64)
     return trunc(Int, i / number) + 1
 end
 
-function signPow(base, exponent)::Float64
+function signPow(base, exponent)::AbstractFloat
     return sign(base) * abs(base)^exponent
 end
 
-function qz(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
+function qz(phi::AbstractFloat, theta::AbstractFloat, alpha::AbstractFloat, beta::AbstractFloat)
     return Point3f(signPow(cos(theta), alpha) * signPow(sin(phi), beta),
         signPow(sin(theta), alpha) * signPow(sin(phi), beta),
         signPow(cos(phi), beta))
 end
 
-function qx(phi::Float64, theta::Float64, alpha::Float64, beta::Float64)
+function qx(phi::AbstractFloat, theta::AbstractFloat, alpha::AbstractFloat, beta::AbstractFloat)
     return Point3f(signPow(cos(phi), beta),
         -signPow(sin(theta), alpha) * signPow(sin(phi), beta),
         signPow(cos(theta), alpha) * signPow(sin(phi), beta))
 
 end
 
-function superquadric(scale::Float64,
+function superquadric(scale::AbstractFloat,
     position::Point3f,
     principalStretches::Vector{GeometryBasics.Vec{3,Float32}},
-    sharpness::Float64,
-    resolution=0.2)::GeometryBasics.Mesh
-
-    points = Vector{Point3f}()
+    sharpness::AbstractFloat,
+    resolution::AbstractFloat=0.2)::GeometryBasics.Mesh
 
     stretchRatio1 = norm(view(principalStretches, 3))
     stretchRatio2 = norm(view(principalStretches, 2))
@@ -169,7 +167,7 @@ function pure_align(P, Q)
 end
 
 # finds the centroid between a group of clusters
-function find_group_centroid(clusters, cd::ClusterData, t_list)
+function find_group_centroid(clusters::Set{Int}, cd::ClusterData, t_list::Vector{Transition})
     ts = get_transitions(t_list, clusters)
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
 
@@ -186,8 +184,12 @@ function split_delta(d)
     return (hcat(pos, neg), hcat(-neg, -pos))
 end
 
-function calculate_alignment(ref_t, ts, posMats, features)
-    rot = Dict{Transition,Tuple{Matrix{Float32},Bool,Transition}}()
+function calculate_alignment(ref_t::Transition,
+    ts::Vector{Transition},
+    posMats::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}},
+    features::Dict{State,Matrix{Float32}})::Dict{Transition,Tuple{Matrix{Float32},Bool}}
+
+    rot = Dict{Transition,Tuple{Matrix{Float32},Bool}}()
     ref_s1_pos = posMats[ref_t][1]
 
     ref_s1, ref_s2 = ref_t
@@ -218,10 +220,10 @@ function calculate_alignment(ref_t, ts, posMats, features)
             R2, res2 = pure_align(ref_s1_com, t_s2_com)
 
             R = (res1 < res2) ? R1 : R2
-            rot[t] = (R, res1 > res2, ref_t)
+            rot[t] = (R, res1 > res2)
         end
     end
 
-    rot[ref_t] = (Matrix(1.0I, 3, 3), false, ref_t)
+    rot[ref_t] = (Matrix(1.0I, 3, 3), false)
     return rot
 end

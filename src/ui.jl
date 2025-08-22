@@ -1,5 +1,11 @@
-function simple_atom_view!(scene, ap, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64})
-    points = lift(x -> Point3f.(eachrow((ap[1] + ((ap[2] - ap[1]) .* x)))), time)
+function simple_atom_view!(scene::Makie.Scene,
+    ap::Tuple{Matrix{Float32},Matrix{Float32}},
+    scalars::Observable{Vector{Float32}},
+    scalar_range::Observable{Tuple{Float32,Float32}},
+    cmap,
+    time::Observable{Float32})
+
+    points = @lift Point3f.(eachrow((ap[1] + ((ap[2] - ap[1]) .* $time))))
     s = meshscatter!(scene,
         points;
         color=scalars,
@@ -16,22 +22,20 @@ function simple_atom_view!(scene, ap, scalars::Observable{Vector{Float32}}, scal
     return s
 end
 
-function simple_arrow_view!(scene,
-    ap::Observable{Tuple{Matrix{Float32},Matrix{Float32}}},
-    time::Observable{Float64},
+function simple_arrow_view!(scene::Makie.Scene,
+    ap::Tuple{Matrix{Float32},Matrix{Float32}},
+    time::Observable{Float32},
     cmap,
-    vel::Observable{Vector{GeometryBasics.Point{3,Float32}}},
-    correlation::Observable{Vector{Float32}},
-    corrThreshold::Observable{Float64})
-
-    # int_pos = lift((x, y) -> x[1] + ((x[2] - x[1]) .* y), ap, time) # median is moving for debugging
+    vel::Vector{GeometryBasics.Point{3,Float32}},
+    correlation::Vector{Float32},
+    corrThreshold::Observable{Float32})
 
     # use this function to set any variables that need to be equal length in a makie plot, need velocities, points and colors
     # i know its annoying to use a tuple, but its the only way to prevent crashes
     d = @lift begin
-        points = Point3f.(eachrow($ap[1])) .+ ($vel .* $time)
-        velocities = $vel .* ($correlation .>= Ref($corrThreshold))
-        return points, velocities, $correlation
+        points = Point3f.(eachrow(ap[1])) .+ (vel .* Ref($time))
+        velocities = vel .* (correlation .>= Ref($corrThreshold))
+        return points, velocities, correlation
     end
 
     h = arrows3d!(scene,
@@ -72,7 +76,7 @@ function simple_arrow_view!(scene,
     update_cam!(parent_scene(s))
     center!(parent_scene(s))
 
-    return h, s, v
+    return h, s, v, d
 end
 
 function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
@@ -106,12 +110,8 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
         inspectable=false,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
 
-    # if called before screen is rendered it crashes
-
-    # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
+    # if called before scree # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
     update_cam!(parent_scene(v_lo))
-
-    # update_cam!(parent_scene(v_lo))
 
     return v_lo, v_hi
 end

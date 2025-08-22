@@ -16,31 +16,19 @@ end
 
 function embedding_view!(
     loc,
-    data,
-    selected_render,
-    selected_scalar,
-    atom_time,
-    render_views,
-    hovered,
-    hovered_cluster,
+    data::Observable{Tuple{Vector{Transition},Dict{Transition,Tuple{Matrix{Float32},Bool}},Vector{Point2f}}},
+    selected_render::Observable{String},
+    selected_scalar::Observable{String},
+    atom_time::Observable{Float32},
+    render_views::Dict{String,Function},
+    hovered::MaybeObservable{Transition},
+    hovered_cluster::MaybeObservable{Set{UInt16}},
     colors,
     cluster_info;
-    point_margin=5,
-    highlight_borders=Observable(false),
     on_click=(x) -> (),
     markersize=Observable(100),
 )
     ax = Axis(loc, backgroundcolor=:transparent)
-    #=on(highlight_borders, update=true) do hb
-        border_color = to_color(:black)
-        if hb
-            border_color = to_color(:red)
-        end
-        ax.topspinecolor[] = border_color
-        ax.bottomspinecolor[] = border_color
-        ax.leftspinecolor[] = border_color
-        ax.rightspinecolor[] = border_color
-    end=#
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
     campixel!(ax.scene)
@@ -365,6 +353,8 @@ function embedding_view!(
             l = nothing
         end
         empty!(hover_listener)
+
+        Observables.clear(jittered_points)
 
         off(c_listener)
         c_listener = nothing

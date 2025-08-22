@@ -1,23 +1,23 @@
 const TITLE_HOTKEY = Keyboard.t
 
 function scratchpad!(
-    window,
+    window::Makie.Figure,
     loc,
     selected_transitions::Observable{Set{Transition}},
     cluster_info::Observable{ClusterInfo},
     cluster_data::ClusterData,
-    render_views,
-    render_selection,
-    scalar_selection,
-    atom_time,
+    render_views::Dict{String,Function},
+    render_selection::Observable{String},
+    scalar_selection::Observable{String},
+    atom_time::Observable{Float32},
     selected_clusters,
-    t_list,
-    rel_t_to_idx,
-    calculators,
-    cluster_annotations,
-    c2corr;
+    t_list::Vector{Transition},
+    rel_t_to_idx::Dict{Transition,UInt16},
+    calculators::Dict{String,Function},
+    cluster_annotations::Observable{ClusterAnnotation},
+    c2corr::Base.RefValue{Dict{Set{UInt16},Float32}};
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
-    hovered_cluster::MaybeObservable{Set{Int}},
+    hovered_cluster::MaybeObservable{Set{UInt16}},
     on_click=(x) -> (),
     markersize=200)
 
@@ -44,8 +44,8 @@ function scratchpad!(
     center!(ax.scene)
 
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
-    idx_to_obj = Observable{Vector{Union{Set{Int},Transition}}}(Union{Set{Int},Transition}[]) # gets transition from plotted idx
-    obj_to_idx = Ref(Dict{Union{Set{Int},Transition},Int}())
+    idx_to_obj = Observable{Vector{Union{Set{UInt16},Transition}}}(Union{Set{UInt16},Transition}[]) # gets transition from plotted idx
+    obj_to_idx = Ref(Dict{Union{Set{UInt16},Transition},Int}())
     rendered_idxes = Ref(Set{Int}())
     num_objs = Ref(1)
     views = Ref([])
@@ -53,7 +53,7 @@ function scratchpad!(
     d_start = Point2f(0.0)
     d_end = Point2f(0.0)
     c_bbox = Observable(BBox(0, 0, 0, 0))
-    boxes = Ref(Dict{Int,Any}())
+    boxes = Ref(Dict{Int,Rect2}())
     sw = wireframe!(ax.scene, c_bbox, color=:black, visible=false)
     sw.inspectable[] = false
 
@@ -72,8 +72,7 @@ function scratchpad!(
             notify(c_bbox)
         elseif e.type === MouseEventTypes.leftdragstop
             # finish placing box
-            w = poly!(ax.scene, c_bbox[], color=:transparent, strokewidth=2, strokecolor=:black)
-            w.inspectable[] = false
+            w = poly!(ax.scene, c_bbox[], color=:transparent, strokewidth=2, strokecolor=:black, inspectable=false)
 
             s_idx = length(ax.scene.plots)
             boxes[][s_idx] = c_bbox[]
@@ -187,7 +186,7 @@ function scratchpad!(
 
     function obj_to_str(obj)
         s = string(obj)
-        if obj isa Set{Int}
+        if obj isa Set{UInt16}
             s = str_limit(get_val(cluster_annotations[], "titles", obj))
         end
         return s
@@ -347,8 +346,8 @@ function scratchpad!(
                 else
                     # get transitions from general cluster object instead of the current one
                     ts = get_transitions(t_list, obj)
-                    alignment = calculators["Alignment"](ts)
-                    render_views["SMovement"](ax3d, Observable(ts), atom_time, Observable(alignment), Observable(c2corr[][obj]))
+                    ref_t, alignment = calculators["Alignment"](ts)
+                    render_views["SMovement"](ax3d, ts, atom_time, alignment, Observable(c2corr[][obj]))
                     center!(ax3d)
                 end
                 push!(views[], ax3d)
@@ -435,8 +434,6 @@ function scratchpad!(
 
         Observables.clear(idx_to_obj)
         Observables.clear(points)
-        idx_to_obj = nothing
-        points = nothing
 
         delete_obj! = nothing
         get_t_cluster = nothing
@@ -470,7 +467,7 @@ function group_scratchpad(s::Scratchpad)
 
     for (bIdx, box) in enumerate(boxes)
         title = string(bIdx)
-        children = Union{Set{Int},Transition,String,Int}[]
+        children = Union{Set{UInt16},Transition,String,Int}[]
         for (obj, idx) in s.objs[]
             v_idx = idx - 1
             vp = s.views[][v_idx]
@@ -506,7 +503,7 @@ function group_scratchpad(s::Scratchpad)
 
     top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
 
-    loose = Union{Set{Int},Transition,String}[]
+    loose = Union{Set{UInt16},Transition,String}[]
     for (obj, idx) in s.objs[]
         if !(idx in seen)
             push!(loose, obj)
@@ -541,7 +538,7 @@ function export_scratchpad_children_recurse(bIdx, hierarchy, t_list, parent_dir,
     end
     children = hierarchy[bIdx]
     export_scratchpad_children(dpath, cf, children, t_list)
-    bChildren = filter(x -> x isa Int, children)
+    bChildren = filter(x -> x isa Integer, children)
     foreach(b -> export_scratchpad_children_recurse(b, hierarchy, t_list, cf, dpath, titles), bChildren)
 end
 

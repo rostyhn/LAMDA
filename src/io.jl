@@ -1,4 +1,4 @@
-function alignAtomPositions(xp::Matrix, x::Matrix)::Matrix
+function alignAtomPositions(xp::Matrix{AbstractFloat}, x::Matrix{AbstractFloat})::Matrix{AbstractFloat}
     #s2 changes s1 stays
     s = mean(x, dims=1)
     sp = mean(xp, dims=1)
@@ -74,7 +74,9 @@ function save_volume_cache(key, volume_range, dimensions, absVolMin)
     JLD2.jldsave("$(cache_file)"; volume_range, dimensions, absVolMin)
 end
 
-function get_data_alt(trajectory_name::String)
+
+#TODO: change so that fn takes directory as input
+function get_data_alt(trajectory_name::String)::Trajectory
     rootPath = dirname(dirname(@__FILE__))
     dataPath = joinpath(rootPath, "data")
     cachePath = joinpath(rootPath, "cache")
@@ -103,7 +105,9 @@ function get_data_alt(trajectory_name::String)
 
             load_pickle = py"load_pickle"o
 
-            rawAlignedPositionsMatrices = pycall(load_pickle, PyDict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}, alignedPositions_pickle)
+            rawAlignedPositionsMatrices = pycall(load_pickle,
+                PyDict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}},
+                alignedPositions_pickle)
 
             # convert to point3fs & generate kd trees
             println("Computing KDTrees.")

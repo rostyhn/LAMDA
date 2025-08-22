@@ -1,24 +1,23 @@
 function build_cluster_window(
-    clusters::Observable{Set{Int}},
+    clusters::Observable{Set{UInt16}},
     cluster_data::Observable{SingleClusterData},
     all_cluster_data::ClusterData,
     cluster_info::ClusterInfo,
-    mat_range,
-    render_views,
-    widgets,
-    on_transition_select,
+    mat_range::Tuple{AbstractFloat,AbstractFloat},
+    render_views::Dict{String,Function},
+    widgets::Dict{String,Function},
+    on_transition_select::Function,
     hovered_transition,
     hovered_cluster,
     cluster_annotations;
-    on_cluster_select=(x, y) -> (),
-    on_window_hover=(x) -> (),
-    on_up=(x) -> (),
-    on_left=(x) -> (),
-    on_right=(x) -> (),
-    on_downleft=(x) -> (),
-    on_downright=(x) -> (),
-    switch_cluster=(x, y) -> (),
-    fig_size=(1920, 1080)
+    on_cluster_select::Function=(x, y) -> (),
+    on_up::Function=(x) -> (),
+    on_left::Function=(x) -> (),
+    on_right::Function=(x) -> (),
+    on_downleft::Function=(x) -> (),
+    on_downright::Function=(x) -> (),
+    switch_cluster::Function=(x, y) -> (),
+    fig_size::Tuple{Integer,Integer}=(1920, 1080)
 )
     set_theme!(UI_THEME)
     window = Figure(size=fig_size)
@@ -62,17 +61,6 @@ function build_cluster_window(
         end
     end
 
-
-    ts = Observable(cluster_data[].ts)
-    alignment = @lift begin
-        ts.val = $(cluster_data).ts
-        return $(cluster_data).alignment
-    end
-
-    hb = lift((x, y) -> !isnothing(x) && length(collect(intersect(y, x))) > 0,
-        hovered_cluster,
-        clusters)
-
     colors = lift(x -> x.colors, cluster_data)
     function update_colors(cutoff)
         cut_clusters = Ref([])
@@ -100,7 +88,7 @@ function build_cluster_window(
     scene_selector, render_menu = widgets["Render"](window)
     scalar_selector, scalar_menu = widgets["Scalar"](window)
     cbar, cbar_listeners = widgets["Colorbar"](window, scene_selector, scalar_selector)
-    time, t_slider = widgets["Movement"](0.0, window)
+    time, t_slider = widgets["Movement"](Float32(0.0), window)
 
     btn_centroid = Button(window, label="Show centroid")
     centroid_click_listener = on(btn_centroid.clicks, weak=true) do n
@@ -120,13 +108,11 @@ function build_cluster_window(
         hovered_cluster,
         colors,
         cluster_info;
-        highlight_borders=hb,
         on_click=on_transition_select)
 
     EMBEDDING_HELP = "PGUP - Increase size of visualizations PGDOWN - Decrease size of visualizations ARROW UP - Show parent cluster"
 
     rg = hgrid!(render_menu, scalar_menu)
-
     lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
     colsize!(lg, 1, Auto(true, 4))
     colsize!(lg, 2, Auto(false))
@@ -151,19 +137,18 @@ function build_cluster_window(
 
     vals = lift(x -> x.mat, cluster_data)
 
-    correlation, corr_slider = widgets["CorrThreshold"](window, 0.7)
+    correlation, corr_slider = widgets["CorrThreshold"](window, Float32(0.7))
     btn_centroid_to_scratchpad = Button(window, label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
 
-    movement_obs = render_views["SMovement"](centroid_scene,
-        ts,
-        time,
-        alignment,
-        correlation)
+    centroid_plt_data = @lift begin
+        (; ts, alignment) = $cluster_data
+        empty!(centroid_scene.scene.plots)
+        return render_views["SMovement"](centroid_scene.scene, ts, time, alignment, correlation)
+    end
 
     to_scratchpad_listener = on(btn_centroid_to_scratchpad.clicks, weak=true) do n
         # save correlation to scratchpad, quick fix for now
-        # will have a better solution later
         on_cluster_select(clusters[], correlation[])
     end
 
@@ -259,15 +244,13 @@ function build_cluster_window(
         notes_listener = nothing
         notes_click_listener = nothing
 
-        Observables.clear(ts)
-        Observables.clear(alignment)
-
         Observables.clear(correlation)
         Observables.clear(vals)
         Observables.clear(colors)
-        Observables.clear(movement_obs)
         Observables.clear(title)
         Observables.clear(notes)
+        Observables.clear(centroid_plt_data[][4])
+        Observables.clear(centroid_plt_data)
 
         ts = nothing
         alignment = nothing
@@ -284,17 +267,10 @@ function build_cluster_window(
         Makie.free(window.scene)
     end
 
-    #=on(events(window).entered_window) do entered
-        if entered
-            on_window_hover(clusters[])
-        else
-            on_window_hover(nothing)
-        end
-    end=#
     return window, cluster_cleanup
 end
 
-function layout_menu(window, cluster_data)
+function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
     opts = ["MDS", "Grid", "UMAP"]
     m = Menu(window, options=opts, default=first(opts))
     pts = @lift begin
@@ -304,31 +280,31 @@ function layout_menu(window, cluster_data)
 
         if ms == "MDS"
             mds = fit(MDS, mat; distances=true, maxoutdim=2)
-            points = Point2f.(eachrow(transpose(predict(mds))))
+            points = Point2f.(eachcol(predict(mds)))
         elseif ms == "UMAP"
             if length(ts) > 2
                 em = transpose(umap(mat, 2;
                     metric=:precomputed,
                     min_dist=1,
                     n_neighbors=min(length(ts) - 1, 15)))
-                points = eachrow(em)
+                points = Point2f.(eachrow(em))
             else
-                points = Point2f[]
-                for (i, t) in enumerate(ts)
-                    push!(points, Point2f((i - 1), 0.0))
+                points = Vector{Point2f}(undef, length(ts))
+                for i in eachindex(ts)
+                    points[i] = Point2f(i - 1, 0.0)
                 end
             end
         else
             s = Int(round(sqrt(length(ts))))
-            points = Point2f[]
+            points = Vector{Point2f}(undef, length(ts))
             r = 0
-            for (i, t) in enumerate(ts)
+            for i in eachindex(ts)
                 x = mod1(i, s) * 1
                 if x == 1
                     r += 1
                 end
                 y = r
-                push!(points, Point2f(x, y))
+                points[i] = Point2f(x, y)
             end
         end
         return points

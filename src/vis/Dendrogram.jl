@@ -13,11 +13,14 @@ function get_st_clusters(merge, i, clusterIdx)
 end
 
 # assigns each cluster a unique id
-function get_hierarchy(hc)
-    c2idx = Dict{Set{Int},Int}()
+function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{Dict{Set{UInt16},UInt16},
+    Dict{Set{UInt16},Set{UInt16}},
+    Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}}
+
+    c2idx = Dict{Set{UInt16},UInt16}()
     clusterIdx = collect(eachindex(hc.order))
-    c_to_parent = Dict{Set{Int},Set{Int}}()
-    parent_to_c = Dict{Set{Int},Tuple{Set{Int},Set{Int}}}()
+    c_to_parent = Dict{Set{UInt16},Set{UInt16}}()
+    parent_to_c = Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}()
 
     for i in 1:size(hc.merges, 1)
         pg = get_st_clusters(hc.merges, i, clusterIdx)
@@ -47,9 +50,9 @@ end
 
 # renders the clustering at the specified cutoff value
 function treepositions(hc, cutoff)::Tuple{
-    Vector{Any},
-    Vector{Set{Int}},
-    Dict{Set{Int},Vector{Int}}}
+    Vector{Tuple{Point2f,Point2f}},
+    Vector{Set{UInt16}},
+    Dict{Set{UInt16},Vector{UInt16}}}
 
     # guarantees consistent labelling with main cluster info 
     clusterIdx = collect(eachindex(hc.order))
@@ -58,7 +61,7 @@ function treepositions(hc, cutoff)::Tuple{
 
     lines = []
     clusters = []
-    c2lx = Dict{Set{Int},Vector{Int}}()
+    c2lx = Dict{Set{UInt16},Vector{UInt16}}()
     lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
@@ -101,14 +104,14 @@ function treepositions(hc, cutoff)::Tuple{
 end
 
 # gets line positions for a specified branch in the dendrogram 
-function branch(cd::ClusterData, root::Set{Int})
+function branch(cd::ClusterData, root::Set{UInt16})
     children = Ref([])
     dfs(cd, root, children)
 
     new_lines = []
     corrected_children = []
 
-    heights = Dict{Set{Int},Float64}()
+    heights = Dict{Set{UInt16},Float64}()
     for c in children[]
         idx = cd.c2lx[c]
         for i in 1:length(idx)
@@ -127,7 +130,7 @@ end
 function dendrogram!(ax,
     cluster_info,
     cluster_data,
-    hovered::MaybeObservable{Set{Int}},
+    hovered::MaybeObservable{Set{UInt16}},
     cluster_annotations;
     hover_callbackfn=(x -> ()),
     colormap=:tab20,
@@ -160,7 +163,7 @@ function dendrogram!(ax,
         min_y, max_y = extrema(all_y)
         cut_line = ([min_x, max_x], [min_y, min_y])
 
-        cl_to_idx = Dict{Set{Int},Int}()
+        cl_to_idx = Dict{Set{UInt16},Int}()
         for (i, c) in enumerate(clusters)
             cl_to_idx[c] = i
         end

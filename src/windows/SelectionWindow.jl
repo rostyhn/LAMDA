@@ -2,35 +2,35 @@ const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
 function build_selection_window(
-    t_list,
-    rel_t_to_idx::Dict{Transition,Int},
+    t_list::Vector{Transition},
+    rel_t_to_idx::Dict{Transition,UInt16},
     cluster_data::ClusterData,
     cluster_info::Observable{ClusterInfo},
-    h_cutoff,
-    settings_window,
-    render_views,
-    widgets,
-    matColLabel,
-    calculators,
-    trajectory_name,
-    fig_size=(1920, 1080)
+    h_cutoff::Observable{Float32},
+    settings_window::Makie.Figure,
+    render_views::Dict{String,Function},
+    widgets::Dict{String,Function},
+    matColLabel::String,
+    calculators::Dict{String,Function},
+    trajectory_name::String;
+    fig_size::Tuple{Integer,Integer}=(1920, 1080)
 )
     set_theme!(UI_THEME)
 
-    window = Figure(size=fig_size)
+    window::Makie.Figure = Figure(size=fig_size)
     menu_bar = top_bar(window, "Selection Window", 2)
 
     init_transitions = Set{Transition}()
     selected_transitions = Observable{Set{Transition}}(init_transitions)
     hovered_transition = MaybeObservable{Transition}()
 
-    cluster_annotations = Observable(ClusterAnnotations())
+    cluster_annotations::Observable{ClusterAnnotation} = Observable(ClusterAnnotations())
 
-    init_clusters = Set{Set{Int}}()
-    selected_clusters = Observable{Set{Set{Int}}}(init_clusters)
+    init_clusters = Set{Set{UInt16}}()
+    selected_clusters = Observable{Set{Set{UInt16}}}(init_clusters)
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    hovered_cluster = MaybeObservable{Set{Int}}(Set{Int}())
+    hovered_cluster = MaybeObservable{Set{UInt16}}(Set{UInt16}())
 
     # used to place transitions into scratchpad
     function on_transition_select(t)
@@ -38,24 +38,11 @@ function build_selection_window(
         notify(selected_transitions)
     end
 
-    c2corr = Ref(Dict())
+    c2corr = Ref(Dict{Set{UInt16},Float32}())
     function on_cluster_select(c, corr)
         push!(selected_clusters[], c)
         c2corr[][c] = corr
         notify(selected_clusters)
-    end
-
-    function on_cluster_window_hover(c)
-        if !isnothing(c)
-            hovered_cluster[] = c
-            notify(hovered_cluster)
-        else
-            if !isnothing(hovered_cluster[])
-                hovered_cluster.val = nothing
-                hovered_cluster[] = hovered_cluster[]
-                notify(hovered_cluster)
-            end
-        end
     end
 
     # can be more clever
@@ -79,11 +66,10 @@ function build_selection_window(
         scd = @lift begin
             # adding a print statement makes it work...
             print("")
-            ref_t = find_group_centroid($cc, cluster_data, t_list)
             ts = get_transitions(t_list, $cc)
-            mat, t_to_mtx = get_local_matrix(cluster_data, ts)
-            alignment = calculators["Alignment"](ts)
+            ref_t, alignment = calculators["Alignment"](ts)
 
+            mat, t_to_mtx = get_local_matrix(cluster_data, ts)
             return buildSingleClusterData(
                 cluster=$cc,
                 ref_t=ref_t,
@@ -108,7 +94,6 @@ function build_selection_window(
             hovered_transition,
             hovered_cluster,
             cluster_annotations,
-            on_window_hover=on_cluster_window_hover,
             on_cluster_select=on_cluster_select,
             on_up=cw_on_up,
             switch_cluster=switch_cluster,
@@ -273,7 +258,7 @@ function build_selection_window(
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
-    time, scratchpad_t_slider = widgets["Movement"](0.0, window)
+    time, scratchpad_t_slider = widgets["Movement"](Float32(0.0), window)
     sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection)
 
     ax, scratchpad, scratchpad_cleanup = scratchpad!(
@@ -329,6 +314,14 @@ function build_selection_window(
     cleanup = function ()
         @debug "Killing selection"
         scratchpad_cleanup()
+        on_transition_select = nothing
+        on_cluster_select = nothing
+        cw_on_up = nothing
+        switch_cluster = nothing
+        on_show_cluster_click = nothing
+        update_cutoff = nothing
+        calc_cluster_bounding_box = nothing
+
         empty!(ax)
         Makie.free(ax.scene)
         clear_listener_list(cbar_listeners)

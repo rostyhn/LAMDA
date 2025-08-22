@@ -2,8 +2,8 @@
 const ColorMatrix = Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}} # stored as mat of ints from 0 to 255
 const Maybe{T} = Union{Nothing,T}
 const MaybeObservable{T} = Observable{Maybe{T}}
-const State = Int16
-const Transition = Tuple{Int16,Int16}
+const State = UInt16
+const Transition = Tuple{UInt16,UInt16}
 
 @kwdef struct Trajectory
     name::String
@@ -18,24 +18,24 @@ const Transition = Tuple{Int16,Int16}
     scalars::Dict{String,Dict{Transition,Array{Float32}}}
     scalar_ranges::Dict{String,Tuple{Float32,Float32}}
     alignments::Dict{String,Dict{State,Matrix{Float32}}}
-    t_to_idx::Dict{Transition,Int}
+    t_to_idx::Dict{Transition,UInt16}
 end
 
 
 
 @kwdef struct ClusterInfo
-    groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx
-    assignments::Vector{Int}
-    representatives
+    groups::Dict{UInt16,Vector{Transition}} # dict of cluster idx to transition idx
+    assignments::Vector{UInt16}
+    representatives::Dict{UInt16,Transition}
     # dendrogram info
-    lines
-    clusters
-    c2lx
-    a2c
-    cutoff
-    cc2cidx
-    h_range
-    rel_t_to_idx
+    lines::Vector{Tuple{Point2f,Point2f}}
+    clusters::Vector{Set{UInt16}}
+    c2lx::Dict{Set{UInt16},Vector{UInt16}}
+    a2c::Dict{Int,Set{UInt16}}
+    cutoff::Float64
+    cc2cidx::Dict{UInt16,UInt16}
+    h_range::Tuple{Float32,Float32}
+    rel_t_to_idx::Dict{Transition,UInt16}
 end
 
 function get_cluster_of_transition(ci::ClusterInfo, t::Transition)
@@ -50,49 +50,49 @@ function get_parents_of_transition(ci::ClusterInfo, t::Transition)
 end
 
 @kwdef struct ClusterData
-    clustering
+    clustering::Clustering.Hclust{Float32}
     matrix
-    m_extrema
-    c2idx
-    lines
-    clusters
-    c2lx
-    c_to_parent::Dict{Set{Int},Set{Int}}
-    parent_to_c::Dict{Set{Int},Tuple{Set{Int},Set{Int}}}
-    t_to_mtx::Dict{Transition,Int}
-    mtx_to_t::Dict{Int,Transition}
+    m_extrema::Tuple{Float32,Float32}
+    c2idx::Dict{Set{UInt16},UInt16}
+    lines::Vector{Tuple{Point2f,Point2f}}
+    clusters::Vector{Set{UInt16}}
+    c2lx::Dict{Set{UInt16},Vector{UInt16}}
+    c_to_parent::Dict{Set{UInt16},Set{UInt16}}
+    parent_to_c::Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}
+    t_to_mtx::Dict{Transition,UInt16}
+    mtx_to_t::Dict{UInt16,Transition}
 end
 
 function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
     # sortperm! doesn't mutate the arguments, spent a long time to figure this out
     s = sortperm(mtx_idx)
-    t_to_mtx = Dict(reverse.(enumerate(ts[s])))
+    t_to_mtx::Dict{Transition,UInt16} = Dict(reverse.(enumerate(ts[s])))
     return view(cd.matrix, view(mtx_idx, s), view(mtx_idx, s)), t_to_mtx
 end
 
 # we want to color transitions by their currently assigned cluster determined by the cutoff
-function cluster_color(ci::ClusterInfo, t::Transition)
+function cluster_color(ci::ClusterInfo, t::Transition)::RGBAf
     return cycle_colormap(ci.cc2cidx[ci.assignments[ci.rel_t_to_idx[t]]], CLUSTER_COLORMAP)
 end
 
-function cluster_color(cd::ClusterData, c::Set{Int})
+function cluster_color(cd::ClusterData, c::Set{UInt16})::RGBAf
     return cycle_colormap(cd.c2idx[c], CLUSTER_COLORMAP)
 end
 
-function get_transitions(t_list, cluster::Set{Int})::Vector{Transition}
+function get_transitions(t_list, cluster::Set{UInt16})::Vector{Transition}
     return view(t_list, collect(cluster))
 end
 
-function get_parent(cd::ClusterData, cluster::Set{Int})::Set{Int}
+function get_parent(cd::ClusterData, cluster::Set{UInt16})::Set{UInt16}
     return get(cd.c_to_parent, cluster, cluster)
 end
 
-function get_children(cd::ClusterData, cluster::Set{Int})::Union{Nothing,Tuple{Set{Int},Set{Int}}}
+function get_children(cd::ClusterData, cluster::Set{UInt16})::Union{Nothing,Tuple{Set{UInt16},Set{UInt16}}}
     return get(cd.parent_to_c, cluster, nothing)
 end
 
-function get_root(cd::ClusterData)
+function get_root(cd::ClusterData)::Set{UInt16}
     c = first(keys(cd.c2idx))
     p = cd.c_to_parent[c]
     while length(intersect(p, c)) != length(p)
@@ -102,7 +102,7 @@ function get_root(cd::ClusterData)
     return p
 end
 
-function dfs(cd::ClusterData, cluster::Set{Int}, acc=Ref([]))
+function dfs(cd::ClusterData, cluster::Set{UInt16}, acc=Ref([]))
     push!(acc[], cluster)
     children = get_children(cd, cluster)
     if isnothing(children)
@@ -113,44 +113,55 @@ function dfs(cd::ClusterData, cluster::Set{Int}, acc=Ref([]))
     dfs(cd, rc, acc)
 end
 
-function get_neighbor(cd::ClusterData, cluster::Set{Int}, idx)
+function get_neighbor(cd::ClusterData, cluster::Set{UInt16}, idx)::Set{UInt16}
     parent = cd.c_to_parent[cluster]
     children = cd.parent_to_c[parent]
     return children[idx]
 end
 
+# can be more clever - no need to form a separate datastructure from cluster data
 @kwdef struct SingleClusterData
-    cluster
+    cluster::Set{UInt16}
     ts::Vector{Transition}
     ref_t::Transition
     mat::Matrix{Float32}
-    colors
-    t_to_mtx::Dict{Transition,Int}
-    heights::Dict{Set{Int},Float64}
-    h_range
-    lines
-    assignments
-    alignment
-    clusters
+    colors::Vector{RGBAf}
+    t_to_mtx::Dict{Transition,UInt16}
+    heights::Dict{Set{UInt16},Float64}
+    h_range::Tuple{Float32,Float32}
+    lines::Vector{Tuple{Point2f,Point2f}}
+    assignments::Vector{UInt16}
+    alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}}
+    clusters::Vector{Set{UInt16}}
 end
 
+const ClusterAnnotation = Dict{String,Dict{Set{UInt16},String}}
 function ClusterAnnotations()
-    d = Dict()
-    d["titles"] = Dict{Set{Int},String}()
-    d["notes"] = Dict{Set{Int},String}()
+    d = Dict{String,Dict{Set{UInt16},String}}()
+    d["titles"] = Dict{Set{UInt16},String}()
+    d["notes"] = Dict{Set{UInt16},String}()
     return d
 end
 
-function get_val(ca, property::String, s::Set{Int})
+function get_val(ca, property::String, s::Set{UInt16})
     dv = (property == "titles") ? string(s) : "..."
     return get(ca[property], s, dv)
 end
 
-function set_val(ca, s::Set{Int}, property::String, val::String)
+function set_val(ca, s::Set{UInt16}, property::String, val::String)
     ca[property][s] = val
 end
 
-function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_data, cluster_info, rel_t_to_idx, alignment)
+function buildSingleClusterData(; cluster::Set{UInt16},
+    ts::Vector{Transition},
+    ref_t::Transition,
+    mat,
+    t_to_mtx::Dict{Transition,UInt16},
+    cluster_data::ClusterData,
+    cluster_info::ClusterInfo,
+    rel_t_to_idx::Dict{Transition,UInt16},
+    alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}})
+
     rel_ts = map(x -> rel_t_to_idx[x], ts)
     colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
     clusters, lines, heights = branch(cluster_data, cluster)
@@ -169,7 +180,7 @@ function buildSingleClusterData(; cluster, ts, ref_t, mat, t_to_mtx, cluster_dat
         h_range=cluster_info.h_range)
 end
 
-function clusters_above_cutoff(cc::Set{Int}, cd::ClusterData, scd::SingleClusterData, cutoff::Float64, acc=Ref([]))
+function clusters_above_cutoff(cc::Set{UInt16}, cd::ClusterData, scd::SingleClusterData, cutoff::AbstractFloat, acc=Ref([]))
     children = get_children(cd, cc)
     if isnothing(children)
         if scd.heights[cc] > cutoff
