@@ -40,7 +40,7 @@ function build_cluster_window(
 
     screen = nothing
     nw = nothing
-    on(btn_notes.clicks) do n
+    notes_click_listener = on(btn_notes.clicks, weak=true) do n
         if isnothing(screen)
             nw = NoteWindow(title, notes, update_cluster)
             screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
@@ -53,7 +53,7 @@ function build_cluster_window(
         end
     end
 
-    on(clusters) do c
+    notes_listener = on(clusters, weak=true) do c
         if !isnothing(nw)
             close(screen)
             screen = nothing
@@ -99,11 +99,11 @@ function build_cluster_window(
 
     scene_selector, render_menu = widgets["Render"](window)
     scalar_selector, scalar_menu = widgets["Scalar"](window)
-    cbar = widgets["Colorbar"](window, scene_selector, scalar_selector)
+    cbar, cbar_listeners = widgets["Colorbar"](window, scene_selector, scalar_selector)
     time, t_slider = widgets["Movement"](0.0, window)
 
     btn_centroid = Button(window, label="Show centroid")
-    on(btn_centroid.clicks) do n
+    centroid_click_listener = on(btn_centroid.clicks, weak=true) do n
         hovered_transition[] = cluster_data[].ref_t
         notify(hovered_transition)
     end
@@ -154,7 +154,8 @@ function build_cluster_window(
     correlation, corr_slider = widgets["CorrThreshold"](window, 0.7)
     btn_centroid_to_scratchpad = Button(window, label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
-    render_views["SMovement"](centroid_scene,
+
+    movement_obs = render_views["SMovement"](centroid_scene,
         ts,
         time,
         alignment,
@@ -192,7 +193,7 @@ function build_cluster_window(
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    mp_listener = on(events(hm_ax).mouseposition) do mp
+    mp_listener = on(events(hm_ax).mouseposition, weak=true) do mp
         plot, _ = pick(hm_ax)
         if is_mouseinside(hm_ax.scene)
             if plot == hm
@@ -208,7 +209,7 @@ function build_cluster_window(
     end
 
     lastBbox = nothing
-    hv_listener = on(hovered_transition) do ht
+    hv_listener = on(hovered_transition, weak=true) do ht
         if !isnothing(lastBbox)
             delete!(parent_scene(lastBbox), lastBbox)
         end
@@ -233,17 +234,30 @@ function build_cluster_window(
     end
 
     cluster_cleanup = function ()
-        println("Clear inside cluster window")
+        @debug "Clear inside cluster window"
         embedding_cleanup()
         embedding_cleanup = nothing
 
         update_colors = nothing
+        clear_listener_list(cbar_listeners)
 
         off(keyboard_listener)
         off(to_scratchpad_listener)
         off(hv_listener)
         off(mp_listener)
         off(v_listener)
+        off(notes_listener)
+        off(notes_click_listener)
+        off(centroid_click_listener)
+
+        centroid_click_listener = nothing
+        keyboard_listener = nothing
+        to_scratchpad_listener = nothing
+        hv_listener = nothing
+        mp_listener = nothing
+        v_listener = nothing
+        notes_listener = nothing
+        notes_click_listener = nothing
 
         Observables.clear(ts)
         Observables.clear(alignment)
@@ -251,12 +265,18 @@ function build_cluster_window(
         Observables.clear(correlation)
         Observables.clear(vals)
         Observables.clear(colors)
+        Observables.clear(movement_obs)
+        Observables.clear(title)
+        Observables.clear(notes)
 
         ts = nothing
         alignment = nothing
+        correlation = nothing
         vals = nothing
         colors = nothing
-
+        movement_obs = nothing
+        title = nothing
+        notes = nothing
 
         empty!(centroid_scene)
         Makie.free(centroid_scene)

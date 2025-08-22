@@ -1,8 +1,9 @@
 # LAMDA - LAMDA Aids Molecular Displacement Analysis
 Uses julia `1.11.4`.
 
-## Setup 
+## Compiling 
 You need to install the Python environment manager `poetry`([https://python-poetry.org/]); once it is installed, run `poetry install`. 
+**Your global julia installation needs `Revise` and `PackageCompiler` installed to build the binary and use the `run.sh` script.**
 
 To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` should be your machine's number of processors - 1. To start the program, run `go("trajectory_name")` which should correspond to a name of a folder inside `data` e.g. `go('nano_pt')`. 
 
@@ -15,7 +16,10 @@ To set up your Julia environment, run `./run.sh [num_workers]`; `num_workers` sh
 | `align_with` | `String` | sets the initial feature values used to align the transitions |
 | `distance_matrix` | `String` | sets which distance matrix to initially render |
 
- 
+
+## Using the binary
+If you have a binary already compiled, simply run `./exe "trajectory_name" --julia-args -t[num_workers]`; `num_workers` should be your machine's number of processors - 1.
+
 ## Expected data format 
 Inside the `data` directory, create a folder with a name that identifies the trajectory you're looking at. **The name of the folder will be used as an argument to the `go` function; i.e. `go("trajectory_name").** The following is an example data directory: 
 ```

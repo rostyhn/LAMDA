@@ -10,9 +10,6 @@ function clear_listeners!(d, t)
             x = nothing
         end
         Observables.clear.(bound[2])
-        for x in bound[2]
-            x = nothing
-        end
         delete!(d, t)
     end
 end
@@ -110,24 +107,14 @@ function embedding_view!(
         color=:transparent,#:blue,
         inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
 
-    on(events(ax.scene).keyboardbutton) do event
+    kb_events = on(events(ax.scene).keyboardbutton, weak=true) do event
         if ispressed(ax.scene, Exclusively(Keyboard.page_up))
             markersize[] = markersize[] + 25
             notify(markersize)
         elseif ispressed(ax.scene, Exclusively(Keyboard.page_down))
             markersize[] = markersize[] - 25
             notify(markersize)
-        end
-    end
-
-    ins = DataInspector(umap_nodes)
-    t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
-
-    frame_colors = Ref([])
-    views = Ref([])
-
-    on(events(ax).keyboardbutton) do event
-        if event.action == Keyboard.press && event.key == Keyboard.f
+        elseif ispressed(ax.scene, Exclusively(Keyboard.f))
             show_alignment[] = !show_alignment[]
             notify(show_alignment)
             if show_alignment[]
@@ -135,8 +122,7 @@ function embedding_view!(
             else
                 println("identity")
             end
-        end
-        if event.action == Keyboard.press && event.key == Keyboard.o
+        elseif ispressed(ax.scene, Exclusively(Keyboard.o))
             resolve_overlap[] = !resolve_overlap[]
             if resolve_overlap[]
                 println("fixing overlap")
@@ -144,15 +130,28 @@ function embedding_view!(
                 println("not fixing overlap")
             end
         end
-
     end
 
+    ins = DataInspector(umap_nodes)
+    t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
+
+    frame_colors = Ref([])
+    views::Ref{Vector{Makie.Scene}} = Ref(Makie.Scene[])
+
     all_listeners = Dict{Transition,Any}()
+    scene_listeners = Ref([])
     @lift begin
         @show "re-rendering"
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
+        for (al, ml) in scene_listeners[]
+            off(al)
+            off(ml)
+            al = nothing
+            ml = nothing
+        end
+
         for ax3d in views[]
             empty!(ax3d)
             Makie.free(ax3d)
@@ -185,7 +184,7 @@ function embedding_view!(
                 camera=cam3d!,
                 size=(ms, ms))
 
-            on(show_alignment, update=true) do showAlignment
+            alignment_listener = on(show_alignment, update=true, weak=true) do showAlignment
                 if showAlignment
                     R, flip = alignment[t]
                     rr = hcat(R, [0, 0, 0])
@@ -214,7 +213,7 @@ function embedding_view!(
             )
 
             m_events = addmouseevents!(ax3d)
-            mouse_listener = on(m_events.obs) do event
+            mouse_listener = on(m_events.obs, weak=true) do event
                 if event.type === MouseEventTypes.over
                     #show_data(ins, umap_nodes, i)
                     hovered[] = t
@@ -256,6 +255,7 @@ function embedding_view!(
             yield()
             push!(views[], ax3d)
             push!(frame_colors[], frame_color)
+            push!(scene_listeners[], (alignment_listener, mouse_listener))
         end
         hovered[] = nothing
         notify(hovered)
@@ -294,7 +294,7 @@ function embedding_view!(
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
-    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d) do xlim, ylim, mkr
+    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, weak=true) do xlim, ylim, mkr
         if length(views[]) == length(data[][3])
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             for (i, scene) in enumerate(views[])
@@ -315,7 +315,7 @@ function embedding_view!(
     end
 
     highlighted = Ref([])
-    c_listener = on(colors) do c_list
+    c_listener = on(colors, weak=true) do c_list
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
             for (i, c) in enumerate(c_list)
@@ -324,7 +324,7 @@ function embedding_view!(
         end
     end
 
-    hover_listener = onany(hovered, hovered_cluster) do hov, hc
+    hover_listener = onany(hovered, hovered_cluster, weak=true) do hov, hc
         if isnothing(hov) && isnothing(hc)
             for (v_idx, ogColor) in highlighted[]
                 frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
@@ -357,27 +357,36 @@ function embedding_view!(
 
     # if I wanted to do this I could just write C
     cleanup = function ()
-        println("kill embedding")
+        @debug "kill embedding"
+        off(sr_listener)
         sr_listener = nothing
         for l in hover_listener
             off(l)
             l = nothing
         end
         empty!(hover_listener)
+
         off(c_listener)
+        c_listener = nothing
+
+        off(kb_events)
+        kb_events = nothing
+
+        for (al, ml) in scene_listeners[]
+            off(al)
+            off(ml)
+            al = nothing
+            ml = nothing
+        end
 
         for ax3d in views[]
             empty!(ax3d)
             Makie.free(ax3d)
             ax3d = nothing
         end
-        off.(ax_listener)
-        for x in ax_listener
-            x = nothing
-        end
+        clear_listener_list(ax_listener)
 
         empty!(views[])
-        views = nothing
         empty!(frame_colors[]) # update frame colors
         for t in keys(all_listeners)
             clear_listeners!(all_listeners, t)

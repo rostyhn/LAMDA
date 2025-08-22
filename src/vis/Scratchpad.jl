@@ -15,7 +15,6 @@ function scratchpad!(
     rel_t_to_idx,
     calculators,
     cluster_annotations,
-    window_inspector,
     c2corr;
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
     hovered_cluster::MaybeObservable{Set{Int}},
@@ -115,7 +114,7 @@ function scratchpad!(
     end
 
     ax_m_events = addmouseevents!(ax.scene)
-    on(ax_m_events.obs) do e
+    ax_m_listener = on(ax_m_events.obs, weak=true) do e
         if e.type == MouseEventTypes.over
             plt, idx = pick(ax.scene)
             if plt isa Makie.Text
@@ -139,16 +138,18 @@ function scratchpad!(
         return Consume(false)
     end
 
-    function delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
+    function delete_obj!(obj, views, obj_to_idx)
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
         scene = views[][v_idx]
         # Makie.free seems to destroy theme object...
+        # need to also delete listeners here, will do later
+
         Makie.free(scene)
         delete!(obj_to_idx[], obj)
     end
 
-    onany(selected_transitions, selected_clusters) do st, sc
+    select_listeners = onany(selected_transitions, selected_clusters) do st, sc
         if length(st) != 0 || length(sc) != 0
             last_rendered = vcat([1], collect(rendered_idxes[]))
             new_points = Point2f[]
@@ -193,24 +194,28 @@ function scratchpad!(
     end
 
     function show_inspector(obj)
-        tt = window_inspector[].plot
+        window_inspector = DataInspector(window)
+        tt = window_inspector.plot
         s = obj_to_str(obj)
         mp = mouseposition(ax.scene)
         smp = shift_project(ax.scene, apply_transform_and_model(nodes, mp))
-        update_tooltip_alignment!(window_inspector[], smp)
+        update_tooltip_alignment!(window_inspector, smp)
 
         tt.text[] = s
         tt.visible[] = true
     end
 
     function hide_inspector()
-        tt = window_inspector[].plot
+        window_inspector = DataInspector(window)
+        tt = window_inspector.plot
         tt.visible[] = false
     end
 
     viewports = Ref([])
     frame_colors = Ref([])
-    on(idx_to_obj) do idxes
+    scene_listeners = Ref([])
+
+    idx_listener = on(idx_to_obj, weak=true) do idxes
         ts = collect(selected_transitions[])
         alignment = calculators["Alignment"](ts)
         for (idx, obj) in enumerate(idxes)
@@ -247,7 +252,7 @@ function scratchpad!(
                     end
                 end
 
-                frame = wireframe!(
+                wireframe!(
                     ax3d,
                     Rect2f(-1, -1, 2, 2),
                     transformation=(:xy, 0),
@@ -259,10 +264,9 @@ function scratchpad!(
                     inspectable=false
                 )
 
-                inspector = DataInspector(ax3d)
                 m_events = addmouseevents!(ax3d)
 
-                on(m_events.obs) do event
+                mouse_listener = on(m_events.obs, weak=true) do event
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
@@ -303,7 +307,7 @@ function scratchpad!(
                             notify(selected_clusters)
                         end
 
-                        delete_obj!(obj, rendered_idxes, views, obj_to_idx, num_objs)
+                        delete_obj!(obj, views, obj_to_idx)
                         notify(idx_to_obj)
                         notify(points)
                     elseif event.type === MouseEventTypes.leftdoubleclick
@@ -315,10 +319,12 @@ function scratchpad!(
                     end
                 end
 
+                push!(scene_listeners[], mouse_listener)
+
                 # move to outside loop, will be far more efficient
                 if obj isa Transition
                     plt_rendered = []
-                    on(render_selection, update=true) do rs
+                    rs_listener = on(render_selection, weak=true, update=true) do rs
                         foreach(x -> delete!(ax3d, x), plt_rendered)
                         empty!(plt_rendered)
                         if rs == "Volume"
@@ -337,6 +343,7 @@ function scratchpad!(
                         end
                         center!(ax3d)
                     end
+                    push!(scene_listeners[], rs_listener)
                 else
                     # get transitions from general cluster object instead of the current one
                     ts = get_transitions(t_list, obj)
@@ -360,7 +367,7 @@ function scratchpad!(
 
     end
 
-    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport) do xlim, ylim, pp, svp
+    ax_listeners = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport, weak=true) do xlim, ylim, pp, svp
         ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
         for (i, scene) in enumerate(views[])
             plt_idx = i + 1
@@ -381,7 +388,7 @@ function scratchpad!(
     end
 
     highlighted = Ref([])
-    onany(hovered, hovered_cluster) do hov, hc
+    hv_listeners = onany(hovered, hovered_cluster, weak=true) do hov, hc
         if isnothing(hov) && isnothing(hc)
             for (v_idx, ogColor) in highlighted[]
                 frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
@@ -417,7 +424,28 @@ function scratchpad!(
         end
     end
 
-    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=obj_to_idx)
+    cleanup = function ()
+        clear_listener_list(select_listeners)
+        clear_listener_list(hv_listeners)
+        clear_listener_list(ax_listeners)
+        clear_listener_list(scene_listeners[])
+
+        off(idx_listener)
+        idx_listener = nothing
+
+        Observables.clear(idx_to_obj)
+        Observables.clear(points)
+        idx_to_obj = nothing
+        points = nothing
+
+        delete_obj! = nothing
+        get_t_cluster = nothing
+        obj_to_str = nothing
+        show_inspector = nothing
+        hide_inspector = nothing
+    end
+
+    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=obj_to_idx), cleanup
 end
 
 @kwdef mutable struct Scratchpad

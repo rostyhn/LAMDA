@@ -1,3 +1,11 @@
+function clear_listener_list(xs)
+    for x in xs
+        off(x)
+        x = nothing
+    end
+    empty!(xs)
+end
+
 function pair_array(v)
     pairs = Vector{Pair{Any,Any}}()
     for i in 1:length(v)-1

@@ -1,57 +1,3 @@
-function clear_layout(layout::GridLayout)
-    # Begin by removing the blocks from the recursive GridLayout structure
-    items_to_remove = []
-    for block in Makie.contents(layout)
-        if typeof(block) == GridLayout
-            clear_layout(block)
-        else
-            push!(items_to_remove, block)
-        end
-    end
-
-    for i in items_to_remove
-        empty!(i.blockscene)
-        delete!(i)
-    end
-
-    Makie.trim!(layout)
-    GridLayoutBase.remove_from_gridlayout!(layout.layoutobservables.gridcontent[])
-end
-
-# switches what is being rendered inside a scene cleanly.
-# pass a select_fn with selector as a parameter and then basically do whatever you want
-# can modify the grid the scene belongs to and it will get cleared up here
-function scene_switcher(scene, grid, selector, select_fn)
-    scene_listeners = Vector{Any}()
-    ui_elements = Vector{Any}()
-    @lift begin
-        # cleanup
-        empty!(scene)
-
-        for listener in scene_listeners
-            off(listener)
-            listener = nothing
-        end
-        empty!(scene_listeners)
-
-        # clear UI elements
-        for g in ui_elements
-            clear_layout(g)
-        end
-        Makie.trim!(grid)
-
-        il, is = select_fn($selector)
-
-        for l in il
-            push!(scene_listeners, l)
-        end
-
-        for s in is
-            push!(ui_elements, s)
-        end
-    end
-end
-
 function simple_atom_view!(scene, ap, scalars::Observable{Vector{Float32}}, scalar_range, cmap, time::Observable{Float64})
     points = lift(x -> Point3f.(eachrow((ap[1] + ((ap[2] - ap[1]) .* x)))), time)
     s = meshscatter!(scene,
@@ -274,29 +220,6 @@ end
 function set_text(txtbox, s)
     txtbox.displayed_string[] = s
     txtbox.stored_string[] = s
-end
-
-function minimize_screen(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
-    vd = GLFW.GetVideoMode(monitor)
-    h = div(vd.height, 2)
-    w = div(vd.width, 2)
-    # should place the window in the top left corner of the screen
-    GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), 0.0, 0.0, w, h, GLFW.DONT_CARE)
-end
-
-function move_window(s::GLMakie.Screen; monitor=GLFW.GetPrimaryMonitor())
-    vd = GLFW.GetVideoMode(monitor)
-    mp = GLFW.GetMonitorPos(monitor)
-    h = div(vd.height, 2)
-    w = div(vd.width, 2)
-    GLFW.HideWindow(s.glscreen)
-    #GLFW.SetWindowMonitor(s.glscreen, GLFW.Monitor(C_NULL), mp.x, mp.y, w, h, GLFW.DONT_CARE)
-    GLFW.SetWindowMonitor(s.glscreen, monitor, mp.x, mp.y, vd.width, vd.height, vd.refreshrate)
-    yield()
-
-    GLFW.ShowWindow(s.glscreen)
-    @show s.glscreen, GLFW.GetWindowMonitor(s.glscreen)
-    #minimize_screen(s, monitor=monitor)
 end
 
 function inline_image(fig, img, tooltip::String)

@@ -4,22 +4,15 @@ const MAX_NODE_SIZE = 100.0
 function build_selection_window(
     t_list,
     rel_t_to_idx::Dict{Transition,Int},
-    num_atoms,
-    volRange,
-    vol_cmap,
     cluster_data::ClusterData,
     cluster_info::Observable{ClusterInfo},
-    scalars,
     h_cutoff,
-    h_range,
     settings_window,
     render_views,
     widgets,
-    invariantRange,
     matColLabel,
     calculators,
     trajectory_name,
-    inspector;
     fig_size=(1920, 1080)
 )
     set_theme!(UI_THEME)
@@ -50,10 +43,6 @@ function build_selection_window(
         push!(selected_clusters[], c)
         c2corr[][c] = corr
         notify(selected_clusters)
-    end
-
-    bins = @lift begin
-        return $h_range[1]:1:($h_range[2]+1)
     end
 
     function on_cluster_window_hover(c)
@@ -107,7 +96,6 @@ function build_selection_window(
                 t_to_mtx=t_to_mtx)
         end
 
-        ds::MaybeObservable{DataInspector} = Observable(nothing)
         w, cluster_cleanup = build_cluster_window(
             cc,
             scd,
@@ -129,10 +117,10 @@ function build_selection_window(
         display(s, w)
 
         # create inspector after render to avoid bugs
-        ds[] = DataInspector(w)
-        close_listener = on(events(w).window_open) do e
+        ds = DataInspector(w)
+        close_listener = on(events(w).window_open, weak=true) do e
             if !e
-                println("Clear outside cluster window")
+                @debug "Clear outside cluster window"
                 if !isnothing(cluster_cleanup)
                     cluster_cleanup()
                     cluster_cleanup = nothing
@@ -142,10 +130,11 @@ function build_selection_window(
                     cc = nothing
                 end
                 GC.gc(true)
+                ds = nothing
                 empty!(w)
                 Makie.free(w.scene)
                 final_memory = Sys.free_memory() / 2^20
-                @show init_memory, final_memory
+                @debug init_memory, final_memory
             end
         end
         push!(cluster_window_listeners, close_listener)
@@ -162,10 +151,6 @@ function build_selection_window(
     deregister_interaction!(hm_ax, :rectanglezoom)
     hidedecorations!(hm_ax)
 
-    function on_dendrogram_click(clusters)
-        on_show_cluster_click(clusters)
-    end
-
     function update_cutoff(x::Float64)
         # reset hovered_cluster to avoid crashing
         hovered_cluster.val = nothing
@@ -180,15 +165,15 @@ function build_selection_window(
         cluster_data,
         hovered_cluster,
         cluster_annotations;
-        on_click=on_dendrogram_click,
+        on_click=on_show_cluster_click,
         on_cutoff_line_drag=update_cutoff,
         colormap=CLUSTER_COLORS)
 
     heatmap!(hm_ax, cluster_data.matrix,
         colorrange=cluster_data.m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
-    hm_m_events = addmouseevents!(hm_ax.scene)
 
+    hm_m_events = addmouseevents!(hm_ax.scene)
     hm_m_listener = on(hm_m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
             plot, _ = pick(hm_ax)
@@ -289,9 +274,9 @@ function build_selection_window(
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
     time, scratchpad_t_slider = widgets["Movement"](0.0, window)
-    sc_cbar = widgets["Colorbar"](window, render_selection, scalar_selection)
+    sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection)
 
-    ax, scratchpad = scratchpad!(
+    ax, scratchpad, scratchpad_cleanup = scratchpad!(
         window,
         tGrid[1, 1],
         selected_transitions,
@@ -306,7 +291,6 @@ function build_selection_window(
         rel_t_to_idx,
         calculators,
         cluster_annotations,
-        inspector,
         c2corr;
         hovered_cluster=hovered_cluster,
         hovered=hovered_transition,
@@ -340,12 +324,15 @@ function build_selection_window(
     scg[1, 1] = scratchpad_render_menu
     scg[1, 2] = hgrid!(scalar_menu, scratchpad_t_slider)
     scg[2, 1:2] = sc_cbar
-    println("Finished selection window")
+    @debug "Finished selection window"
 
     cleanup = function ()
-        println("Killing selection")
-        off(hm_m_listener)
-        off.(cluster_window_listeners)
+        @debug "Killing selection"
+        scratchpad_cleanup()
+        empty!(ax)
+        Makie.free(ax.scene)
+        clear_listener_list(cbar_listeners)
+        clear_listener_list(cluster_window_listeners)
     end
     return window, cleanup
 end

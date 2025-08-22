@@ -74,7 +74,7 @@ function save_volume_cache(key, volume_range, dimensions, absVolMin)
     JLD2.jldsave("$(cache_file)"; volume_range, dimensions, absVolMin)
 end
 
-function get_data_alt(trajectory_name)
+function get_data_alt(trajectory_name::String)
     rootPath = dirname(dirname(@__FILE__))
     dataPath = joinpath(rootPath, "data")
     cachePath = joinpath(rootPath, "cache")
@@ -87,7 +87,7 @@ function get_data_alt(trajectory_name)
 
             cache_file = joinpath(cachePath, "$(trajectory_name).jdl2")
             transitions_pickle = joinpath(t, "transitions.pickle")
-            transitions = Vector{Transition}(Pickle.npyload(transitions_pickle))
+            transitions::Vector{Transition} = Vector{Transition}(Pickle.npyload(transitions_pickle))
 
             ase_pickle = joinpath(t, "ase_dict.pickle")
 
@@ -97,7 +97,7 @@ function get_data_alt(trajectory_name)
 
             # if any do not exist, compute them in python before continuing
             if any(x -> !isfile(x), data_pickles)
-                @show "Processing ASE data..."
+                println("Processing ASE data...")
                 py"process_dataset"(transitions, ase_pickle, t)
             end
 
@@ -112,7 +112,7 @@ function get_data_alt(trajectory_name)
             # can store kdTrees as indices only, relinking positions when needed
             # no need to cache this data, it computes really quickly
             kdTrees = Dict{Transition,Tuple{KDTree,KDTree}}()
-            for (t, m) in rawAlignedPositionsMatrices
+            for (t::Transition, m::Tuple{Matrix{Float32},Matrix{Float32}}) in rawAlignedPositionsMatrices
                 # center atom positions first
                 cm1 = mean(m[1], dims=1)
                 cm2 = mean(m[2], dims=1)
@@ -136,7 +136,7 @@ function get_data_alt(trajectory_name)
                     mkdir(cachePath)
                 end
 
-                distanceMatrices = pycall(load_pickle, PyDict{State,Matrix{Float32}}, distances_pickle)
+                distanceMatrices::PyDict{State,Matrix{Float32}} = pycall(load_pickle, PyDict{State,Matrix{Float32}}, distances_pickle)
                 println("Calculating transition invariants.")
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
@@ -171,7 +171,7 @@ function get_data_alt(trajectory_name)
                     fname, ext = splitext(sf)
                     if isfile(sf) && ext == ".pickle"
                         d = Dict{Transition,Array{Float32}}(Pickle.npyload(sf))
-                        totExtrema = extrema.(values(d))
+                        totExtrema::Vector{Tuple{Float32,Float32}} = extrema.(values(d))
                         totMin = minimum(first.(totExtrema))
                         totMax = maximum(last.(totExtrema))
                         scalar_ranges[basename(fname)] = (totMin, totMax)
