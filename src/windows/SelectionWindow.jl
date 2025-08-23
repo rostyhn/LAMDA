@@ -85,7 +85,7 @@ function build_selection_window(
         w, cluster_cleanup = build_cluster_window(
             cc,
             scd,
-            cluster_data,
+            Ref(cluster_data),
             cluster_info[],
             cluster_data.m_extrema,
             render_views,
@@ -146,10 +146,10 @@ function build_selection_window(
     end
 
     dendrogram!(graph_ax,
-        cluster_info,
         cluster_data,
         hovered_cluster,
         cluster_annotations;
+        cutoff=h_cutoff,
         on_click=on_show_cluster_click,
         on_cutoff_line_drag=update_cutoff,
         colormap=CLUSTER_COLORS)

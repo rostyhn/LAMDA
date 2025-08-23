@@ -270,6 +270,7 @@ function main_window(active_trajectory::Trajectory,
     h_range::Tuple{Float32,Float32} = extrema(clustering.heights)
 
     rm = view(dm, clustering.order, clustering.order)
+
     # gets the correct idx 
     t_to_mtx = Dict{Transition,UInt16}()
     mtx_to_t = Dict{UInt16,Transition}()
@@ -279,18 +280,11 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # get minimum and maximum of entire matrix for cmap
-
     c2idx, c_to_parent, parent_to_c = get_hierarchy(clustering)
-    # render dendrogram once so that we can use any piece of it in the cluster window
-    lines, clusters, c2lx = treepositions(clustering, 0.0)
-
     fl = vec(dm)
     cluster_data = ClusterData(clustering=clustering,
         matrix=rm,
         c2idx=c2idx,
-        clusters=clusters,
-        lines=lines,
-        c2lx=c2lx,
         c_to_parent=c_to_parent,
         parent_to_c=parent_to_c,
         m_extrema=extrema(fl),
@@ -302,18 +296,15 @@ function main_window(active_trajectory::Trajectory,
         assignments = cutree(cluster_data.clustering, h=$h_cutoff)
         groups = Dict{UInt16,Vector{Transition}}()
         igroups = Dict{UInt16,Vector{Int}}()
-        # current assigned cluster to idx
-        ccidx2cidx = Dict{UInt16,UInt16}()
-        # cluster to assignment idx 
-        a2c = Dict{UInt16,Set{UInt16}}()
+
+        ccidx2cidx = Dict{UInt16,UInt16}() # current assigned cluster to idx 
+        a2c = Dict{UInt16,Set{UInt16}}() # cluster to assignment idx     
+
         for (i, c) in enumerate(assignments)
             g = get(groups, c, [])
             ig = get(igroups, c, [])
             push!(g, transitionSequence[i])
             push!(ig, i)
-
-            groups[c] = g
-            igroups[c] = ig
         end
 
         for (idx, g) in igroups
@@ -322,22 +313,9 @@ function main_window(active_trajectory::Trajectory,
             ccidx2cidx[idx] = cluster_data.c2idx[c]
         end
 
-        reps = Dict{Int,Transition}()
-        for (clusterIdx, g) in groups
-            gi = map(x -> cluster_data.t_to_mtx[x], g)
-            dist_sum = map(x -> sum(view(dm, x, gi)), gi)
-            reps[clusterIdx] = g[argmin(dist_sum)]
-        end
-
-        # instead of rendering the dendrogram twice like this and keeping two copies in memory, could modify dendrogram render to show lines under the cutoff differently
-        sLines, sClusters, sC2lx = treepositions(cluster_data.clustering, $h_cutoff)
         return ClusterInfo(groups=groups,
-            representatives=reps,
             assignments=assignments,
-            lines=sLines,
             rel_t_to_idx=rel_t_to_idx,
-            clusters=sClusters,
-            c2lx=sC2lx,
             a2c=a2c,
             cc2cidx=ccidx2cidx,
             h_range=h_range,
@@ -464,7 +442,9 @@ function main_window(active_trajectory::Trajectory,
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene::Makie.Scene, transition::Transition, selected_scalar::Observable{String},
+    function render_atom_view(scene::Makie.Scene,
+        transition::Transition,
+        selected_scalar::Observable{String},
         time::Observable{<:AbstractFloat},
         flip::Bool=false)
 

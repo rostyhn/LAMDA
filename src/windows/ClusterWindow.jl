@@ -1,7 +1,7 @@
 function build_cluster_window(
     clusters::Observable{Set{UInt16}},
     cluster_data::Observable{SingleClusterData},
-    all_cluster_data::ClusterData,
+    all_cluster_data::Base.RefValue{ClusterData},
     cluster_info::ClusterInfo,
     mat_range::Tuple{AbstractFloat,AbstractFloat},
     render_views::Dict{String,Function},
@@ -65,7 +65,7 @@ function build_cluster_window(
     function update_colors(cutoff)
         cut_clusters = Ref([])
         clusters_above_cutoff(clusters[],
-            all_cluster_data,
+            all_cluster_data[],
             cluster_data[],
             cutoff,
             cut_clusters)
@@ -81,7 +81,7 @@ function build_cluster_window(
             end
         end
 
-        colors[] = map(x -> cluster_color(all_cluster_data, x), rel_ts_to_c)
+        colors[] = map(x -> cluster_color(all_cluster_data[], x), rel_ts_to_c)
         notify(colors)
     end
 
@@ -157,14 +157,14 @@ function build_cluster_window(
     hidedecorations!(dendrogram_ax)
 
     dendrogram!(dendrogram_ax,
-        cluster_data,
-        all_cluster_data,
+        all_cluster_data[],
         hovered_cluster,
         cluster_annotations,
         on_cutoff_line_drag=update_colors;
         cutoff_reset=true,
+        root=clusters,
         on_click=(x -> switch_cluster(x, clusters)),
-        colormap=CLUSTER_COLORS)
+    )
 
     hm_ax, hm = heatmap(mat_grid[3, 1],
         vals,

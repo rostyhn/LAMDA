@@ -1,60 +1,10 @@
-function get_st_clusters(merge, i, clusterIdx)
-    if i < 0
-        return Set(clusterIdx[-i])
-    end
-
-    lt = merge[i, 1]
-    rt = merge[i, 2]
-
-    c_lt = get_st_clusters(merge, lt, clusterIdx)
-    c_rt = get_st_clusters(merge, rt, clusterIdx)
-
-    return union(c_lt, c_rt)
-end
-
-# assigns each cluster a unique id
-function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{Dict{Set{UInt16},UInt16},
-    Dict{Set{UInt16},Set{UInt16}},
-    Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}}
-
-    c2idx = Dict{Set{UInt16},UInt16}()
-    clusterIdx = collect(eachindex(hc.order))
-    c_to_parent = Dict{Set{UInt16},Set{UInt16}}()
-    parent_to_c = Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}()
-
-    for i in 1:size(hc.merges, 1)
-        pg = get_st_clusters(hc.merges, i, clusterIdx)
-        c2idx[pg] = i
-
-        lt = hc.merges[i, 1]
-        rt = hc.merges[i, 2]
-
-        lg = get_st_clusters(hc.merges, lt, clusterIdx)
-        rg = get_st_clusters(hc.merges, rt, clusterIdx)
-
-        if lt < 0
-            c2idx[lg] = i
-        end
-        if rt < 0
-            c2idx[rg] = i
-        end
-
-        c_to_parent[lg] = pg
-        c_to_parent[rg] = pg
-        parent_to_c[pg] = (lg, rg)
-
-    end
-
-    return c2idx, c_to_parent, parent_to_c
-end
-
 # renders the clustering at the specified cutoff value
-function treepositions(hc, cutoff)::Tuple{
+function treepositions(hc::Clustering.Hclust, cutoff::AbstractFloat)::Tuple{
     Vector{Tuple{Point2f,Point2f}},
     Vector{Set{UInt16}},
     Dict{Set{UInt16},Vector{UInt16}}}
 
-    # guarantees consistent labelling with main cluster info 
+    # guarantees consistent labeling with main cluster info 
     clusterIdx = collect(eachindex(hc.order))
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
@@ -92,9 +42,9 @@ function treepositions(hc, cutoff)::Tuple{
             rg_ar = get(c2lx, rg, [])
             pg_ar = get(c2lx, pg, [])
 
-            c2lx[lg] = push!(lg_ar, lx - 1)
-            c2lx[rg] = push!(rg_ar, lx + 1)
-            c2lx[pg] = push!(pg_ar, lx)
+            push!(lg_ar, lx - 1)
+            push!(rg_ar, lx + 1)
+            push!(pg_ar, lx)
 
             lx += 3
         end
@@ -103,7 +53,61 @@ function treepositions(hc, cutoff)::Tuple{
     return lines, clusters, c2lx
 end
 
-# gets line positions for a specified branch in the dendrogram 
+function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
+    Vector{Tuple{Point2f,Point2f}},
+    Vector{Set{UInt16}},
+    Dict{Set{UInt16},Vector{UInt16}}}
+
+    # guarantees consistent labeling with main cluster info 
+    clusterIdx = collect(eachindex(hc.order))
+    order = StatsBase.indexmap(hc.order)
+    nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
+
+    @warn "not implemented correctly yet!"
+
+    lines = []
+    clusters = []
+    c2lx = Dict{Set{UInt16},Vector{UInt16}}()
+    lx = 2
+    for i in 1:size(hc.merges, 1)
+        # negative id is a leaf, positive is a subtree
+        lt = hc.merges[i, 1] # left subtree
+        rt = hc.merges[i, 2] # right subtree
+
+        x1, y1 = nodepos[lt]
+        x2, y2 = nodepos[rt]
+        xpos = (x1 + x2) / 2
+        ypos = hc.heights[i]
+        nodepos[i] = (xpos, ypos)
+
+        lg = get_st_clusters(hc.merges, lt, clusterIdx)
+        push!(lines, (Point2(x1, max(0.0, y1)), Point2(x1, ypos)))
+        push!(clusters, lg)
+
+        pg = get_st_clusters(hc.merges, i, clusterIdx)
+        # stem
+        push!(lines, (Point2(x1, ypos), Point2(x2, ypos)))
+        push!(clusters, pg)
+
+        rg = get_st_clusters(hc.merges, rt, clusterIdx)
+        push!(lines, (Point2(x2, max(0.0, y2)), Point2(x2, ypos)))
+        push!(clusters, rg)
+
+        lg_ar = get(c2lx, lg, [])
+        rg_ar = get(c2lx, rg, [])
+        pg_ar = get(c2lx, pg, [])
+
+        push!(lg_ar, lx - 1)
+        push!(rg_ar, lx + 1)
+        push!(pg_ar, lx)
+
+        lx += 3
+    end
+
+    return lines, clusters, c2lx
+end
+
+#= # gets line positions for a specified branch in the dendrogram 
 function branch(cd::ClusterData, root::Set{UInt16})
     children = Ref([])
     dfs(cd, root, children)
@@ -125,50 +129,52 @@ function branch(cd::ClusterData, root::Set{UInt16})
     end
 
     return corrected_children, new_lines, heights
-end
+end =#
 
-function dendrogram!(ax,
-    cluster_info,
-    cluster_data,
-    hovered::MaybeObservable{Set{UInt16}},
-    cluster_annotations;
-    hover_callbackfn=(x -> ()),
-    colormap=:tab20,
-    rootcolor=:black,
-    on_click=(x -> ()),
-    on_cutoff_line_drag=(x -> ()),
-    cutoff_reset=false,
+function dendrogram!(ax::Makie.Axis,
+    cluster_data::ClusterData,
+    hovered::MaybeObservable{ClusterSet},
+    cluster_annotations::Observable{ClusterAnnotation};
+    hover_callbackfn::Function=(x -> ()),
+    on_click::Function=(x -> ()),
+    on_cutoff_line_drag::Function=(x -> ()),
+    cutoff_reset::Bool=false,
+    root::Union{Observable{ClusterSet},Observable{Nothing}}=Observable(nothing),
+    cutoff::Union{Observable{<:AbstractFloat},Observable{Nothing}}=Observable(nothing),
     kwargs...)
+
 
     ax.xgridvisible = false
     ax.ygridvisible = false
-
     dendrogram = @lift begin
-        clusters = $(cluster_info).clusters
-        lines = $(cluster_info).lines
+        # to get label idx just divide by 2
 
-        colors = []
-        for c in clusters
-            color = cluster_color(to_value(cluster_data), c)
-            push!(colors, set_color_alpha(color, 0.6))
+        if isnothing($root) && isnothing($cutoff)
+            return error("Must specify either root or cutoff to render dendrogram.")
         end
 
-        # to get label idx just divide by 2
+        if !isnothing($cutoff)
+            lines, clusters, c2lx = treepositions(cluster_data.clustering, $cutoff)
+        else
+            lines, clusters, c2lx = treepositions(cluster_data.clustering, $root)
+        end
+
         function get_cluster(i)
             return clusters[div(i, 2)]
         end
+
+        colors = []
+        for c in clusters
+            push!(colors, RGBAf(1.0, 0.0, 0.0, 0.6))
+        end
+
         all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines), init=[])
         min_x, max_x = extrema(all_x)
         all_y = reduce(vcat, map(x -> [x[1][2], x[2][2]], lines), init=[])
         min_y, max_y = extrema(all_y)
         cut_line = ([min_x, max_x], [min_y, min_y])
 
-        cl_to_idx = Dict{Set{UInt16},Int}()
-        for (i, c) in enumerate(clusters)
-            cl_to_idx[c] = i
-        end
-
-        return lines, colors, cut_line, cl_to_idx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
+        return lines, colors, cut_line, c2lx, get_cluster, clusters, (min_x, max_x), (min_y, max_y)
     end
 
     highlighted = []
@@ -219,17 +225,14 @@ function dendrogram!(ax,
         notify(d_colors)
     end
 
-    ls = linesegments!(ax,
+    linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        colormap=:rainbow_bgyrm_35_85_c71_n256,
-        color=lift(x -> map(y -> y[1][1], x[1]), dendrogram),
+        #colormap=:rainbow_bgyrm_35_85_c71_n256,
+        color=:red,
         inspector_label=on_hover,
     )
 
-    m_events = addmouseevents!(ax.scene)
-
     cutoff_line::Observable{Tuple{Vector{Float64},Vector{Float64}}} = Observable(dendrogram[][3])
-
     on(dendrogram) do d
         # reset cutoff line
         if cutoff_reset
@@ -250,6 +253,7 @@ function dendrogram!(ax,
         color=lift(x -> (x) ? to_color(colorant"#D3D3D3") : to_color(:grey), cutoff_hovered))
     l.inspectable[] = false
 
+    m_events = addmouseevents!(ax.scene)
     on(m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
             if !isnothing(hovered[]) && !cutoff_hovered[]
