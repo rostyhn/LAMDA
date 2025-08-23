@@ -74,12 +74,14 @@ function julia_main()::Cint
     return 0
 end
 
-function go(trajectory_name::String; kwargs...)::Int
+function go(trajectory_name::String; cachePath::String=default_cache(), kwargs...)::Int
     init_memory = Sys.free_memory() / 2^20
-    active_trajectory = get_data_alt(trajectory_name)
+    dataPath = abspath(trajectory_name)
+
+    active_trajectory = get_data_alt(dataPath, cachePath)
     set_theme!(UI_THEME)
 
-    @time window, final_cleanup = build_reduction_window(active_trajectory; kwargs...)
+    @time window, final_cleanup = build_reduction_window(active_trajectory, dataPath, cachePath; kwargs...)
     screen = GLMakie.Screen(title="LAMDA - Reduction Window")
     display(screen, window)
     wait(screen)

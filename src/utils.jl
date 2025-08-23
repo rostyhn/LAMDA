@@ -1,3 +1,18 @@
+function unix_default_cache_dir()
+
+end
+
+function default_cache()::String
+    if Sys.iswindows()
+        error("Not implemented for Window yet")
+    else
+        hdir = abspath(homedir())
+        p = joinpath([hdir, ".cache", "LAMDA"])
+        mkpath(p)
+        return p
+    end
+end
+
 function clear_listener_list(xs)
     for x in xs
         off(x)

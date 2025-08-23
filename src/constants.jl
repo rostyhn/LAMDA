@@ -1,4 +1,4 @@
-const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Superquadric"]
+const SINGLE_TRANSITION_RENDER_OPTIONS = ["Atom", "Volume", "Superquadric"]
 const CLUSTER_COLORS = :glasbey_bw_minc_20_maxl_70_n256
 
 const LEFT_KEY = Keyboard.left

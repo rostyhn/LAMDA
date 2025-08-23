@@ -1,4 +1,6 @@
-function build_reduction_window(active_trajectory::Trajectory;
+function build_reduction_window(active_trajectory::Trajectory,
+    dataPath::String,
+    cachePath::String;
     init_h_cutoff::AbstractFloat=0.3,
     distance_matrix::Maybe{String}=nothing,
     kwargs...)
@@ -176,6 +178,8 @@ function build_reduction_window(active_trajectory::Trajectory;
             reduced[][3],
             selected_dm[],
             h_cutoff[],
+            dataPath,
+            cachePath;
             kwargs...)
 
         empty!(window)
@@ -228,8 +232,10 @@ function main_window(active_trajectory::Trajectory,
     transitionSequence::Vector{Transition},
     clustering::Clustering.Hclust{Float32},
     selected_dm_name::String,
-    init_h_cutoff::AbstractFloat;
-    chunk_size::Integer=100,
+    init_h_cutoff::AbstractFloat,
+    dataPath::String,
+    cachePath::String;
+    chunk_size::Integer=250,
     align_with::Maybe{String}=nothing)
 
     (;
@@ -341,9 +347,6 @@ function main_window(active_trajectory::Trajectory,
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     selected_alignment = Observable(init_alignment)
 
-    # get number of atoms
-    num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
-
     # get min max coordinates of atoms for bounding box
     minX = 1.0e10
     minY = 1.0e10
@@ -353,7 +356,6 @@ function main_window(active_trajectory::Trajectory,
     maxZ = -1.0e10
     @time for (key, positions) in alignedPositionsMatrices
         p1, p2 = positions
-
         minX1, maxX1 = extrema(view(p1, :, 1))
         minY1, maxY1 = extrema(view(p1, :, 2))
         minZ1, maxZ1 = extrema(view(p1, :, 3))
@@ -371,108 +373,44 @@ function main_window(active_trajectory::Trajectory,
         maxZ = max(maxZ, max(maxZ1, maxZ2))
     end
 
-    molGrid = Figure()
-    Label(molGrid[1, 1], "Volume Controls", rotation=pi / 2)
-    sg = SliderGrid(molGrid[4, 2:3],
-        (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
-        (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
-        (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
+    volume_resolution = Observable(0.2)
+    kernel_width = Observable(1.0) # try with 0.5 to match superquadrics
+    num_neighbors = Observable(5)
 
-    sampleRanges = lift(sg.sliders[1].value) do vr
+    sampleRanges = @lift begin
+        vr = $volume_resolution
         return [minX-2*vr:vr:maxX+2*vr;],
         [minY-2*vr:vr:maxY+2*vr;],
         [minZ-2*vr:vr:maxZ+2*vr;]
     end
 
-    kernelWidth = lift(sg.sliders[2].value) do kw
-        return kw
-    end
-
-    num_neighbors = lift(sg.sliders[3].value) do nn
-        return nn
-    end
-
     # 0.1 is the thickness of the white part
     volume_cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
-
     selected_invariant = Observable("t1")
+
     volumeData::Observable{Matrix{Float32}} = @lift begin
-        key = string($(sg.sliders[1].value), "_", $kernelWidth, "_", $num_neighbors, "_", $selected_invariant, "_", name)
         w = length($sampleRanges[1])
         h = length($sampleRanges[2])
         d = length($sampleRanges[3])
-
-        # calculate volume data for all transitions just once
-        fp, is_cached = get_mmap_file(key)
+        key = string($volume_resolution, "_", $kernel_width, "_", $num_neighbors, "_", $selected_invariant, "_", name)
+        fp, is_cached = get_mmap_file(key, cachePath)
         if !is_cached
-            println("Calculating volume data for $(key); will be saved as $(hash(key))...")
-
-            alignedPos = map(x -> alignedPositionsMatrices[x][1], transitions)
-            kd = map(x -> kdTrees[x][1], transitions)
-
+            @info "Calculating volume data for $(key); will be saved as $(hash(key)).bin"
             iv = select_invariant($selected_invariant)
-            invariants = map(x -> iv[][x], transitions)
+            invariants = collect(values(iv[]))
+            alignedPos = first.(values(alignedPositionsMatrices))
+            kd = first.(values(kdTrees))
 
-            points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
-            for i in eachindex($sampleRanges[1]) # x
-                for j in eachindex($sampleRanges[2]) # y
-                    for k in eachindex($sampleRanges[3]) # z
-                        point = Point3f($sampleRanges[1][i], $sampleRanges[2][j], $sampleRanges[3][k])
-                        push!(points, ((i, j, k), point))
-                    end
-                end
-            end
+            volMin, volMax, absVolMin =
+                calculateVolumeData(fp, transitions, alignedPos, kd, invariants,
+                    $sampleRanges, $num_neighbors, $kernel_width; chunk_size=chunk_size)
 
-            try
-                absVolMin = floatmax(Float32)
-                volMin = floatmax(Float32)
-                volMax = floatmin(Float32)
-
-                processed = 0
-                prog = Progress(length(transitions))
-                update!(prog, processed)
-
-                chunks = collect(Iterators.partition(eachindex(transitions), chunk_size))
-
-                # 500 seconds at the fastest
-                io = open(fp, "a")
-                for chunk in chunks
-                    sub_chunks = collect(Iterators.partition(chunk, div(length(chunk), nthreads(:default))))
-                    tasks = map(sub_chunks) do ts
-                        Threads.@spawn :default begin
-                            ap_chunk = @view alignedPos[ts]
-                            kd_chunk = @view kd[ts]
-                            iv_chunk = @view invariants[ts]
-                            return calc_vols($sampleRanges, $num_neighbors, $kernelWidth, points, ts, kd_chunk, ap_chunk, iv_chunk)
-                        end
-                    end
-
-                    errormonitor.(tasks)
-                    data = fetch.(tasks)
-                    vd = reduce(vcat, first.(data))
-
-                    for d in vd
-                        write(io, d)
-                    end
-                    processed += length(vd)
-
-                    volMin = min(volMin, minimum(getindex.(data, 2)))
-                    volMax = max(volMax, maximum(getindex.(data, 3)))
-                    absVolMin = min(absVolMin, minimum(last.(data)))
-
-                    update!(prog, processed)
-                end
-                close(io)
-                save_volume_cache(key, (volMin, volMax), (w, h, d), absVolMin)
-            catch
-                rm(fp)
-                return error("Volume calculation failed.")
-            end
+            save_volume_cache(key, cachePath, (volMin, volMax), (w, h, d), absVolMin)
         end
 
         volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(transitions)), shared=false, grow=false)
-        volRange[] = read_volume_cache(key)
+        volRange[] = read_volume_cache(key, cachePath)
         #make it symmetric 
         #maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
         #volRange[] = (-maximumRange, maximumRange)
@@ -487,13 +425,8 @@ function main_window(active_trajectory::Trajectory,
             volume_cmap[] = vcat(lowmap, himap)
         end
         notify(volume_cmap)
-
         return volData
     end
-
-    filterRange = lift(x -> LinRange(x[1], x[2], 100), volRange)
-    volFilter = IntervalSlider(molGrid[2, 1:2], range=filterRange, startvalues=(0, 0))
-    Label(molGrid[2, :], lift(x -> "Volume filter: " * string(round.(x, digits=6)), volFilter.interval))
 
     invariantRange = @lift begin
         iv = select_invariant($selected_invariant)
@@ -531,7 +464,10 @@ function main_window(active_trajectory::Trajectory,
 
     # did this to avoid drilling down and passing parameters constantly
     atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
-    function render_atom_view(scene::Makie.Scene, transition::Transition, selected_scalar, time, flip=false)
+    function render_atom_view(scene::Makie.Scene, transition::Transition, selected_scalar::Observable{String},
+        time::Observable{<:AbstractFloat},
+        flip::Bool=false)
+
         res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
             ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
             simple_atom_view!(scene, ap,
@@ -558,11 +494,30 @@ function main_window(active_trajectory::Trajectory,
         return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange)
     end
 
-    function render_movement_view_ts(scene::Makie.Scene, ts::Vector{Transition}, time::Observable{Float32},
+    function render_superquadrics_view(scene::Makie.Scene, transition::Transition, flip::Bool=false)
+        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes
+            t_ap = alignedPositionsMatrices[transition]
+            idx = flip ? 2 : 1
+            points = Point3f.(eachrow(t_ap[idx]))
+            # do the invariant values need to be flipped as well?
+            spa = stretchedPrincipalAxes[transition]
+            colors = lift(x -> view(select_invariant(x)[][transition], eachindex(points)), selected_invariant)
+
+            # both fns allocate a bunch of space
+            sq = collect(superquadric.(1.0, points, spa, 3.0, 0.1))
+            il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
+            push!(is, colors)
+            return il, is, plots
+        end
+    end
+
+    function render_movement_view_ts(scene::Makie.Scene,
+        ts::Vector{Transition},
+        time::Observable{Float32},
         alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}},
         correlationThreshold::Observable{Float32})
 
-        res = let alignedPositionsMatrices = alignedPositionsMatrices, cluster_data = cluster_data, kernelWidth = kernelWidth
+        res = let alignedPositionsMatrices = alignedPositionsMatrices, cluster_data = cluster_data, kernelWidth = kernel_width
 
             posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
             distances, t_to_mtx = get_local_matrix(cluster_data, ts)
@@ -614,23 +569,6 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_superquadrics_view(scene::Makie.Scene, transition::Transition, flip::Bool=false)
-        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes
-            t_ap = alignedPositionsMatrices[transition]
-            idx = flip ? 2 : 1
-            points = Point3f.(eachrow(t_ap[idx]))
-            # do the invariant values need to be flipped as well?
-            spa = stretchedPrincipalAxes[transition]
-            colors = lift(x -> view(select_invariant(x)[][transition], eachindex(points)), selected_invariant)
-
-            # both fns allocate a bunch of space
-            sq = collect(superquadric.(1.0, points, spa, 3.0, 0.1))
-            il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
-            push!(is, colors)
-            return il, is, plots
-        end
-    end
-
     function time_slider(init_time::Float32, figure::Makie.Figure)
         time = Observable(init_time)
 
@@ -658,7 +596,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure::Makie.Figure; default::String="Superquadric")
+    function render_menu(figure::Makie.Figure; default::String="Volume")
         scene_selector = Observable(default)
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -738,7 +676,9 @@ function main_window(active_trajectory::Trajectory,
         "CorrThreshold" => correlation_slider)
 
     calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment, "GetTransitions" => get_transitions)
-    settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)))
+    # get number of atoms
+    num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
+    settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)), num_atoms)
 
     window, cleanup = build_selection_window(
         transitionSequence,
@@ -766,7 +706,13 @@ function main_window(active_trajectory::Trajectory,
             clustering = nothing
 
             Observables.clear(cluster_info)
+
             Observables.clear(volumeData)
+            Observables.clear(volume_resolution)
+            Observables.clear(volRange)
+            Observables.clear(kernel_width)
+            Observables.clear(volume_cmap)
+
             #Observables.clear(invariantRange)
 
             for x in values(calculators)
