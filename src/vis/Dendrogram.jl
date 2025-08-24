@@ -80,28 +80,35 @@ function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
         ypos = hc.heights[i]
         nodepos[i] = (xpos, ypos)
 
-        lg = get_st_clusters(hc.merges, lt, clusterIdx)
-        push!(lines, (Point2(x1, max(0.0, y1)), Point2(x1, ypos)))
-        push!(clusters, lg)
-
         pg = get_st_clusters(hc.merges, i, clusterIdx)
-        # stem
-        push!(lines, (Point2(x1, ypos), Point2(x2, ypos)))
-        push!(clusters, pg)
+        intersection = intersect(root, pg)
+        if length(intersection) != 0
+            lg = get_st_clusters(hc.merges, lt, clusterIdx)
+            push!(lines, (Point2(x1, y1), Point2(x1, ypos)))
+            push!(clusters, lg)
 
-        rg = get_st_clusters(hc.merges, rt, clusterIdx)
-        push!(lines, (Point2(x2, max(0.0, y2)), Point2(x2, ypos)))
-        push!(clusters, rg)
+            # stem
+            push!(lines, (Point2(x1, ypos), Point2(x2, ypos)))
+            push!(clusters, pg)
 
-        lg_ar = get(c2lx, lg, [])
-        rg_ar = get(c2lx, rg, [])
-        pg_ar = get(c2lx, pg, [])
+            rg = get_st_clusters(hc.merges, rt, clusterIdx)
+            push!(lines, (Point2(x2, y2), Point2(x2, ypos)))
+            push!(clusters, rg)
 
-        push!(lg_ar, lx - 1)
-        push!(rg_ar, lx + 1)
-        push!(pg_ar, lx)
+            lg_ar = get(c2lx, lg, [])
+            rg_ar = get(c2lx, rg, [])
+            pg_ar = get(c2lx, pg, [])
 
-        lx += 3
+            push!(lg_ar, lx - 1)
+            push!(rg_ar, lx + 1)
+            push!(pg_ar, lx)
+
+            if intersection == root
+                break
+            end
+
+            lx += 3
+        end
     end
 
     return lines, clusters, c2lx
@@ -148,7 +155,6 @@ function dendrogram!(ax::Makie.Axis,
     ax.ygridvisible = false
     dendrogram = @lift begin
         # to get label idx just divide by 2
-
         if isnothing($root) && isnothing($cutoff)
             return error("Must specify either root or cutoff to render dendrogram.")
         end
@@ -253,6 +259,7 @@ function dendrogram!(ax::Makie.Axis,
     l.inspectable[] = false
 
     m_events = addmouseevents!(ax.scene)
+
     on(m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
             if !isnothing(hovered[]) && !cutoff_hovered[]
@@ -290,14 +297,15 @@ function dendrogram!(ax::Makie.Axis,
             end
         elseif e.type == MouseEventTypes.leftdrag
             if dragging[]
-                px, py = float.(mouseposition(ax))
+                px, py = float.(mouseposition(ax.scene))
                 y = max(0.0, py)
                 cutoff_line[] = (cutoff_line[][1], [y, y])
                 notify(cutoff_line)
             end
         elseif e.type == MouseEventTypes.leftdragstop
             if dragging[]
-                px, py = float.(mouseposition(ax))
+                px, py = float.(mouseposition(ax.scene))
+
                 dragging[] = false
                 on_cutoff_line_drag(max(0.0, py))
             end
