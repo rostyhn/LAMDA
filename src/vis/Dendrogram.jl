@@ -174,7 +174,6 @@ function dendrogram!(ax::Makie.Axis,
 
         if hovered[] != cl
             hovered[] = cl
-            notify(hovered)
         end
 
         s = get_val(cluster_annotations[], "titles", cl)
@@ -202,7 +201,6 @@ function dendrogram!(ax::Makie.Axis,
             children = nothing
         end
         d_colors[] = d_colors[]
-        notify(d_colors)
     end
 
     linesegments!(ax,
@@ -274,7 +272,6 @@ function dendrogram!(ax::Makie.Axis,
                 px, py = float.(mouseposition(ax.scene))
                 y = max(0.0, py)
                 cutoff_line[] = (cutoff_line[][1], [y, y])
-                notify(cutoff_line)
             end
         elseif e.type == MouseEventTypes.leftdragstop
             if dragging[]

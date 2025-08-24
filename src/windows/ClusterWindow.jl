@@ -7,9 +7,9 @@ function build_cluster_window(
     render_views::Dict{String,Function},
     widgets::Dict{String,Function},
     on_transition_select::Function,
-    hovered_transition,
-    hovered_cluster,
-    cluster_annotations;
+    hovered_transition::MaybeObservable{Transition},
+    hovered_cluster::MaybeObservable{ClusterSet},
+    cluster_annotations::Observable{ClusterAnnotation};
     on_cluster_select::Function=(x, y) -> (),
     on_up::Function=(x) -> (),
     on_left::Function=(x) -> (),
@@ -81,7 +81,6 @@ function build_cluster_window(
         end
 
         colors[] = map(x -> all_cluster_data[].colors[x], rel_ts_to_c)
-        notify(colors)
     end
 
     scene_selector, render_menu = widgets["Render"](window)
@@ -92,13 +91,13 @@ function build_cluster_window(
     btn_centroid = Button(window, label="Show centroid")
     centroid_click_listener = on(btn_centroid.clicks, weak=true) do n
         hovered_transition[] = cluster_data[].ref_t
-        notify(hovered_transition)
     end
 
     lm, embedding = layout_menu(window, cluster_data)
 
     embedding_cleanup = embedding_view!(window[2, 1:2],
-        lift((x, y) -> (x.ts, x.alignment, y), cluster_data, embedding),
+        cluster_data,
+        embedding,
         scene_selector,
         scalar_selector,
         time,
@@ -134,8 +133,6 @@ function build_cluster_window(
         scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, clear=true),
     )
 
-    vals = lift(x -> x.mat, cluster_data)
-
     correlation, corr_slider = widgets["CorrThreshold"](window, Float32(0.7))
     btn_centroid_to_scratchpad = Button(window, label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
@@ -166,11 +163,11 @@ function build_cluster_window(
     )
 
     hm_ax, hm = heatmap(mat_grid[3, 1],
-        vals,
+        lift(x -> x.mat, cluster_data),
         colorrange=mat_range,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    v_listener = on(vals) do v
+    v_listener = on(cluster_data) do _
         reset_limits!(hm_ax)
         center!(hm_ax.scene)
     end
@@ -188,7 +185,6 @@ function build_cluster_window(
         else
             mat_hovered[] = (0, 0)
         end
-        notify(mat_hovered)
         return Consume(false)
     end
 
@@ -243,8 +239,8 @@ function build_cluster_window(
         notes_listener = nothing
         notes_click_listener = nothing
 
+        Observables.clear(embedding)
         Observables.clear(correlation)
-        Observables.clear(vals)
         Observables.clear(colors)
         Observables.clear(title)
         Observables.clear(notes)
@@ -269,33 +265,36 @@ function build_cluster_window(
     return window, cluster_cleanup
 end
 
-function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
+function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{AbstractArray{AbstractArray{Float32}}}}
     opts = ["MDS", "Grid", "UMAP"]
     m = Menu(window, options=opts, default=first(opts))
     pts = @lift begin
         ms = $(m.selection)
-        ts = $(cluster_data).ts
-        mat = $(cluster_data).mat
+        cd = $(cluster_data)
+
+        ts = cd.ts
+        mat = cd.mat
 
         if ms == "MDS"
             mds = fit(MDS, mat; distances=true, maxoutdim=2)
-            points = Point2f.(eachcol(predict(mds)))
+            points = eachcol(predict(mds))
         elseif ms == "UMAP"
             if length(ts) > 2
-                em = transpose(umap(mat, 2;
+                em = umap(mat, 2;
                     metric=:precomputed,
                     min_dist=1,
-                    n_neighbors=min(length(ts) - 1, 15)))
-                points = Point2f.(eachrow(em))
+                    n_neighbors=min(length(ts) - 1, 15))
+                points = eachcol(em)
             else
-                points = Vector{Point2f}(undef, length(ts))
+                pos = Matrix{Float32}(undef, length(ts), 2)
                 for i in eachindex(ts)
-                    points[i] = Point2f(i - 1, 0.0)
+                    pos[i, :] = [Float32(i - 1), 0.0]
                 end
+                points = eachrow(pos)
             end
         else
             s = Int(round(sqrt(length(ts))))
-            points = Vector{Point2f}(undef, length(ts))
+            pos = Matrix{Float32}(undef, length(ts), 2)
             r = 0
             for i in eachindex(ts)
                 x = mod1(i, s) * 1
@@ -303,8 +302,9 @@ function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Vector{P
                     r += 1
                 end
                 y = r
-                points[i] = Point2f(x, y)
+                pos[i] = [x, y]
             end
+            points = eachrow(pos)
         end
         return points
     end

@@ -110,7 +110,7 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
         inspectable=false,
         colorrange=lift(x -> (0.0, x[2]), volumeRange))
 
-    # if called before scree # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
+    # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
     update_cam!(parent_scene(v_lo))
 
     return v_lo, v_hi

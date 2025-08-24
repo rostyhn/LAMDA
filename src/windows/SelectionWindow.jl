@@ -30,39 +30,37 @@ function build_selection_window(
     selected_clusters = Observable{Set{Set{UInt16}}}(init_clusters)
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    hovered_cluster = MaybeObservable{Set{UInt16}}(Set{UInt16}())
+    hovered_cluster = MaybeObservable{ClusterSet}(Set{UInt16}())
 
     # used to place transitions into scratchpad
-    function on_transition_select(t)
+    function on_transition_select(t::Transition)
         push!(selected_transitions[], t)
         notify(selected_transitions)
     end
 
     c2corr = Ref(Dict{Set{UInt16},Float32}())
-    function on_cluster_select(c, corr)
+    function on_cluster_select(c::ClusterSet, corr::Float32)
         push!(selected_clusters[], c)
         c2corr[][c] = corr
         notify(selected_clusters)
     end
 
     # can be more clever
-    function cw_on_up(cc)
+    function cw_on_up(cc::Observable{ClusterSet})
         parent = get_parent(cluster_data, cc[])
         if parent != cc[]
             cc[] = parent
-            notify(cc)
         end
     end
 
-    function switch_cluster(x, cc)
+    function switch_cluster(x::ClusterSet, cc::Observable{ClusterSet})
         cc[] = x
-        notify(cc)
     end
 
     cluster_window_listeners = []
     function on_show_cluster_click(clusters)
         init_memory = Sys.free_memory() / 2^20
-        cc = Observable(clusters)
+        cc = Observable(clusters, ignore_equal_values=true)
         scd = @lift begin
             # adding a print statement makes it work...
             print("")
@@ -142,7 +140,6 @@ function build_selection_window(
         notify(hovered_cluster)
 
         h_cutoff[] = x
-        notify(h_cutoff)
     end
 
     dendrogram!(graph_ax,

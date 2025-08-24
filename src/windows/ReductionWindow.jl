@@ -15,16 +15,15 @@ function build_reduction_window(active_trajectory::Trajectory,
 
     t_to_idx::Dict{Transition,UInt16} = active_trajectory.t_to_idx
 
-    h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff))
+    h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff), ignore_equal_values=true)
     h_range::Observable{Tuple{Float32,Float32}} = Observable((floatmin(Float32), floatmax(Float32)))
 
-    selected_dm::Observable{String} = Observable((isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix)
+    selected_dm::Observable{String} = Observable((isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix, ignore_equal_values=true)
     clustering::Observable{Clustering.Hclust{Float32}} = @lift begin
         println("Clustering $($selected_dm)...")
         res = hclust(dms[$selected_dm], linkage=:ward, branchorder=:barjoseph)
 
         h_range[] = extrema(res.heights)
-        notify(h_range)
         return res
     end
 
@@ -68,7 +67,6 @@ function build_reduction_window(active_trajectory::Trajectory,
 
     cutoff_listener = on(cutoff_tb.stored_string, weak=true) do s
         h_cutoff[] = parse(Float64, s)
-        notify(h_cutoff)
     end
 
     go_btn = Button(window, label="Explore")
@@ -345,7 +343,7 @@ function main_window(active_trajectory::Trajectory,
     # 0.1 is the thickness of the white part
     volume_cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
     volRange = Observable((floatmin(Float32), floatmax(Float32)))
-    selected_invariant = Observable("t1")
+    selected_invariant = Observable("t1", ignore_equal_values=true)
 
     volumeData::Observable{Matrix{Float32}} = @lift begin
         w = length($sampleRanges[1])
@@ -372,7 +370,6 @@ function main_window(active_trajectory::Trajectory,
         #make it symmetric 
         #maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
         #volRange[] = (-maximumRange, maximumRange)
-        notify(volRange)
 
         if $selected_invariant == "t2"
             volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.05) .^ 2)
@@ -382,7 +379,6 @@ function main_window(active_trajectory::Trajectory,
             himap = resample_cmap(:greens, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
             volume_cmap[] = vcat(lowmap, himap)
         end
-        notify(volume_cmap)
         return volData
     end
 
@@ -564,7 +560,6 @@ function main_window(active_trajectory::Trajectory,
 
         on(render_menu.selection) do s
             scene_selector[] = s
-            notify(scene_selector)
         end
 
         return scene_selector, render_menu

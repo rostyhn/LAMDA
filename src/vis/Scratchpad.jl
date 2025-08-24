@@ -69,7 +69,6 @@ function scratchpad!(
             b = (d_start[2] < d_end[2]) ? d_start[2] : d_end[2]
             t = (b == d_start[2]) ? d_end[2] : d_start[2]
             c_bbox[] = BBox(l, r, b, t)
-            notify(c_bbox)
         elseif e.type === MouseEventTypes.leftdragstop
             # finish placing box
             w = poly!(ax.scene, c_bbox[], color=:transparent, strokewidth=2, strokecolor=:black, inspectable=false)
@@ -275,17 +274,13 @@ function scratchpad!(
                         if obj isa Transition
                             hovered[] = obj
                             cluster = get_t_cluster(obj)
-                            notify(hovered)
                         else
                             cluster = obj
                         end
                         hovered_cluster[] = cluster
-                        notify(hovered_cluster)
                     elseif event.type === MouseEventTypes.out
                         hovered[] = nothing
-                        notify(hovered)
                         hovered_cluster[] = nothing
-                        notify(hovered_cluster)
 
                         activate_interaction!(ax, :create_group)
                         activate_interaction!(ax, :create_text)
@@ -294,10 +289,8 @@ function scratchpad!(
                         notify(points)
                     elseif event.type === MouseEventTypes.rightdown
                         hovered_cluster[] = nothing
-                        notify(hovered_cluster)
-
                         hovered[] = nothing
-                        notify(hovered)
+
                         if obj isa Transition
                             delete!(selected_transitions[], obj)
                             notify(selected_transitions)
