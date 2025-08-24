@@ -264,32 +264,12 @@ function main_window(active_trajectory::Trajectory,
         return iv
     end
     # absolute index for volume data
-
     rel_t_to_idx::Dict{Transition,UInt16} = Dict(reverse.(collect(enumerate(transitionSequence))))
     h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff))
     h_range::Tuple{Float32,Float32} = extrema(clustering.heights)
 
     rm = view(dm, clustering.order, clustering.order)
-
-    # gets the correct idx 
-    t_to_mtx = Dict{Transition,UInt16}()
-    mtx_to_t = Dict{UInt16,Transition}()
-    for (i, r) in enumerate(clustering.order)
-        t_to_mtx[transitionSequence[r]] = i
-        mtx_to_t[i] = transitionSequence[r]
-    end
-
-    # get minimum and maximum of entire matrix for cmap
-    c2idx, c_to_parent, parent_to_c = get_hierarchy(clustering)
-    fl = vec(dm)
-    cluster_data = ClusterData(clustering=clustering,
-        matrix=rm,
-        c2idx=c2idx,
-        c_to_parent=c_to_parent,
-        parent_to_c=parent_to_c,
-        m_extrema=extrema(fl),
-        t_to_mtx=t_to_mtx,
-        mtx_to_t=mtx_to_t)
+    cluster_data = ClusterData(clustering, transitionSequence, rm)
 
     # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
     cluster_info = @lift begin

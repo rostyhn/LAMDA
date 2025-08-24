@@ -8,6 +8,127 @@ const ClusterSet = Set{UInt16}
 
 const ClusterAnnotation = Dict{String,Dict{ClusterSet,String}}
 
+function get_st_clusters(merge::Matrix{Int}, i::Int, clusterIdx::Vector{Int})::ClusterSet
+    if i < 0
+        return Set(clusterIdx[-i])
+    end
+
+    lt = merge[i, 1]
+    rt = merge[i, 2]
+
+    c_lt = get_st_clusters(merge, lt, clusterIdx)
+    c_rt = get_st_clusters(merge, rt, clusterIdx)
+
+    return union(c_lt, c_rt)
+end
+
+# assigns each cluster a unique id
+function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{
+    Dict{ClusterSet,UInt16},
+    Dict{ClusterSet,ClusterSet},
+    Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
+    ClusterSet}
+
+    c2idx = Dict{Set{UInt16},UInt16}()
+    clusterIdx = collect(eachindex(hc.order))
+    c_to_parent = Dict{Set{UInt16},Set{UInt16}}()
+    parent_to_c = Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}()
+
+    root::ClusterSet = Set()
+    for i in 1:size(hc.merges, 1)
+        pg = get_st_clusters(hc.merges, i, clusterIdx)
+        c2idx[pg] = i
+
+        lt = hc.merges[i, 1]
+        rt = hc.merges[i, 2]
+
+        lg = get_st_clusters(hc.merges, lt, clusterIdx)
+        rg = get_st_clusters(hc.merges, rt, clusterIdx)
+
+        if lt < 0
+            c2idx[lg] = i
+        end
+
+        if rt < 0
+            c2idx[rg] = i
+        end
+        c_to_parent[lg] = pg
+        c_to_parent[rg] = pg
+        parent_to_c[pg] = (lg, rg)
+        root = pg
+    end
+    return c2idx, c_to_parent, parent_to_c, root
+end
+
+# based on https://vis.cs.ucdavis.edu/vis2014papers/TVCG/papers/2072_20tvcg12-tennekes-2346277.pdf
+function assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
+    root::ClusterSet;
+    range::Tuple{Float64,Float64}=(0.0, 360.0),
+    kwargs...)
+
+    colors = Dict{ClusterSet,RGBAf}()
+    _assign_colors_LCHab(parent_to_c, root, colors, range; kwargs...)
+
+    return colors
+end
+
+# note that this is implemented for a binary tree only!
+function _assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
+    c::ClusterSet,
+    colors::Dict{ClusterSet,RGBAf},
+    hues::Tuple{Float64,Float64},
+    depth::Int=1;
+    luminance::Int=70, # root luminance, defined as L1 in paper above
+    beta_l::Int=-10, # luminance slope
+    chroma::Int=60, # root chroma, defined as C1
+    beta_c::Int=5, # chroma slope
+    f::Float64=0.50, # hue fraction
+)
+    children = get(parent_to_c, c, nothing)
+    c_hue = (hues[1] + hues[2]) / 2
+    if depth > 1
+        color = LCHab(
+            (depth - 1) * beta_l + luminance,
+            (depth - 1) * beta_c + chroma,
+            c_hue
+        )
+        colors[c] = convert(RGBAf, color) # may be lossy
+    else
+        colors[c] = RGBAf(0.5, 0.5, 0.5, 1.0)
+    end
+
+    if isnothing(children)
+        return
+    end
+
+    hf = ((1.0 - f) / 2) # inverse f to keep call semantics same as the paper
+
+    r = abs(hues[2] - hues[1])
+    lc, rc = children
+    # split range proportionately 
+    l_n = length(lc)
+    r_n = length(rc)
+
+    total = r_n + l_n
+    lp = l_n / total
+    rp = r_n / total
+
+    lr = lp * r
+    rr = rp * r
+
+    l_start = hues[1]
+    l_end = hues[1] + lr
+
+    r_start = l_end
+    r_end = r_start + rr
+
+    _assign_colors_LCHab(parent_to_c, lc, colors, (l_start + lr * hf, l_end - lr * hf), depth + 1;
+        luminance=luminance, beta_l=beta_l, f=f, chroma=chroma, beta_c=beta_c)
+
+    _assign_colors_LCHab(parent_to_c, rc, colors, (r_start + rr * hf, r_end - rr * hf), depth + 1;
+        luminance=luminance, beta_l=beta_l, f=f, chroma=chroma, beta_c=beta_c)
+end
+
 @kwdef struct Trajectory
     name::String
     transitions::Vector{Transition}
@@ -44,9 +165,38 @@ end
     parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,Set{UInt16}}}
     t_to_mtx::Dict{Transition,UInt16}
     mtx_to_t::Dict{UInt16,Transition}
+    colors::Dict{ClusterSet,RGBAf}
 end
 
-# can be more clever - no need to form a separate datastructure from cluster data
+function ClusterData(clustering::Clustering.Hclust{Float32},
+    transitionSequence::AbstractArray{Transition},
+    matrix::AbstractArray{Float32})
+
+    c2idx, c_to_parent, parent_to_c, root = get_hierarchy(clustering)
+    fl = vec(matrix)
+
+    colors = assign_colors_LCHab(parent_to_c, root; range=(-360.0, 360.0), beta_l=-5, f=0.75)
+
+    t_to_mtx = Dict{Transition,UInt16}()
+    mtx_to_t = Dict{UInt16,Transition}()
+    for (i, r) in enumerate(clustering.order)
+        t_to_mtx[transitionSequence[r]] = i
+        mtx_to_t[i] = transitionSequence[r]
+    end
+
+    return ClusterData(clustering=clustering,
+        matrix=matrix,
+        m_extrema=extrema(fl),
+        c2idx=c2idx,
+        c_to_parent=c_to_parent,
+        parent_to_c=parent_to_c,
+        t_to_mtx=t_to_mtx,
+        mtx_to_t=mtx_to_t,
+        colors=colors
+    )
+end
+
+
 @kwdef struct SingleClusterData
     cluster::ClusterSet
     ts::Vector{Transition}
@@ -167,53 +317,8 @@ function set_val(ca, s::ClusterSet, property::String, val::String)
 end
 
 
-function get_st_clusters(merge::Matrix{Int}, i::Int, clusterIdx::Vector{Int})::ClusterSet
-    if i < 0
-        return Set(clusterIdx[-i])
-    end
 
-    lt = merge[i, 1]
-    rt = merge[i, 2]
 
-    c_lt = get_st_clusters(merge, lt, clusterIdx)
-    c_rt = get_st_clusters(merge, rt, clusterIdx)
-
-    return union(c_lt, c_rt)
-end
-
-# assigns each cluster a unique id
-function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{Dict{Set{UInt16},UInt16},
-    Dict{Set{UInt16},Set{UInt16}},
-    Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}}
-
-    c2idx = Dict{Set{UInt16},UInt16}()
-    clusterIdx = collect(eachindex(hc.order))
-    c_to_parent = Dict{Set{UInt16},Set{UInt16}}()
-    parent_to_c = Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}()
-
-    for i in 1:size(hc.merges, 1)
-        pg = get_st_clusters(hc.merges, i, clusterIdx)
-        c2idx[pg] = i
-
-        lt = hc.merges[i, 1]
-        rt = hc.merges[i, 2]
-
-        lg = get_st_clusters(hc.merges, lt, clusterIdx)
-        rg = get_st_clusters(hc.merges, rt, clusterIdx)
-
-        if lt < 0
-            c2idx[lg] = i
-        end
-
-        if rt < 0
-            c2idx[rg] = i
-        end
-        c_to_parent[lg] = pg
-        c_to_parent[rg] = pg
-        parent_to_c[pg] = (lg, rg)
-    end
-    return c2idx, c_to_parent, parent_to_c
-end
 
 #= function clusters_above_cutoff(cc::ClusterSet,
     cd::ClusterData,

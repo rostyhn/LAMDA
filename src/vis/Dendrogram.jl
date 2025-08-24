@@ -163,9 +163,9 @@ function dendrogram!(ax::Makie.Axis,
             return clusters[div(i, 2)]
         end
 
-        colors = []
-        for c in clusters
-            push!(colors, RGBAf(1.0, 0.0, 0.0, 0.6))
+        colors = Vector{RGBAf}(undef, length(clusters))
+        for (i, c) in enumerate(clusters)
+            colors[i] = cluster_data.colors[c]
         end
 
         all_x = reduce(vcat, map(x -> [x[1][1], x[2][1]], lines), init=[])
@@ -227,8 +227,7 @@ function dendrogram!(ax::Makie.Axis,
 
     linesegments!(ax,
         lift(x -> x[1], dendrogram);
-        #colormap=:rainbow_bgyrm_35_85_c71_n256,
-        color=:red,
+        color=d_colors,
         inspector_label=on_hover,
     )
 
