@@ -79,13 +79,18 @@ function simple_arrow_view!(scene::Makie.Scene,
     return h, s, v, d
 end
 
-function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
+function volume_view!(scene::Makie.Scene,
+    vd::AbstractArray{Float32},
+    sampleRangeExtrema::Observable{Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64}}},
+    vol_cmap::Observable{Vector{ColorTypes.RGBA{Float32}}},
+    volumeRange::Observable{Tuple{Float32,Float32}})
+
     v_lo = volume!(scene,
-        lift(x -> extrema(x[1]), sampleRanges),
-        lift(x -> extrema(x[2]), sampleRanges),
-        lift(x -> extrema(x[3]), sampleRanges),
+        lift(x -> x[1], sampleRangeExtrema),
+        lift(x -> x[2], sampleRangeExtrema),
+        lift(x -> x[3], sampleRangeExtrema),
         vd;
-        colormap=lift(x -> x[1:49], vol_cmap),
+        colormap=lift(x -> view(x, 1:49), vol_cmap),
         highclip=:transparent,
         lowclip=:transparent,
         algorithm=:absorption,
@@ -96,11 +101,11 @@ function volume_view!(scene, vd, sampleRanges, vol_cmap, volumeRange)
         colorrange=lift(x -> (x[1], 0.0), volumeRange))
 
     v_hi = volume!(scene,
-        lift(x -> extrema(x[1]), sampleRanges),
-        lift(x -> extrema(x[2]), sampleRanges),
-        lift(x -> extrema(x[3]), sampleRanges),
+        lift(x -> x[1], sampleRangeExtrema),
+        lift(x -> x[2], sampleRangeExtrema),
+        lift(x -> x[3], sampleRangeExtrema),
         vd;
-        colormap=lift(x -> x[50:100], vol_cmap),
+        colormap=lift(x -> view(x, 50:100), vol_cmap),
         highclip=:transparent,
         lowclip=:transparent,
         algorithm=:absorption,

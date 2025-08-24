@@ -435,6 +435,12 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
+    sampleRangeExtrema = @lift begin
+        return extrema.($sampleRanges)
+    end
+
+    @show typeof(sampleRangeExtrema)
+
     function render_volume_view(scene::Makie.Scene, transition::Transition)
         # directly indexing the mmap creates a copy, need to use a view
         vvd = let volumeData = volumeData, t_to_idx = t_to_idx
@@ -447,7 +453,7 @@ function main_window(active_trajectory::Trajectory,
                 length(sampleRanges[][3])
             )
         )
-        return volume_view!(scene, vd, sampleRanges, volume_cmap, volRange)
+        return volume_view!(scene, vd, sampleRangeExtrema, volume_cmap, volRange)
     end
 
     function render_superquadrics_view(scene::Makie.Scene, transition::Transition, flip::Bool=false)
@@ -659,6 +665,11 @@ function main_window(active_trajectory::Trajectory,
             dm = nothing
             transitionSequence = nothing
             clustering = nothing
+
+            if !isnothing(io)
+                close(io)
+                io = nothing
+            end
 
             Observables.clear(cluster_info)
 
