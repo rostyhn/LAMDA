@@ -63,8 +63,6 @@ function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
     order = StatsBase.indexmap(hc.order)
     nodepos = Dict(-i => (float(order[i]), 0.0) for i in hc.order)
 
-    @warn "not implemented correctly yet!"
-
     lines = []
     clusters = []
     c2lx = Dict{Set{UInt16},Vector{UInt16}}()
@@ -113,30 +111,6 @@ function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
 
     return lines, clusters, c2lx
 end
-
-#= # gets line positions for a specified branch in the dendrogram 
-function branch(cd::ClusterData, root::Set{UInt16})
-    children = Ref([])
-    dfs(cd, root, children)
-
-    new_lines = []
-    corrected_children = []
-
-    heights = Dict{Set{UInt16},Float64}()
-    for c in children[]
-        idx = cd.c2lx[c]
-        for i in 1:length(idx)
-            push!(corrected_children, c)
-        end
-
-        lines = view(cd.lines, idx)
-        h = maximum(map(x -> x[2][2], lines))
-        heights[c] = h
-        append!(new_lines, lines)
-    end
-
-    return corrected_children, new_lines, heights
-end =#
 
 function dendrogram!(ax::Makie.Axis,
     cluster_data::ClusterData,

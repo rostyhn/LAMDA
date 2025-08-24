@@ -27,12 +27,15 @@ function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{
     Dict{ClusterSet,UInt16},
     Dict{ClusterSet,ClusterSet},
     Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
-    ClusterSet}
+    Dict{ClusterSet,Float64},
+    ClusterSet
+}
 
-    c2idx = Dict{Set{UInt16},UInt16}()
+    c2idx = Dict{ClusterSet,UInt16}()
     clusterIdx = collect(eachindex(hc.order))
-    c_to_parent = Dict{Set{UInt16},Set{UInt16}}()
-    parent_to_c = Dict{Set{UInt16},Tuple{Set{UInt16},Set{UInt16}}}()
+    c_to_parent = Dict{ClusterSet,ClusterSet}()
+    parent_to_c = Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}}()
+    heights = Dict{ClusterSet,Float64}()
 
     root::ClusterSet = Set()
     for i in 1:size(hc.merges, 1)
@@ -47,17 +50,23 @@ function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{
 
         if lt < 0
             c2idx[lg] = i
+            heights[lg] = 0.0
         end
 
         if rt < 0
             c2idx[rg] = i
+            heights[rg] = 0.0
         end
+
         c_to_parent[lg] = pg
         c_to_parent[rg] = pg
+
+        heights[pg] = hc.heights[i]
+
         parent_to_c[pg] = (lg, rg)
         root = pg
     end
-    return c2idx, c_to_parent, parent_to_c, root
+    return c2idx, c_to_parent, parent_to_c, heights, root
 end
 
 # based on https://vis.cs.ucdavis.edu/vis2014papers/TVCG/papers/2072_20tvcg12-tennekes-2346277.pdf
@@ -166,16 +175,20 @@ end
     t_to_mtx::Dict{Transition,UInt16}
     mtx_to_t::Dict{UInt16,Transition}
     colors::Dict{ClusterSet,RGBAf}
+    heights::Dict{ClusterSet,<:AbstractFloat}
 end
 
 function ClusterData(clustering::Clustering.Hclust{Float32},
     transitionSequence::AbstractArray{Transition},
     matrix::AbstractArray{Float32})
 
-    c2idx, c_to_parent, parent_to_c, root = get_hierarchy(clustering)
+    c2idx, c_to_parent, parent_to_c, heights, root = get_hierarchy(clustering)
     fl = vec(matrix)
 
-    colors = assign_colors_LCHab(parent_to_c, root; range=(-360.0, 360.0), beta_l=-5, f=0.75)
+    colors = assign_colors_LCHab(parent_to_c, root;
+        range=(-360.0, 360.0),
+        beta_l=-5,
+        f=0.75)
 
     t_to_mtx = Dict{Transition,UInt16}()
     mtx_to_t = Dict{UInt16,Transition}()
@@ -192,8 +205,8 @@ function ClusterData(clustering::Clustering.Hclust{Float32},
         parent_to_c=parent_to_c,
         t_to_mtx=t_to_mtx,
         mtx_to_t=mtx_to_t,
-        colors=colors
-    )
+        colors=colors,
+        heights=heights)
 end
 
 
@@ -220,7 +233,7 @@ function buildSingleClusterData(; cluster::ClusterSet,
     alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}})
 
     rel_ts = map(x -> rel_t_to_idx[x], ts)
-    colors = map(x -> cluster_color(cluster_data, Set(x)), rel_ts)
+    colors = map(x -> cluster_data.colors[Set(x)], rel_ts)
 
     return SingleClusterData(cluster=cluster,
         ts=ts,
@@ -317,28 +330,35 @@ function set_val(ca, s::ClusterSet, property::String, val::String)
 end
 
 
-
-
-
-#= function clusters_above_cutoff(cc::ClusterSet,
+function clusters_above_cutoff(cc::ClusterSet,
     cd::ClusterData,
-    scd::SingleClusterData,
+    cutoff::AbstractFloat)
+
+    cut_clusters = []
+    _clusters_above_cutoff(cc, cd, cutoff, cut_clusters)
+
+    return cut_clusters
+end
+
+# can be better - just collect all children and check in heights dict
+function _clusters_above_cutoff(cc::ClusterSet,
+    cd::ClusterData,
     cutoff::AbstractFloat,
-    acc=Ref([]))
+    acc)
 
     children = get_children(cd, cc)
     if isnothing(children)
-        if scd.heights[cc] > cutoff
-            push!(acc[], cc)
+        if cd.heights[cc] > cutoff
+            push!(acc, cc)
         end
         return
     end
 
     lc, rc = children
-    if scd.heights[lc] > cutoff && scd.heights[rc] > cutoff
-        clusters_above_cutoff(lc, cd, scd, cutoff, acc)
-        clusters_above_cutoff(rc, cd, scd, cutoff, acc)
+    if cd.heights[lc] > cutoff && cd.heights[rc] > cutoff
+        _clusters_above_cutoff(lc, cd, cutoff, acc)
+        _clusters_above_cutoff(rc, cd, cutoff, acc)
     else
-        push!(acc[], cc)
+        push!(acc, cc)
     end
-end =#
+end

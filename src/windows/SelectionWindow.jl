@@ -72,7 +72,7 @@ function build_selection_window(
             mat, t_to_mtx = get_local_matrix(cluster_data, ts)
             return buildSingleClusterData(
                 cluster=$cc,
-                ref_t=ref_t,
+                ref_t=ref_t, # probably don't need this, passed from alignment
                 ts=ts,
                 mat=mat,
                 alignment=alignment,

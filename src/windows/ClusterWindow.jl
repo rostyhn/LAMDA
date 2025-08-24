@@ -65,12 +65,9 @@ function build_cluster_window(
     colors = lift(x -> x.colors, cluster_data)
 
     function update_colors(cutoff)
-        @debug cutoff
         cut_clusters = clusters_above_cutoff(clusters[],
             all_cluster_data[],
             cutoff)
-
-        @debug cut_clusters
 
         rel_ts = map(x -> cluster_info.rel_t_to_idx[x], cluster_data[].ts)
         rel_ts_to_c = []
