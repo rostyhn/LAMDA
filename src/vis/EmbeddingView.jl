@@ -127,10 +127,7 @@ function embedding_view!(
     all_listeners = Dict{Transition,Any}()
     scene_listeners = Ref([])
 
-    times = 0
     t_to_pltidx = @lift begin
-        @show "re-rendering"
-        times += 1
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
