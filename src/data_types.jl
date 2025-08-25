@@ -83,6 +83,7 @@ function assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,Clust
 end
 
 # note that this is implemented for a binary tree only!
+# did not implement permutations because the hierarchy is a binary tree
 function _assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
     c::ClusterSet,
     colors::Dict{ClusterSet,RGBAf},
@@ -93,6 +94,7 @@ function _assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,Clus
     chroma::Int=60, # root chroma, defined as C1
     beta_c::Int=5, # chroma slope
     f::Float64=0.50, # hue fraction
+    reverseHues::Bool=true
 )
     children = get(parent_to_c, c, nothing)
     c_hue = (hues[1] + hues[2]) / 2
@@ -115,7 +117,8 @@ function _assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,Clus
 
     r = abs(hues[2] - hues[1])
     lc, rc = children
-    # split range proportionately 
+
+    # split range proportionately - here we diverge from the original implementation
     l_n = length(lc)
     r_n = length(rc)
 
@@ -132,10 +135,18 @@ function _assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,Clus
     r_start = l_end
     r_end = r_start + rr
 
-    _assign_colors_LCHab(parent_to_c, lc, colors, (l_start + lr * hf, l_end - lr * hf), depth + 1;
+    l_hues = (l_start + lr * hf, l_end - lr * hf)
+
+    _assign_colors_LCHab(parent_to_c, lc, colors, l_hues, depth + 1;
         luminance=luminance, beta_l=beta_l, f=f, chroma=chroma, beta_c=beta_c)
 
-    _assign_colors_LCHab(parent_to_c, rc, colors, (r_start + rr * hf, r_end - rr * hf), depth + 1;
+    r_hues = (r_start + rr * hf, r_end - rr * hf)
+
+    if reverseHues
+        r_hues = (r_hues[2], r_hues[1])
+    end
+
+    _assign_colors_LCHab(parent_to_c, rc, colors, r_hues, depth + 1;
         luminance=luminance, beta_l=beta_l, f=f, chroma=chroma, beta_c=beta_c)
 end
 
