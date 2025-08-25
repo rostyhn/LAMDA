@@ -24,7 +24,7 @@ end
 function embedding_view!(
     loc,
     cluster_data::Observable{SingleClusterData},
-    embedding::Observable{AbstractArray{AbstractArray{Float32}}},
+    embedding::Observable{Vector{Point2f}},
     selected_render::Observable{String},
     selected_scalar::Observable{String},
     atom_time::Observable{Float32},

@@ -262,7 +262,7 @@ function build_cluster_window(
     return window, cluster_cleanup
 end
 
-function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{AbstractArray{AbstractArray{Float32}}}}
+function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
     opts = ["MDS", "Grid", "UMAP"]
     m = Menu(window, options=opts, default=first(opts))
     pts = @lift begin
@@ -274,24 +274,23 @@ function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Abstract
 
         if ms == "MDS"
             mds = fit(MDS, mat; distances=true, maxoutdim=2)
-            points = eachcol(predict(mds))
+            points = Point2f.(eachcol(predict(mds)))
         elseif ms == "UMAP"
             if length(ts) > 2
                 em = umap(mat, 2;
                     metric=:precomputed,
                     min_dist=1,
                     n_neighbors=min(length(ts) - 1, 15))
-                points = eachcol(em)
+                points = Point2f.(eachcol(em))
             else
-                pos = Matrix{Float32}(undef, length(ts), 2)
+                points = Vector{Point2f}(undef, length(ts))
                 for i in eachindex(ts)
-                    pos[i, :] = [Float32(i - 1), 0.0]
+                    points[i] = Point2f(Float32(i - 1), 0.0)
                 end
-                points = eachrow(pos)
             end
         else
             s = Int(round(sqrt(length(ts))))
-            pos = Matrix{Float32}(undef, length(ts), 2)
+            points = Vector{Point2f}(undef, length(ts))
             r = 0
             for i in eachindex(ts)
                 x = mod1(i, s) * 1
@@ -299,9 +298,9 @@ function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Abstract
                     r += 1
                 end
                 y = r
-                pos[i] = [x, y]
+                points[i] = Point2f(Float32(x), Float32(y))
             end
-            points = eachrow(pos)
+
         end
         return points
     end
