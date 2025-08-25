@@ -147,8 +147,8 @@ function build_selection_window(
         cluster_annotations;
         cutoff=h_cutoff,
         on_click=on_show_cluster_click,
-        on_cutoff_line_drag=update_cutoff,
-        colormap=CLUSTER_COLORS)
+        on_cutoff_line_drag=update_cutoff
+    )
 
     heatmap!(hm_ax, cluster_data.matrix,
         colorrange=cluster_data.m_extrema,
@@ -175,50 +175,38 @@ function build_selection_window(
         end
     end
 
-    rendered_clusters = []
-    @lift begin
-        foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        for (c, ts) in $(cluster_info).groups
-            t_to_mtx = cluster_data.t_to_mtx
-            m_idx = map(x -> t_to_mtx[x], ts)
 
-            lo = minimum(m_idx)
-            hi = maximum(m_idx)
-
-            p = draw_bbox_pixel_space!(hm_ax.scene,
-                lo,
-                hi;
-                color=cluster_color(cluster_info[], first(ts)))
-
-            push!(rendered_clusters, p)
-        end
-    end
-
-    function calc_cluster_bounding_box(hc, cd, t_to_mtx, last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}})::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
-        if !isnothing(last_bBox)
-            delete!(parent_scene(last_bBox), last_bBox)
-        end
-
+    function calc_cluster_bounding_box(hc, cd)::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(hc)
             ts = get_transitions(t_list, hc)
-
-            m_idx = map(x -> t_to_mtx[x], ts)
+            m_idx = map(x -> cd.t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            color = cluster_color(cd, hc)
-
-            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=color, width=3)
+            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cd.colors[hc], width=3)
         end
-        return draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
+        return nothing
+    end
+
+    rendered_clusters = []
+    on(h_cutoff, update=true) do _
+        foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
+        for c in keys(cluster_info[].groups)
+            p = calc_cluster_bounding_box(c, cluster_data)
+            if !isnothing(p)
+                push!(rendered_clusters, p)
+            end
+        end
     end
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    hm_last_bBox::Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
+    last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
     on(hovered_cluster) do hc
-        res = calc_cluster_bounding_box(hc, cluster_data, cluster_data.t_to_mtx, hm_last_bBox)
-        hm_last_bBox = res
+        if !isnothing(last_bBox)
+            delete!(parent_scene(last_bBox), last_bBox)
+        end
+        last_bBox = calc_cluster_bounding_box(hc, cluster_data)
     end
 
     settings_btn = Button(window, label="Settings", halign=:right)
@@ -318,8 +306,11 @@ function build_selection_window(
         update_cutoff = nothing
         calc_cluster_bounding_box = nothing
 
-        empty!(ax)
-        Makie.free(ax.scene)
+        if !isnothing(ax)
+            empty!(ax)
+            Makie.free(ax.scene)
+        end
+
         clear_listener_list(cbar_listeners)
         clear_listener_list(cluster_window_listeners)
     end
