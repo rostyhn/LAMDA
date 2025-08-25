@@ -298,12 +298,20 @@ function get_mmap_file(key, cachePath::String)
     return cache_file, isdir(cachePath) && cache_file in readdir(cachePath, join=true)
 end
 
-function export_cluster(trajectory_name, path, cluster, ca, cd, ci, t_list)
+function export_cluster(trajectory_name::String,
+    dataPath::String,
+    exportPath::String,
+    cluster::ClusterSet,
+    ca::ClusterAnnotation,
+    cd::ClusterData,
+    ci::ClusterInfo,
+    t_list::AbstractArray{Transition})
+
     cluster_name = get_val(ca, "titles", cluster)
     cluster_notes = get(ca["notes"], cluster, nothing)
 
     dname = filesafestr(cluster_name)
-    cp = joinpath(path, dname)
+    cp = joinpath(exportPath, dname)
     if !isdir(cp)
         mkdir(cp)
     end
@@ -314,13 +322,11 @@ function export_cluster(trajectory_name, path, cluster, ca, cd, ci, t_list)
     end
 
     children = get_children(cd, cluster)
-    if !isnothing(children) && all(map(x -> x in ci.clusters, collect(children)))
+    if !isnothing(children) && all(map(x -> cd.heights[x] > ci.cutoff, collect(children)))
         lc, rc = children
-        export_cluster(trajectory_name, cp, lc, ca, cd, ci, t_list)
-        export_cluster(trajectory_name, cp, rc, ca, cd, ci, t_list)
+        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci, t_list)
+        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci, t_list)
     else
-        # get children of cluster
-        #TODO: need to add t_ase_dict or calculate alignment 
         ts = get_transitions(t_list, cluster)
         dpath = joinpath(dataPath, "t_ase_dict.pickle")
         export_t = export_transitions()
@@ -344,7 +350,15 @@ function export_transitions()
     return py"export_transitions"
 end
 
-function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, t_list, ca, exportPath; overwrite=false)
+function export_all(trajectory_name::String,
+    ci::ClusterInfo,
+    cd::ClusterData,
+    t_list::AbstractArray{Transition},
+    ca::ClusterAnnotation,
+    exportPath::String,
+    dataPath::String;
+    overwrite=false)
+
     if !isdir(exportPath)
         mkdir(exportPath)
     else
@@ -355,6 +369,6 @@ function export_all(trajectory_name, ci::ClusterInfo, cd::ClusterData, t_list, c
     end
 
     root = get_root(cd)
-    export_cluster(trajectory_name, exportPath, root, ca, cd, ci, t_list)
+    export_cluster(trajectory_name, dataPath, exportPath, root, ca, cd, ci, t_list)
 
 end

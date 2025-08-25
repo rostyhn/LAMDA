@@ -12,7 +12,9 @@ function build_selection_window(
     widgets::Dict{String,Function},
     matColLabel::String,
     calculators::Dict{String,Function},
-    trajectory_name::String;
+    trajectory_name::String,
+    cachePath::String,
+    dataPath::String;
     fig_size::Tuple{Integer,Integer}=(1920, 1080)
 )
     set_theme!(UI_THEME)
@@ -266,21 +268,21 @@ function build_selection_window(
         end
 
         if export_menu.selection[] == "All"
-            export_all(trajectory_name,
+            @info "Beginning full export"
+            @time export_all(trajectory_name,
                 cluster_info[],
                 cluster_data,
                 t_list,
                 cluster_annotations[],
-                ep;
-                overwrite=true)
+                ep, dataPath; overwrite=true)
         else
-            dpath = get_ase_dict_path(trajectory_name)
-            export_scratchpad(scratchpad, t_list, ep, dpath)
+            @time export_scratchpad(scratchpad, t_list, ep, dataPath)
         end
 
         # thought we could do pdfs?
         rp = joinpath(ep, "report.png")
         save(rp, ax.scene)
+        @info "Export finished."
     end
 
     scg[1, 1] = scratchpad_render_menu

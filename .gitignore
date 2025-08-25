@@ -5,6 +5,7 @@ data/
 build/
 
 export/
+export_old/
 .ipynb_checkpoints
 .venv/
 poetry.lock

@@ -208,8 +208,6 @@ function scratchpad!(
         tt.visible[] = false
     end
 
-
-
     idx_listener = on(obj_to_idx, weak=true) do idxes
         ts = collect(selected_transitions[])
         _, alignment = calculators["Alignment"](ts)
@@ -509,7 +507,7 @@ function group_scratchpad(s::Scratchpad)
     return top_level, hierarchy, loose, titles
 end
 
-function export_scratchpad(s, t_list, ep, dpath)
+function export_scratchpad(s::Scratchpad, t_list::AbstractArray{Transition}, ep::String, dpath::String)
     # export loose data in top folder
     top_level, hierarchy, loose, titles = group_scratchpad(s)
     if !isempty(loose)
@@ -517,11 +515,11 @@ function export_scratchpad(s, t_list, ep, dpath)
     end
 
     for b in top_level
-        export_scratchpad_children_recurse(b, hierarchy, t_list, ep, dpath, titles)
+        _export_scratchpad_children(b, hierarchy, t_list, ep, dpath, titles)
     end
 end
 
-function export_scratchpad_children_recurse(bIdx, hierarchy, t_list, parent_dir, dpath, titles)
+function _export_scratchpad_children(bIdx, hierarchy, t_list::AbstractArray{Transition}, parent_dir::String, dpath::String, titles)
     cf = joinpath(parent_dir, titles[bIdx])
     if !isdir(cf)
         mkdir(cf)
@@ -529,10 +527,10 @@ function export_scratchpad_children_recurse(bIdx, hierarchy, t_list, parent_dir,
     children = hierarchy[bIdx]
     export_scratchpad_children(dpath, cf, children, t_list)
     bChildren = filter(x -> x isa Integer, children)
-    foreach(b -> export_scratchpad_children_recurse(b, hierarchy, t_list, cf, dpath, titles), bChildren)
+    foreach(b -> _export_scratchpad_children(b, hierarchy, t_list, cf, dpath, titles), bChildren)
 end
 
-function export_scratchpad_children(dpath, p, children, t_list)
+function export_scratchpad_children(dpath::String, p, children, t_list::AbstractArray{Transition})
     # write notes in folder
     notes = filter(x -> x isa String, children)
     if !isempty(notes)
@@ -550,6 +548,6 @@ function export_scratchpad_children(dpath, p, children, t_list)
 
     if !isempty(ts)
         export_t = export_transitions()
-        export_t(dpath, p, ts)
+        export_t(joinpath(dpath, "t_ase_dict.pickle"), p, ts)
     end
 end

@@ -624,6 +624,8 @@ function main_window(active_trajectory::Trajectory,
         selected_dm_name,
         calculators,
         name,
+        cachePath,
+        dataPath
     )
 
     # create inspector after render to avoid bugs

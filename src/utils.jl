@@ -84,7 +84,7 @@ function filesafestr(s::String)
     # https://stackoverflow.com/questions/42210199/remove-illegal-characters-from-a-file-name-but-leave-spaces
     re = r"[\\\\/:*?\"<>|\[\]\(\) ]"
     cre = r"[\,\.]"
-    return str_limit(replace(s, re => "", cre => "_"), len=250, ending="")
+    return str_limit(hash(s), len=25) #str_limit(replace(s, re => "", cre => "_"), len=125, end
 end
 
 function relative_path(s::String)
