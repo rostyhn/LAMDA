@@ -1,10 +1,4 @@
 function getIndexFromSQMesh(i::Integer, resolution::AbstractFloat)
-
-    #number of points in sq mesh
-    #[0:resolution:pi;]
-    #push!(phiRange, pi) #ass pi to close the hole at the end introduced by resolution
-    thetaRange = [0:resolution:2*pi;] #
-
     numberY = trunc(Int, pi / resolution) + 2
     numberX = trunc(Int, 2 * pi / resolution) + 1
     number = numberX * numberY
@@ -134,7 +128,7 @@ function superquadric(scale::AbstractFloat,
     # broadcasting version - sadly can't find a way to avoid the hcat
     #indices = Matrix{UInt16}(undef, (3, (nPhi - 1) * nTheta * 2)) # triangles over the points
 
-    #=     xs = UInt16.([1:nTheta;])
+    #=xs = UInt16.([1:nTheta;])
         idx = 1
         for y in 1:(nPhi-1)
             r = hcat(sq_triangle_indices.(xs, Ref(y), Ref(nTheta)))

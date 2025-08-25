@@ -321,7 +321,8 @@ function ClusterAnnotations()
 end
 
 function get_val(ca, property::String, s::ClusterSet)
-    dv = (property == "titles") ? string(s) : "..."
+    dv = (property == "titles") ? join(string.(s, base=10), ",") : "..."
+
     return get(ca[property], s, dv)
 end
 
