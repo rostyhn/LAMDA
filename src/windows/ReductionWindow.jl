@@ -630,6 +630,7 @@ function main_window(active_trajectory::Trajectory,
 
     # create inspector after render to avoid bugs
     ds = DataInspector(window)
+    GLMakie.set_title!(screen, "LAMDA - Selection Window")
     display(screen, window)
     on(events(window).window_open) do e
         if !e

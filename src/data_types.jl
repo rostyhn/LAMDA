@@ -84,6 +84,7 @@ end
 
 # note that this is implemented for a binary tree only!
 # did not implement permutations because the hierarchy is a binary tree
+# could probably tweak a bit and release as a package
 function _assign_colors_LCHab(parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
     c::ClusterSet,
     colors::Dict{ClusterSet,RGBAf},
