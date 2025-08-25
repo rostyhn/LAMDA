@@ -1,8 +1,7 @@
 function build_cluster_window(
-    clusters::Observable{Set{UInt16}},
+    clusters::Observable{ClusterSet},
     cluster_data::Observable{SingleClusterData},
     all_cluster_data::Base.RefValue{ClusterData},
-    cluster_info::ClusterInfo,
     render_views::Dict{String,Function},
     widgets::Dict{String,Function},
     on_transition_select::Function,
@@ -68,7 +67,7 @@ function build_cluster_window(
             all_cluster_data[],
             cutoff)
 
-        rel_ts = map(x -> cluster_info.rel_t_to_idx[x], cluster_data[].ts)
+        rel_ts = Set(cluster_data[].rel_ts)
         rel_ts_to_c = []
         for idx in rel_ts
             for c in cut_clusters
@@ -104,7 +103,6 @@ function build_cluster_window(
         hovered_transition,
         hovered_cluster,
         colors,
-        cluster_info;
         on_click=on_transition_select)
 
     EMBEDDING_HELP = "PGUP - Increase size of visualizations PGDOWN - Decrease size of visualizations ARROW UP - Show parent cluster"

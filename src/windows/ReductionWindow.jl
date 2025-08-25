@@ -13,24 +13,21 @@ function build_reduction_window(active_trajectory::Trajectory,
     dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
     transitionSequence::Vector{Transition} = active_trajectory.transitions
 
-    t_to_idx::Dict{Transition,UInt16} = active_trajectory.t_to_idx
+    t_to_idx::Dict{Transition,Int} = active_trajectory.t_to_idx
 
     h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff), ignore_equal_values=true)
-    h_range::Observable{Tuple{Float32,Float32}} = Observable((floatmin(Float32), floatmax(Float32)))
 
     selected_dm::Observable{String} = Observable((isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix, ignore_equal_values=true)
     clustering::Observable{Clustering.Hclust{Float32}} = @lift begin
-        println("Clustering $($selected_dm)...")
+        @info "Clustering $($selected_dm)..."
         res = hclust(dms[$selected_dm], linkage=:ward, branchorder=:barjoseph)
-
-        h_range[] = extrema(res.heights)
         return res
     end
 
-    cluster_groups::Observable{Dict{UInt16,Vector{UInt16}}} = @lift begin
+    cluster_groups::Observable{Dict{Int,Vector{Int}}} = @lift begin
         # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
-        assignments::Vector{UInt16} = cutree($clustering, h=$h_cutoff)
-        groups = Dict{UInt16,Vector{UInt16}}()
+        assignments::Vector{Int} = cutree($clustering, h=$h_cutoff)
+        groups = Dict{Int,Vector{Int}}()
         for (i, c) in enumerate(assignments)
             g = get(groups, c, [])
             push!(g, i)
@@ -45,7 +42,7 @@ function build_reduction_window(active_trajectory::Trajectory,
         m = dms[$selected_dm]
         # gets the correct idx 
         rm = view(m, $clustering.order, $clustering.order)
-        idx_to_mtx = Vector{UInt16}(undef, size(m)[1])
+        idx_to_mtx = Vector{Int}(undef, size(m)[1])
         for (i, r) in enumerate($clustering.order)
             idx_to_mtx[r] = i
         end
@@ -262,42 +259,13 @@ function main_window(active_trajectory::Trajectory,
         return iv
     end
     # absolute index for volume data
-    rel_t_to_idx::Dict{Transition,UInt16} = Dict(reverse.(collect(enumerate(transitionSequence))))
+    rel_t_to_idx::Dict{Transition,Int} = Dict(reverse.(collect(enumerate(transitionSequence))))
     h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff))
-    h_range::Tuple{Float32,Float32} = extrema(clustering.heights)
 
     rm = view(dm, clustering.order, clustering.order)
     cluster_data = ClusterData(clustering, transitionSequence, rm)
-
-    # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
     cluster_info = @lift begin
-        assignments = cutree(cluster_data.clustering, h=$h_cutoff)
-        groups = Dict{UInt16,Vector{Transition}}()
-        igroups = Dict{UInt16,Vector{Int}}()
-
-        ccidx2cidx = Dict{UInt16,UInt16}() # current assigned cluster to idx 
-        a2c = Dict{UInt16,Set{UInt16}}() # cluster to assignment idx     
-
-        for (i, c) in enumerate(assignments)
-            g = get(groups, c, [])
-            ig = get(igroups, c, [])
-            push!(g, transitionSequence[i])
-            push!(ig, i)
-        end
-
-        for (idx, g) in igroups
-            c = Set(g)
-            a2c[idx] = c
-            ccidx2cidx[idx] = cluster_data.c2idx[c]
-        end
-
-        return ClusterInfo(groups=groups,
-            assignments=assignments,
-            rel_t_to_idx=rel_t_to_idx,
-            a2c=a2c,
-            cc2cidx=ccidx2cidx,
-            h_range=h_range,
-            cutoff=$h_cutoff)
+        return ClusterInfo(cluster_data, transitionSequence, $h_cutoff)
     end
 
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
@@ -392,7 +360,7 @@ function main_window(active_trajectory::Trajectory,
 
     # https://docs.julialang.org/en/v1.12-dev/manual/performance-tips/#man-performance-captured
     # convenience function to avoid passing around all the data
-    function calc_alignment(ts::Vector{Transition})::Tuple{Transition,Dict{Transition,Tuple{Matrix{Float32},Bool}}}
+    function calc_alignment(ts::AbstractArray{Transition})::Tuple{Transition,Dict{Transition,Tuple{Matrix{Float32},Bool}}}
         res = let rel_t_to_idx = rel_t_to_idx,
             alignments = alignments,
             dm = dm,
@@ -473,7 +441,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     function render_movement_view_ts(scene::Makie.Scene,
-        ts::Vector{Transition},
+        ts::AbstractArray{Transition},
         time::Observable{Float32},
         alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}},
         correlationThreshold::Observable{Float32})
@@ -497,18 +465,22 @@ function main_window(active_trajectory::Trajectory,
             for pId in eachindex(refPositions)
                 vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
                 for t in eachindex(clusterKd)
-
                     knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
                     pos = view(positions[t], knn, :)
-                    uValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), pos, kernelWidth[]) .* view(velocities[t], knn, 1))
-                    vValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), pos, kernelWidth[]) .* view(velocities[t], knn, 2))
-                    wValue = sum(((2pi)^(3 / 2) * kernelWidth[]^3) * kernelFunction.(Ref(refPositions[pId]), pos, kernelWidth[]) .* view(velocities[t], knn, 3))
-                    vd[pId] += Point3f(uValue, vValue, wValue) * 1.0 / (length(clusterKd))
+                    k = ((2pi)^(3 / 2) * kernelWidth[]^3)
+                    kf = kernelFunction.(Ref(refPositions[pId]), pos, kernelWidth[])
+
+                    uValue = sum(k * kf .* view(velocities[t], knn, 1))
+                    vValue = sum(k * kf .* view(velocities[t], knn, 2))
+                    wValue = sum(k * kf .* view(velocities[t], knn, 3))
+
+                    vd[pId] += Point3f(uValue, vValue, wValue) * (1.0 / length(clusterKd))
                     vectorList[t] = Point3f(uValue, vValue, wValue)
                 end
                 meanV = mean(vectorList)
+                dotmV = dot(meanV, meanV)
                 for v in vectorList
-                    correlationMeasure[pId] += (dot(meanV, v)) / (dot(meanV, meanV) + dot(v, v))
+                    correlationMeasure[pId] += (dot(meanV, v)) / (dotmV + dot(v, v))
                 end
                 correlationMeasure[pId] *= 1.0 / length(vectorList)
                 correlationMeasure[pId] += 0.5

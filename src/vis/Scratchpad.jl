@@ -10,15 +10,15 @@ function scratchpad!(
     render_selection::Observable{String},
     scalar_selection::Observable{String},
     atom_time::Observable{Float32},
-    selected_clusters,
+    selected_clusters::Observable{Set{ClusterSet}},
     t_list::Vector{Transition},
-    rel_t_to_idx::Dict{Transition,UInt16},
+    rel_t_to_idx::Dict{Transition,Int},
     calculators::Dict{String,Function},
     cluster_annotations::Observable{ClusterAnnotation},
-    c2corr::Base.RefValue{Dict{Set{UInt16},Float32}};
+    c2corr::Base.RefValue{Dict{ClusterSet,Float32}};
     hovered::MaybeObservable{Transition}=MaybeObservable{Transition}(nothing),
-    hovered_cluster::MaybeObservable{Set{UInt16}},
-    on_click=(x) -> (),
+    hovered_cluster::MaybeObservable{ClusterSet},
+    on_click::Function=(x) -> (),
     markersize=200)
 
     plot_theme = Theme(MeshScatter=(
@@ -44,8 +44,8 @@ function scratchpad!(
     center!(ax.scene)
 
     # could be a dictionary, helps with tracking and don't have to worry about setting idx
-    idx_to_obj = Observable{Vector{Union{Set{UInt16},Transition}}}(Union{Set{UInt16},Transition}[]) # gets transition from plotted idx
-    obj_to_idx = Ref(Dict{Union{Set{UInt16},Transition},Int}())
+    idx_to_obj = Observable{Vector{Union{ClusterSet,Transition}}}(Union{ClusterSet,Transition}[]) # gets transition from plotted idx
+    obj_to_idx = Ref(Dict{Union{ClusterSet,Transition},Int}())
     rendered_idxes = Ref(Set{Int}())
     num_objs = Ref(1)
     views = Ref([])
@@ -185,7 +185,7 @@ function scratchpad!(
 
     function obj_to_str(obj)
         s = string(obj)
-        if obj isa Set{UInt16}
+        if obj isa ClusterSet
             s = str_limit(get_val(cluster_annotations[], "titles", obj))
         end
         return s
@@ -215,7 +215,9 @@ function scratchpad!(
 
     idx_listener = on(idx_to_obj, weak=true) do idxes
         ts = collect(selected_transitions[])
-        alignment = calculators["Alignment"](ts)
+        _, alignment = calculators["Alignment"](ts)
+        ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
+
         for (idx, obj) in enumerate(idxes)
             plt_idx = idx + 1
             if !(plt_idx in rendered_idxes[])
@@ -223,7 +225,7 @@ function scratchpad!(
                 # x, y is in global pixel coords
                 x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
                 # calculate shifted size of marker
-                ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
+
                 vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
 
                 # viewports need to be in data space
@@ -242,11 +244,12 @@ function scratchpad!(
 
                 frame_color = @lift begin
                     if obj isa Transition
+                        ci = $(cluster_info)
                         # get the currently assigned color of this transition
-                        return set_color_alpha(cluster_color($(cluster_info), obj), 0.6)
+                        return set_color_alpha(cluster_color(ci, cluster_data, rel_t_to_idx, obj), 0.6)
                     else
                         # gets the assigned cluster color
-                        return set_color_alpha(cluster_color(cluster_data, obj), 0.6)
+                        return set_color_alpha(cluster_data.colors[obj], 0.6)
                     end
                 end
 
@@ -398,7 +401,7 @@ function scratchpad!(
         if !isnothing(hc)
             ts = filter(x -> x isa Transition, collect(keys(obj_to_idx[])))
             for t in ts
-                c = get_cluster_of_transition(cluster_info[], t)
+                c = get_cluster_of_transition(cluster_info[], rel_t_to_idx, t)
                 if length(intersect(c, hc)) > 0
                     v_idx = obj_to_idx[][t] - 1
                     ogColor = frame_colors[][v_idx][]
@@ -463,7 +466,7 @@ function group_scratchpad(s::Scratchpad)
 
     for (bIdx, box) in enumerate(boxes)
         title = string(bIdx)
-        children = Union{Set{UInt16},Transition,String,Int}[]
+        children = Union{ClusterSet,Transition,String,Int}[]
         for (obj, idx) in s.objs[]
             v_idx = idx - 1
             vp = s.views[][v_idx]
@@ -499,7 +502,7 @@ function group_scratchpad(s::Scratchpad)
 
     top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
 
-    loose = Union{Set{UInt16},Transition,String}[]
+    loose = Union{ClusterSet,Transition,String}[]
     for (obj, idx) in s.objs[]
         if !(idx in seen)
             push!(loose, obj)

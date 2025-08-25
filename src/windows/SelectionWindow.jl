@@ -3,7 +3,7 @@ const MAX_NODE_SIZE = 100.0
 
 function build_selection_window(
     t_list::Vector{Transition},
-    rel_t_to_idx::Dict{Transition,UInt16},
+    rel_t_to_idx::Dict{Transition,Index},
     cluster_data::ClusterData,
     cluster_info::Observable{ClusterInfo},
     h_cutoff::Observable{Float32},
@@ -26,8 +26,8 @@ function build_selection_window(
 
     cluster_annotations::Observable{ClusterAnnotation} = Observable(ClusterAnnotations())
 
-    init_clusters = Set{Set{UInt16}}()
-    selected_clusters = Observable{Set{Set{UInt16}}}(init_clusters)
+    init_clusters = Set{ClusterSet}()
+    selected_clusters = Observable{Set{ClusterSet}}(init_clusters)
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
     hovered_cluster = MaybeObservable{ClusterSet}(Set{UInt16}())
@@ -38,7 +38,7 @@ function build_selection_window(
         notify(selected_transitions)
     end
 
-    c2corr = Ref(Dict{Set{UInt16},Float32}())
+    c2corr = Ref(Dict{ClusterSet,Float32}())
     function on_cluster_select(c::ClusterSet, corr::Float32)
         push!(selected_clusters[], c)
         c2corr[][c] = corr
@@ -58,7 +58,7 @@ function build_selection_window(
     end
 
     cluster_window_listeners = []
-    function on_show_cluster_click(clusters)
+    function on_show_cluster_click(clusters::ClusterSet)
         init_memory = Sys.free_memory() / 2^20
         cc = Observable(clusters, ignore_equal_values=true)
         scd = @lift begin
@@ -66,25 +66,20 @@ function build_selection_window(
             print("")
             ts = get_transitions(t_list, $cc)
             ref_t, alignment = calculators["Alignment"](ts)
-
-            mat, t_to_mtx = get_local_matrix(cluster_data, ts)
             return buildSingleClusterData(
                 cluster=$cc,
                 ref_t=ref_t, # probably don't need this, passed from alignment
                 ts=ts,
-                mat=mat,
                 alignment=alignment,
                 cluster_data=cluster_data,
-                cluster_info=cluster_info[],
                 rel_t_to_idx=rel_t_to_idx,
-                t_to_mtx=t_to_mtx)
+            )
         end
 
         w, cluster_cleanup = build_cluster_window(
             cc,
             scd,
             Ref(cluster_data),
-            cluster_info[],
             render_views,
             widgets,
             on_transition_select,
@@ -165,7 +160,6 @@ function build_selection_window(
                 t1 = ord[i]
                 t2 = ord[j]
                 push!(selected_transitions[], t1)
-
                 if t1 != t2
                     push!(selected_transitions[], t2)
                 end
@@ -174,7 +168,6 @@ function build_selection_window(
             end
         end
     end
-
 
     function calc_cluster_bounding_box(hc, cd)::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(hc)
@@ -192,8 +185,8 @@ function build_selection_window(
     rendered_clusters = []
     on(h_cutoff, update=true) do _
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
-        for c in keys(cluster_info[].groups)
-            p = calc_cluster_bounding_box(c, cluster_data)
+        for c in values(cluster_info[].a2c)
+            p = calc_cluster_bounding_box(Set(c), cluster_data)
             if !isnothing(p)
                 push!(rendered_clusters, p)
             end

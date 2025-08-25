@@ -31,8 +31,7 @@ function embedding_view!(
     render_views::Dict{String,Function},
     hovered::MaybeObservable{Transition},
     hovered_cluster::MaybeObservable{ClusterSet},
-    colors::Observable{Vector{RGBAf}},
-    cluster_info::ClusterInfo;
+    colors::Observable{Vector{RGBAf}};
     on_click::Function=(x) -> (),
     markersize::Observable{Int}=Observable(100),
 )
@@ -210,7 +209,7 @@ function embedding_view!(
                     #show_data(ins, umap_nodes, i)
                     hovered[] = t
 
-                    c = get_cluster_of_transition(cluster_info, t)
+                    c = get_cluster_of_transition(cluster_data[], i)
                     hovered_cluster[] = c
                 elseif event.type === MouseEventTypes.out
                     hovered[] = nothing
@@ -331,9 +330,9 @@ function embedding_view!(
 
         if !isnothing(hc)
             ts = keys(to_value(t_to_pltidx))
-            for t in ts
-                c = get_cluster_of_transition(cluster_info, t)
-                if length(intersect(c, hc)) > 0
+            for (i, t) in enumerate(ts)
+                c = get_cluster_of_transition(cluster_data[], i)
+                if !isnothing(c) && length(intersect(c, hc)) > 0
                     v_idx = to_value(t_to_pltidx)[t]
                     ogColor = frame_colors[][v_idx][]
                     frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)

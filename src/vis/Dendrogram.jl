@@ -1,8 +1,8 @@
 # renders the clustering at the specified cutoff value
 function treepositions(hc::Clustering.Hclust, cutoff::AbstractFloat)::Tuple{
     Vector{Tuple{Point2f,Point2f}},
-    Vector{Set{UInt16}},
-    Dict{Set{UInt16},Vector{UInt16}}}
+    Vector{ClusterSet},
+    Dict{ClusterSet,Vector{Index}}}
 
     # guarantees consistent labeling with main cluster info 
     clusterIdx = collect(eachindex(hc.order))
@@ -11,7 +11,7 @@ function treepositions(hc::Clustering.Hclust, cutoff::AbstractFloat)::Tuple{
 
     lines = []
     clusters = []
-    c2lx = Dict{Set{UInt16},Vector{UInt16}}()
+    c2lx = Dict{ClusterSet,Vector{Int}}()
     lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
@@ -55,8 +55,8 @@ end
 
 function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
     Vector{Tuple{Point2f,Point2f}},
-    Vector{Set{UInt16}},
-    Dict{Set{UInt16},Vector{UInt16}}}
+    Vector{ClusterSet},
+    Dict{ClusterSet,Vector{Int}}}
 
     # guarantees consistent labeling with main cluster info 
     clusterIdx = collect(eachindex(hc.order))
@@ -65,7 +65,7 @@ function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
 
     lines = []
     clusters = []
-    c2lx = Dict{Set{UInt16},Vector{UInt16}}()
+    c2lx = Dict{ClusterSet,Vector{Int}}()
     lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree

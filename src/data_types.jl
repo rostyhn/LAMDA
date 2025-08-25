@@ -3,6 +3,8 @@ const ColorMatrix = Matrix{ColorTypes.RGB{FixedPointNumbers.N0f8}} # stored as m
 const Maybe{T} = Union{Nothing,T}
 const MaybeObservable{T} = Observable{Maybe{T}}
 const State = UInt16
+# TODO: change all indexes to Index to make it easier to identify and change type
+const Index = Int
 const Transition = Tuple{UInt16,UInt16}
 const ClusterSet = Set{UInt16}
 
@@ -24,14 +26,13 @@ end
 
 # assigns each cluster a unique id
 function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{
-    Dict{ClusterSet,UInt16},
+    Dict{ClusterSet,Int},
     Dict{ClusterSet,ClusterSet},
     Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}},
     Dict{ClusterSet,Float64},
     ClusterSet
 }
-
-    c2idx = Dict{ClusterSet,UInt16}()
+    c2idx = Dict{ClusterSet,Int}()
     clusterIdx = collect(eachindex(hc.order))
     c_to_parent = Dict{ClusterSet,ClusterSet}()
     parent_to_c = Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}}()
@@ -151,29 +152,18 @@ end
     scalars::Dict{String,Dict{Transition,Array{Float32}}}
     scalar_ranges::Dict{String,Tuple{Float32,Float32}}
     alignments::Dict{String,Dict{State,Matrix{Float32}}}
-    t_to_idx::Dict{Transition,UInt16}
-end
-
-@kwdef struct ClusterInfo
-    groups::Dict{UInt16,Vector{Transition}} # dict of cluster idx to transition idx
-    assignments::Vector{UInt16}
-    # dendrogram info
-    a2c::Dict{Int,ClusterSet}
-    cutoff::Float64
-    cc2cidx::Dict{UInt16,UInt16}
-    h_range::Tuple{Float32,Float32}
-    rel_t_to_idx::Dict{Transition,UInt16}
+    t_to_idx::Dict{Transition,Int}
 end
 
 @kwdef struct ClusterData
     clustering::Clustering.Hclust{Float32}
     matrix::AbstractArray{Float32}
     m_extrema::Tuple{Float32,Float32}
-    c2idx::Dict{ClusterSet,UInt16}
+    c2idx::Dict{ClusterSet,Int}
     c_to_parent::Dict{ClusterSet,ClusterSet}
-    parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,Set{UInt16}}}
-    t_to_mtx::Dict{Transition,UInt16}
-    mtx_to_t::Dict{UInt16,Transition}
+    parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}}
+    t_to_mtx::Dict{Transition,Int}
+    mtx_to_t::Dict{Int,Transition}
     colors::Dict{ClusterSet,RGBAf}
     heights::Dict{ClusterSet,<:AbstractFloat}
 end
@@ -190,8 +180,8 @@ function ClusterData(clustering::Clustering.Hclust{Float32},
         beta_l=-5,
         f=0.75)
 
-    t_to_mtx = Dict{Transition,UInt16}()
-    mtx_to_t = Dict{UInt16,Transition}()
+    t_to_mtx = Dict{Transition,Index}()
+    mtx_to_t = Dict{Index,Transition}()
     for (i, r) in enumerate(clustering.order)
         t_to_mtx[transitionSequence[r]] = i
         mtx_to_t[i] = transitionSequence[r]
@@ -209,31 +199,70 @@ function ClusterData(clustering::Clustering.Hclust{Float32},
         heights=heights)
 end
 
+@kwdef struct ClusterInfo
+    groups::Dict{Int,Vector{Transition}} # dict of cluster idx to transition idx
+    assignments::Vector{Int}
+    # dendrogram info
+    a2c::Dict{Int,ClusterSet}
+    cutoff::Float64
+    cc2cidx::Dict{Int,Int}
+end
+
+function ClusterInfo(cluster_data::ClusterData, transitionSequence::Vector{Transition}, cutoff::Float32)
+    assignments::Vector{Index} = cutree(cluster_data.clustering, h=cutoff)
+
+    groups = Dict{Index,Vector{Transition}}()
+    igroups = Dict{Index,Vector{Index}}()
+
+    ccidx2cidx = Dict{Index,Index}() # current assigned cluster to idx 
+    a2c = Dict{Index,ClusterSet}() # assignment to cluster     
+
+    for (i, c) in enumerate(assignments)
+        g = get(groups, c, [])
+        ig = get(igroups, c, [])
+        push!(g, transitionSequence[i])
+        push!(ig, i)
+
+        groups[c] = g
+        igroups[c] = ig
+    end
+
+    for (idx, ig) in igroups
+        c = Set(ig)
+        a2c[idx] = c
+        ccidx2cidx[idx] = cluster_data.c2idx[c]
+    end
+
+    return ClusterInfo(groups=groups,
+        assignments=assignments,
+        a2c=a2c,
+        cc2cidx=ccidx2cidx,
+        cutoff=cutoff)
+
+end
 
 @kwdef struct SingleClusterData
     cluster::ClusterSet
-    ts::Vector{Transition}
+    ts::AbstractArray{Transition}
     ref_t::Transition
     mat::AbstractArray{Float32}
     colors::Vector{RGBAf}
-    t_to_mtx::Dict{Transition,UInt16}
-    h_range::Tuple{Float32,Float32}
-    assignments::Vector{UInt16}
+    t_to_mtx::Dict{Transition,Index}
+    rel_ts::Vector{Index} # absolute indices into matrix
     alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}}
 end
 
 function buildSingleClusterData(; cluster::ClusterSet,
-    ts::Vector{Transition},
+    ts::AbstractArray{Transition},
     ref_t::Transition,
-    mat::AbstractArray{Float32},
-    t_to_mtx::Dict{Transition,UInt16},
     cluster_data::ClusterData,
-    cluster_info::ClusterInfo,
-    rel_t_to_idx::Dict{Transition,UInt16},
+    rel_t_to_idx::Dict{Transition,Index},
     alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}})
 
+    # guaranteed to be in ts order, so other fns can just index into it and get the transition's absolute index
     rel_ts = map(x -> rel_t_to_idx[x], ts)
     colors = map(x -> cluster_data.colors[Set(x)], rel_ts)
+    mat, t_to_mtx = get_local_matrix(cluster_data, ts)
 
     return SingleClusterData(cluster=cluster,
         ts=ts,
@@ -242,13 +271,23 @@ function buildSingleClusterData(; cluster::ClusterSet,
         colors=colors,
         t_to_mtx=t_to_mtx,
         alignment=alignment,
-        assignments=cluster_info.assignments,
-        h_range=cluster_info.h_range)
+        rel_ts=rel_ts)
 end
 
-function get_cluster_of_transition(ci::ClusterInfo, t::Transition)
-    t_idx = ci.rel_t_to_idx[t]
+function get_cluster_of_transition(cd::SingleClusterData, i::Index)
+    if i > length(cd.rel_ts)
+        @warn "tried to get non-existent index to get cluster for transition!"
+        return nothing
+    end
+
+    t_idx = cd.rel_ts[i]
     return Set(t_idx)
+end
+
+function get_cluster_of_transition(ci::ClusterInfo, rel_t_to_idx::Dict{Transition,Index}, t::Transition)
+    a_idx = rel_t_to_idx[t]
+    a = ci.assignments[a_idx]
+    return ci.a2c[a]
 end
 
 function get_parents_of_transition(ci::ClusterInfo, t::Transition)
@@ -258,15 +297,15 @@ function get_parents_of_transition(ci::ClusterInfo, t::Transition)
 end
 
 # we want to color transitions by their currently assigned cluster determined by the cutoff
-function cluster_color(ci::ClusterInfo, t::Transition)::RGBAf
-    return cycle_colormap(ci.cc2cidx[ci.assignments[ci.rel_t_to_idx[t]]], CLUSTER_COLORMAP)
+function cluster_color(ci::ClusterInfo, cd::ClusterData, rel_t_to_idx::Dict{Transition,Index}, t::Transition)::RGBAf
+    return cd.colors[get_cluster_of_transition(ci, rel_t_to_idx, t)]
 end
 
-function get_local_matrix(cd::ClusterData, ts::Vector{Transition})
+function get_local_matrix(cd::ClusterData, ts::AbstractArray{Transition})::Tuple{AbstractArray{Float32},Dict{Transition,Index}}
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
     # sortperm! doesn't mutate the arguments, spent a long time to figure this out
     s = sortperm(mtx_idx)
-    t_to_mtx::Dict{Transition,UInt16} = Dict(reverse.(enumerate(ts[s])))
+    t_to_mtx::Dict{Transition,Int} = Dict(reverse.(enumerate(ts[s])))
     return view(cd.matrix, view(mtx_idx, s), view(mtx_idx, s)), t_to_mtx
 end
 
@@ -274,7 +313,7 @@ function cluster_color(cd::ClusterData, c::ClusterSet)::RGBAf
     return cycle_colormap(cd.c2idx[c], CLUSTER_COLORMAP)
 end
 
-function get_transitions(t_list::AbstractArray{Transition}, cluster::ClusterSet)::Vector{Transition}
+function get_transitions(t_list::AbstractArray{Transition}, cluster::ClusterSet)::AbstractArray{Transition}
     return view(t_list, collect(cluster))
 end
 
@@ -307,7 +346,7 @@ function dfs(cd::ClusterData, cluster::ClusterSet, acc=Ref([]))
     dfs(cd, rc, acc)
 end
 
-function get_neighbor(cd::ClusterData, cluster::ClusterSet, idx)::Set{UInt16}
+function get_neighbor(cd::ClusterData, cluster::ClusterSet, idx::Integer)::ClusterSet
     parent = cd.c_to_parent[cluster]
     children = cd.parent_to_c[parent]
     return children[idx]

@@ -212,7 +212,7 @@ function split_delta(d)
 end
 
 function calculate_alignment(ref_t::Transition,
-    ts::Vector{Transition},
+    ts::AbstractArray{Transition},
     posMats::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}},
     features::Dict{State,Matrix{Float32}})::Dict{Transition,Tuple{Matrix{Float32},Bool}}
 
