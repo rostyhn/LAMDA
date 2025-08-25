@@ -334,9 +334,11 @@ function embedding_view!(
                 c = get_cluster_of_transition(cluster_data[], i)
                 if !isnothing(c) && length(intersect(c, hc)) > 0
                     v_idx = to_value(t_to_pltidx)[t]
-                    ogColor = frame_colors[][v_idx][]
-                    frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-                    push!(highlighted[], (v_idx, ogColor))
+                    if v_idx < length(frame_colors[])
+                        ogColor = frame_colors[][v_idx][]
+                        frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
+                        push!(highlighted[], (v_idx, ogColor))
+                    end
                 end
             end
         end

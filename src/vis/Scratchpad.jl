@@ -43,17 +43,15 @@ function scratchpad!(
     reset_limits!(ax)
     center!(ax.scene)
 
-    # could be a dictionary, helps with tracking and don't have to worry about setting idx
-    idx_to_obj = Observable{Vector{Union{ClusterSet,Transition}}}(Union{ClusterSet,Transition}[]) # gets transition from plotted idx
-    obj_to_idx = Ref(Dict{Union{ClusterSet,Transition},Int}())
-    rendered_idxes = Ref(Set{Int}())
+    obj_to_idx = Observable(Dict{Union{ClusterSet,Transition},Index}())
+    rendered_idxes = Ref(Set{Index}())
     num_objs = Ref(1)
     views = Ref([])
 
     d_start = Point2f(0.0)
     d_end = Point2f(0.0)
     c_bbox = Observable(BBox(0, 0, 0, 0))
-    boxes = Ref(Dict{Int,Rect2}())
+    boxes = Ref(Dict{Index,Rect2}())
     sw = wireframe!(ax.scene, c_bbox, color=:black, visible=false)
     sw.inspectable[] = false
 
@@ -136,15 +134,20 @@ function scratchpad!(
         return Consume(false)
     end
 
+    viewports = Ref([])
+    frame_colors = Ref([])
+    scene_listeners = Ref([])
     function delete_obj!(obj, views, obj_to_idx)
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
         scene = views[][v_idx]
         # Makie.free seems to destroy theme object...
         # need to also delete listeners here, will do later
-
+        off(scene_listeners[][v_idx])
         Makie.free(scene)
         delete!(obj_to_idx[], obj)
+
+        notify(obj_to_idx)
     end
 
     select_listeners = onany(selected_transitions, selected_clusters) do st, sc
@@ -155,7 +158,6 @@ function scratchpad!(
             for obj in new_objs
                 num_objs[] += 1
                 push!(new_points, Point2f(0.0, 0.0))
-                push!(idx_to_obj.val, obj)
                 obj_to_idx[][obj] = num_objs[]
             end
 
@@ -164,7 +166,7 @@ function scratchpad!(
             # do this so they don't overlap
             points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
             notify(points)
-            notify(idx_to_obj)
+            notify(obj_to_idx)
         end
     end
 
@@ -173,14 +175,11 @@ function scratchpad!(
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
-    # guarantees updated version of clusterinfo
-    function get_t_cluster(obj)
-        # gets current cluster assigned to idx
-        idx = rel_t_to_idx[obj]
-        x = lift(y -> y.a2c[y.assignments[idx]], cluster_info)
-        xval = x[]
-        Observables.clear(x)
-        return xval
+    function get_obj_cluster(obj)
+        if obj isa Transition
+            return get_cluster_of_transition(cluster_info[], rel_t_to_idx, obj)
+        end
+        return obj
     end
 
     function obj_to_str(obj)
@@ -209,17 +208,15 @@ function scratchpad!(
         tt.visible[] = false
     end
 
-    viewports = Ref([])
-    frame_colors = Ref([])
-    scene_listeners = Ref([])
 
-    idx_listener = on(idx_to_obj, weak=true) do idxes
+
+    idx_listener = on(obj_to_idx, weak=true) do idxes
         ts = collect(selected_transitions[])
         _, alignment = calculators["Alignment"](ts)
         ms = Int.(round.(ax.scene.camera.projectionview[] * marker_4d))[1]
 
-        for (idx, obj) in enumerate(idxes)
-            plt_idx = idx + 1
+        for (obj, idx) in idxes
+            plt_idx = idx
             if !(plt_idx in rendered_idxes[])
                 pos = position_on_plot(nodes, plt_idx, apply_transform=false)
                 # x, y is in global pixel coords
@@ -272,13 +269,10 @@ function scratchpad!(
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
                         deactivate_interaction!(ax, :create_text)
-                        #show_inspector(obj)
 
+                        cluster = get_obj_cluster(obj)
                         if obj isa Transition
                             hovered[] = obj
-                            cluster = get_t_cluster(obj)
-                        else
-                            cluster = obj
                         end
                         hovered_cluster[] = cluster
                     elseif event.type === MouseEventTypes.out
@@ -303,13 +297,9 @@ function scratchpad!(
                         end
 
                         delete_obj!(obj, views, obj_to_idx)
-                        notify(idx_to_obj)
                         notify(points)
                     elseif event.type === MouseEventTypes.leftdoubleclick
-                        cluster = obj
-                        if obj isa Transition
-                            cluster = get_t_cluster(obj)
-                        end
+                        cluster = get_obj_cluster(obj)
                         on_click(cluster)
                     end
                 end
@@ -346,20 +336,21 @@ function scratchpad!(
                     render_views["SMovement"](ax3d, ts, atom_time, alignment, Observable(c2corr[][obj]))
                     center!(ax3d)
                 end
+                if obj isa Transition
+                    apply_alignment_to_scene(ax3d, alignment[obj])
+                end
+
                 push!(views[], ax3d)
                 push!(frame_colors[], frame_color)
                 push!(rendered_idxes[], plt_idx)
-            end
-            scene = views[][idx]
-            if obj isa Transition
-                center!(scene)
-                R, flip = alignment[obj]
-                rr = hcat(R, [0, 0, 0])
-                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-                scene.transformation.model[] = Float64.(fr)
+            else
+                if obj isa Transition
+                    if idx - 1 < length(views[]) && obj in keys(alignment)
+                        apply_alignment_to_scene(views[][idx-1], alignment[obj])
+                    end
+                end
             end
         end
-
     end
 
     ax_listeners = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, points, ax.scene.viewport, weak=true) do xlim, ylim, pp, svp
@@ -430,7 +421,7 @@ function scratchpad!(
             off(idx_listener)
             idx_listener = nothing
 
-            Observables.clear(idx_to_obj)
+            Observables.clear(obj_to_idx)
             Observables.clear(points)
 
             delete_obj! = nothing

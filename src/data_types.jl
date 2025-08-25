@@ -205,7 +205,6 @@ end
     # dendrogram info
     a2c::Dict{Int,ClusterSet}
     cutoff::Float64
-    cc2cidx::Dict{Int,Int}
 end
 
 function ClusterInfo(cluster_data::ClusterData, transitionSequence::Vector{Transition}, cutoff::Float32)
@@ -214,7 +213,6 @@ function ClusterInfo(cluster_data::ClusterData, transitionSequence::Vector{Trans
     groups = Dict{Index,Vector{Transition}}()
     igroups = Dict{Index,Vector{Index}}()
 
-    ccidx2cidx = Dict{Index,Index}() # current assigned cluster to idx 
     a2c = Dict{Index,ClusterSet}() # assignment to cluster     
 
     for (i, c) in enumerate(assignments)
@@ -230,13 +228,11 @@ function ClusterInfo(cluster_data::ClusterData, transitionSequence::Vector{Trans
     for (idx, ig) in igroups
         c = Set(ig)
         a2c[idx] = c
-        ccidx2cidx[idx] = cluster_data.c2idx[c]
     end
 
     return ClusterInfo(groups=groups,
         assignments=assignments,
         a2c=a2c,
-        cc2cidx=ccidx2cidx,
         cutoff=cutoff)
 
 end
