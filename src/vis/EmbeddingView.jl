@@ -5,20 +5,18 @@ end
 function clear_listeners!(d, t)
     bound = get(d, t, nothing)
     if !isnothing(bound)
-        for ptr in bound[1]
-            x = ptr[]
+        for x in bound[1]
             off(x)
             x = nothing
-            ptr = nothing
-        end
-        for ptr in bound[2]
-            y = ptr[]
-            Observables.clear(y)
-            y = nothing
-            ptr = nothing
         end
         empty!(bound[1])
+
+        for y in bound[2]
+            Observables.clear(y)
+            y = nothing
+        end
         empty!(bound[2])
+
         delete!(d, t)
     end
 end
@@ -123,11 +121,13 @@ function embedding_view!(
 
     ins = DataInspector()
     frame_colors = Ref([])
-    views = Ref([])
+    views::Base.RefValue{Vector{Base.RefValue{Makie.Scene}}} = Ref(Base.RefValue{Makie.Scene}[])
     all_listeners = Dict{Transition,Any}()
     scene_listeners = Ref([])
+    highlighted = Ref([])
 
     t_to_pltidx = @lift begin
+        @debug "Rendering embedding"
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
@@ -146,6 +146,7 @@ function embedding_view!(
 
         empty!(views[])
         empty!(frame_colors[]) # update frame colors
+        empty!(highlighted[])
         GC.gc(true)
 
         reset_limits!(ax)
@@ -253,13 +254,12 @@ function embedding_view!(
         if length(views[]) == length(embedding[])
             ts = cluster_data[].ts
             alignment = cluster_data[].alignment
-            @time for (i, ptr) in enumerate(views)
+            @time for (i, ptr) in enumerate(views[])
                 ax3d = ptr[]
                 t = ts[i]
                 flip = alignment[t][2]
                 clear_listeners!(all_listeners, t)
                 foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
-                @debug @show ax3d
                 if sr == "Volume"
                     render_views[sr](ax3d, t)
                 elseif sr == "Atom"
@@ -304,7 +304,6 @@ function embedding_view!(
         end
     end
 
-    highlighted = Ref([])
     c_listener = on(colors, weak=true) do c_list
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
@@ -348,21 +347,22 @@ function embedding_view!(
     # if I wanted to do this I could just write C
     cleanup = function ()
         @debug "kill embedding"
-        off(sr_listener)
-        sr_listener = nothing
-        for l in hover_listener
-            off(l)
-            l = nothing
+
+        if !isnothing(sr_listener)
+            off(sr_listener)
+            sr_listener = nothing
+            off(c_listener)
+            c_listener = nothing
+            off(kb_events)
+            kb_events = nothing
+            for l in hover_listener
+                off(l)
+                l = nothing
+            end
+            empty!(hover_listener)
         end
-        empty!(hover_listener)
 
         Observables.clear(jittered_points)
-
-        off(c_listener)
-        c_listener = nothing
-
-        off(kb_events)
-        kb_events = nothing
 
         for (al, ml) in scene_listeners[]
             off(al[])

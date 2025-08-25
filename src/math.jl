@@ -28,9 +28,38 @@ function qx(phi::AbstractFloat, theta::AbstractFloat, alpha::AbstractFloat, beta
 
 end
 
+function sq_triangle_indices(x::Integer, y::Integer, nTheta::Integer)::Matrix{UInt16}
+    p11 = x + nTheta * (y - 1)
+    p21 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
+    p31 = x + nTheta * (y)
+
+    p12 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
+    p22 = x < nTheta ? (x + 1) + nTheta * y : 1 + nTheta * y # index 
+    p32 = x + nTheta * (y)
+
+    return hcat([p11, p31, p21], [p32, p22, p12])
+end
+
+function sq_triangle_indices_t(x::Integer, y::Integer, nTheta::Integer)::Tuple{Tuple{UInt16,UInt16,UInt16},
+    Tuple{UInt16,UInt16,UInt16}}
+    p11 = x + nTheta * (y - 1)
+    p21 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
+    p31 = x + nTheta * (y)
+
+    p12 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
+    p22 = x < nTheta ? (x + 1) + nTheta * y : 1 + nTheta * y # index 
+    p32 = x + nTheta * (y)
+
+    return (p11, p31, p21), (p32, p22, p12)
+end
+
+function call_trifaces(x)
+    return TriangleFace((x[1], x[2], x[3]))
+end
+
 function superquadric(scale::AbstractFloat,
     position::Point3f,
-    principalStretches::Vector{GeometryBasics.Vec{3,Float32}},
+    principalStretches::Vector{Vec3f},
     sharpness::AbstractFloat,
     resolution::AbstractFloat=0.2)::GeometryBasics.Mesh
 
@@ -56,12 +85,12 @@ function superquadric(scale::AbstractFloat,
     if cl >= cp
         alpha = signPow((1 - cp), sharpness)
         beta = signPow((1 - cl), sharpness)
+
         i = 1
         for phi in phiRange
-            for theta in thetaRange
-                points[i] = qx(phi, theta, alpha, beta)
-                i += 1
-            end
+            row = qx.(Ref(phi), thetaRange, Ref(alpha), Ref(beta))
+            points[i:i+nTheta-1] = row
+            i += nTheta
         end
     else
         alpha = (1 - cl)^sharpness
@@ -69,10 +98,9 @@ function superquadric(scale::AbstractFloat,
 
         i = 1
         for phi in phiRange
-            for theta in thetaRange
-                points[i] = qz(phi, theta, alpha, beta)
-                i += 1
-            end
+            row = qz.(Ref(phi), thetaRange, Ref(alpha), Ref(beta))
+            points[i:i+nTheta-1] = row
+            i += nTheta
         end
     end
 
@@ -92,25 +120,30 @@ function superquadric(scale::AbstractFloat,
     broadcast!(*, points, Ref(transform), points)
     broadcast!(+, points, points, Ref(position))
 
-    indices = Vector{Tuple{UInt32,UInt32,UInt32}}(undef, (nPhi - 1) * nTheta * 2) # triangles over the points
-
+    indices = Vector{Tuple{UInt16,UInt16,UInt16}}(undef, (nPhi - 1) * nTheta * 2)
     i = 1
     for y in 1:(nPhi-1)
         for x in 1:nTheta
-
-            p11 = x + nTheta * (y - 1)
-            p21 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
-            p31 = x + nTheta * (y)
-
-            p12 = x < nTheta ? (x + 1) + nTheta * (y - 1) : 1 + nTheta * (y - 1)
-            p22 = x < nTheta ? (x + 1) + nTheta * y : 1 + nTheta * y # index 
-            p32 = x + nTheta * (y)
-
-            indices[i] = (p11, p31, p21)
-            indices[i+1] = (p32, p22, p12)
+            r1, r2 = sq_triangle_indices_t(x, y, nTheta)
+            @inbounds indices[i] = r1
+            @inbounds indices[i+1] = r2
             i += 2
         end
     end
+
+    # broadcasting version - sadly can't find a way to avoid the hcat
+    #indices = Matrix{UInt16}(undef, (3, (nPhi - 1) * nTheta * 2)) # triangles over the points
+
+    #=     xs = UInt16.([1:nTheta;])
+        idx = 1
+        for y in 1:(nPhi-1)
+            r = hcat(sq_triangle_indices.(xs, Ref(y), Ref(nTheta)))
+            ncol = size(r)[2]
+            indices[:, idx:idx+ncol-1] = r
+            idx += ncol
+        end
+        triFaces = call_trifaces.(eachcol(indices))
+     =#
 
     triFaces = TriangleFace.(indices)
     m = GeometryBasics.Mesh(points, triFaces)

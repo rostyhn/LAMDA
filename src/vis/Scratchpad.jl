@@ -417,22 +417,25 @@ function scratchpad!(
     end
 
     cleanup = function ()
+        @debug "cleanup scratchpad"
         clear_listener_list(select_listeners)
         clear_listener_list(hv_listeners)
         clear_listener_list(ax_listeners)
         clear_listener_list(scene_listeners[])
 
-        off(idx_listener)
-        idx_listener = nothing
+        if !isnothing(idx_listener)
+            off(idx_listener)
+            idx_listener = nothing
 
-        Observables.clear(idx_to_obj)
-        Observables.clear(points)
+            Observables.clear(idx_to_obj)
+            Observables.clear(points)
 
-        delete_obj! = nothing
-        get_t_cluster = nothing
-        obj_to_str = nothing
-        show_inspector = nothing
-        hide_inspector = nothing
+            delete_obj! = nothing
+            get_t_cluster = nothing
+            obj_to_str = nothing
+            show_inspector = nothing
+            hide_inspector = nothing
+        end
     end
 
     return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=obj_to_idx), cleanup

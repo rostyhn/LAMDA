@@ -121,7 +121,12 @@ function volume_view!(scene::Makie.Scene,
     return v_lo, v_hi
 end
 
-function superquadrics_view!(scene, points, sq, colors, vol_cmap, invariantRange)
+function superquadrics_view!(scene::Makie.Scene,
+    points::Vector{Point3f},
+    sq::Vector{<:GeometryBasics.AbstractMesh},
+    colors::Observable{<:AbstractArray{Float32}},
+    vol_cmap::Observable{Vector{RGBAf}},
+    invariantRange::Observable{Tuple{Float32,Float32}})
     # try to only render visible points, helps with point picking when hovering 
 
     ip = lift(x -> collect(zip(x, eachindex(points))), colors)

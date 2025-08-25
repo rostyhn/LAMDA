@@ -85,7 +85,6 @@ function build_selection_window(
             scd,
             Ref(cluster_data),
             cluster_info[],
-            cluster_data.m_extrema,
             render_views,
             widgets,
             on_transition_select,

@@ -439,8 +439,7 @@ function main_window(active_trajectory::Trajectory,
         return extrema.($sampleRanges)
     end
 
-    @show typeof(sampleRangeExtrema)
-
+    # leak might just be julia caching data... in that case, we can't do anything else
     function render_volume_view(scene::Makie.Scene, transition::Transition)
         # directly indexing the mmap creates a copy, need to use a view
         vvd = let volumeData = volumeData, t_to_idx = t_to_idx
@@ -466,7 +465,7 @@ function main_window(active_trajectory::Trajectory,
             colors = lift(x -> view(select_invariant(x)[][transition], eachindex(points)), selected_invariant)
 
             # both fns allocate a bunch of space
-            sq = collect(superquadric.(1.0, points, spa, 3.0, 0.1))
+            sq = collect(superquadric.(1.0, points, spa, 3.0, 0.2))
             il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
             push!(is, colors)
             return il, is, plots
@@ -558,7 +557,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure::Makie.Figure; default::String="Volume")
+    function render_menu(figure::Makie.Figure; default::String="Atom")
         scene_selector = Observable(default)
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -665,11 +664,6 @@ function main_window(active_trajectory::Trajectory,
             dm = nothing
             transitionSequence = nothing
             clustering = nothing
-
-            if !isnothing(io)
-                close(io)
-                io = nothing
-            end
 
             Observables.clear(cluster_info)
 

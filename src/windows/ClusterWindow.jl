@@ -3,7 +3,6 @@ function build_cluster_window(
     cluster_data::Observable{SingleClusterData},
     all_cluster_data::Base.RefValue{ClusterData},
     cluster_info::ClusterInfo,
-    mat_range::Tuple{AbstractFloat,AbstractFloat},
     render_views::Dict{String,Function},
     widgets::Dict{String,Function},
     on_transition_select::Function,
@@ -164,7 +163,7 @@ function build_cluster_window(
 
     hm_ax, hm = heatmap(mat_grid[3, 1],
         lift(x -> x.mat, cluster_data),
-        colorrange=mat_range,
+        colorrange=all_cluster_data[].m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     v_listener = on(cluster_data) do _
