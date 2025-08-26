@@ -209,9 +209,6 @@ function embedding_view!(
                     #show_data(ins, umap_nodes, i)
                     hovered[] = t
 
-                    c = get_cluster_of_transition(cluster_data[], i)
-
-                    hovered_cluster[] = c
                 elseif event.type === MouseEventTypes.out
                     hovered[] = nothing
                     hovered_cluster[] = nothing
@@ -313,21 +310,22 @@ function embedding_view!(
         end
     end
 
-    hover_listener = onany(hovered, hovered_cluster, weak=true) do hov, hc
-        if isnothing(hov) && isnothing(hc)
-            for (v_idx, ogColor) in highlighted[]
-                frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
-            end
-            empty!(highlighted[])
-            return
-        end
 
-        if !isnothing(hov) && haskey(to_value(t_to_pltidx), hov)
-            v_idx = to_value(t_to_pltidx)[hov]
-            ogColor = frame_colors[][v_idx][]
-            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted[], (v_idx, ogColor))
+    # converts hovered into its cluster
+    # since you can't hover both a cluster and a transition simultaneously, this frees up the logic underneath
+    on(hovered) do hov
+        pindx = to_value(t_to_pltidx)
+        if !isnothing(hov) && haskey(pindx, hov)
+            c = get_cluster_of_transition(cluster_data[], pindx[hov])
+            hovered_cluster[] = c
         end
+    end
+
+    hover_listener = on(hovered_cluster, weak=true) do hc
+        for (v_idx, ogColor) in highlighted[]
+            frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
+        end
+        empty!(highlighted[])
 
         if !isnothing(hc)
             for i in values(to_value(t_to_pltidx))
