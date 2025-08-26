@@ -33,6 +33,7 @@ function get_hierarchy(hc::Clustering.Hclust{Float32})::Tuple{
     ClusterSet
 }
     c2idx = Dict{ClusterSet,Int}()
+    # the indexes in the cluster are indexes into the cluster order array
     clusterIdx = collect(eachindex(hc.order))
     c_to_parent = Dict{ClusterSet,ClusterSet}()
     parent_to_c = Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}}()
@@ -171,13 +172,15 @@ end
     clustering::Clustering.Hclust{Float32}
     matrix::AbstractArray{Float32}
     m_extrema::Tuple{Float32,Float32}
-    c2idx::Dict{ClusterSet,Int}
+    c2idx::Dict{ClusterSet,Index}
     c_to_parent::Dict{ClusterSet,ClusterSet}
     parent_to_c::Dict{ClusterSet,Tuple{ClusterSet,ClusterSet}}
-    t_to_mtx::Dict{Transition,Int}
-    mtx_to_t::Dict{Int,Transition}
+    t_to_mtx::Dict{Transition,Index}
+    mtx_to_t::Dict{Index,Transition}
     colors::Dict{ClusterSet,RGBAf}
     heights::Dict{ClusterSet,<:AbstractFloat}
+    ts::Base.RefValue{<:AbstractArray{Transition}} # reference to list of all transition before ordering
+    root::ClusterSet
 end
 
 function ClusterData(clustering::Clustering.Hclust{Float32},
@@ -208,7 +211,9 @@ function ClusterData(clustering::Clustering.Hclust{Float32},
         t_to_mtx=t_to_mtx,
         mtx_to_t=mtx_to_t,
         colors=colors,
-        heights=heights)
+        heights=heights,
+        ts=Ref(transitionSequence),
+        root=root)
 end
 
 @kwdef struct ClusterInfo
@@ -321,8 +326,8 @@ function cluster_color(cd::ClusterData, c::ClusterSet)::RGBAf
     return cycle_colormap(cd.c2idx[c], CLUSTER_COLORMAP)
 end
 
-function get_transitions(t_list::AbstractArray{Transition}, cluster::ClusterSet)::AbstractArray{Transition}
-    return view(t_list, collect(cluster))
+function get_transitions(cd::ClusterData, cluster::ClusterSet)::AbstractArray{Transition}
+    return map(x -> cd.ts[][x], collect(cluster))
 end
 
 function get_parent(cd::ClusterData, cluster::ClusterSet)::ClusterSet
@@ -331,16 +336,6 @@ end
 
 function get_children(cd::ClusterData, cluster::ClusterSet)::Maybe{Tuple{ClusterSet,ClusterSet}}
     return get(cd.parent_to_c, cluster, nothing)
-end
-
-function get_root(cd::ClusterData)::ClusterSet
-    c = first(keys(cd.c2idx))
-    p = cd.c_to_parent[c]
-    while length(intersect(p, c)) != length(p)
-        c = p
-        p = get_parent(cd, c)
-    end
-    return p
 end
 
 function dfs(cd::ClusterData, cluster::ClusterSet, acc=Ref([]))

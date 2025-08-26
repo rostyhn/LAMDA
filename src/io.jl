@@ -304,8 +304,7 @@ function export_cluster(trajectory_name::String,
     cluster::ClusterSet,
     ca::ClusterAnnotation,
     cd::ClusterData,
-    ci::ClusterInfo,
-    t_list::AbstractArray{Transition})
+    ci::ClusterInfo)
 
     cluster_name = get_val(ca, "titles", cluster)
     cluster_notes = get(ca["notes"], cluster, nothing)
@@ -324,10 +323,10 @@ function export_cluster(trajectory_name::String,
     children = get_children(cd, cluster)
     if !isnothing(children) && all(map(x -> cd.heights[x] > ci.cutoff, collect(children)))
         lc, rc = children
-        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci, t_list)
-        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci, t_list)
+        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci)
+        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci)
     else
-        ts = get_transitions(t_list, cluster)
+        ts = get_transitions(cd, cluster)
         dpath = joinpath(dataPath, "t_ase_dict.pickle")
         export_t = export_transitions()
         export_t(dpath, cp, ts)
@@ -353,7 +352,6 @@ end
 function export_all(trajectory_name::String,
     ci::ClusterInfo,
     cd::ClusterData,
-    t_list::AbstractArray{Transition},
     ca::ClusterAnnotation,
     exportPath::String,
     dataPath::String;
@@ -368,7 +366,5 @@ function export_all(trajectory_name::String,
         end
     end
 
-    root = get_root(cd)
-    export_cluster(trajectory_name, dataPath, exportPath, root, ca, cd, ci, t_list)
-
+    export_cluster(trajectory_name, dataPath, exportPath, cd.root, ca, cd, ci)
 end

@@ -91,7 +91,7 @@ function build_cluster_window(
         hovered_transition[] = cluster_data[].ref_t
     end
 
-    lm, embedding = layout_menu(window, cluster_data)
+    lm, embedding = layout_menu(window, cluster_data, all_cluster_data[])
 
     embedding_cleanup = embedding_view!(window[2, 1:2],
         cluster_data,
@@ -262,15 +262,35 @@ function build_cluster_window(
     return window, cluster_cleanup
 end
 
-function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
-    opts = ["MDS", "Grid", "UMAP"]
+function grid_layout(items::AbstractVector{<:Any})::Vector{Point2f}
+    s = Int(round(sqrt(length(items))))
+    points = Vector{Point2f}(undef, length(items))
+    r = 0
+    for i in eachindex(items)
+        x = mod1(i, s) * 1
+        if x == 1
+            r += 1
+        end
+        y = r
+        points[i] = Point2f(Float32(x), Float32(y))
+    end
+    return points
+end
+
+function layout_menu(window::Makie.Figure,
+    cluster_data::Observable{SingleClusterData},
+    all_cluster_data::ClusterData)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
+
+
+    opts = ["Grid", "SortedGrid", "MDS", "UMAP"]
     m = Menu(window, options=opts, default=first(opts))
     pts = @lift begin
         ms = $(m.selection)
-        cd = $(cluster_data)
+        cd = all_cluster_data
+        scd = $(cluster_data)
 
-        ts = cd.ts
-        mat = cd.mat
+        ts = scd.ts
+        mat = scd.mat
 
         if ms == "MDS"
             mds = fit(MDS, mat; distances=true, maxoutdim=2)
@@ -283,24 +303,21 @@ function layout_menu(window, cluster_data)::Tuple{Makie.Menu,Observable{Vector{P
                     n_neighbors=min(length(ts) - 1, 15))
                 points = Point2f.(eachcol(em))
             else
+                @warn "Not enough points for UMAP layout. Using grid layout instead."
+                points = grid_layout(ts)
+            end
+        elseif ms == "Grid"
+            points = grid_layout(ts)
+        elseif ms == "SortedGrid"
+            children = get_children(cd, scd.cluster)
+            if !isnothing(children)
+                lc, rc = children
                 points = Vector{Point2f}(undef, length(ts))
-                for i in eachindex(ts)
-                    points[i] = Point2f(Float32(i - 1), 0.0)
-                end
+                lt = get_transitions(cd, lc)
+                rt = get_transitions(cd, rc)
+            else
+                points = grid_layout(ts)
             end
-        else
-            s = Int(round(sqrt(length(ts))))
-            points = Vector{Point2f}(undef, length(ts))
-            r = 0
-            for i in eachindex(ts)
-                x = mod1(i, s) * 1
-                if x == 1
-                    r += 1
-                end
-                y = r
-                points[i] = Point2f(Float32(x), Float32(y))
-            end
-
         end
         return points
     end

@@ -195,7 +195,7 @@ end
 
 # finds the centroid between a group of clusters
 function find_group_centroid(clusters::Set{Int}, cd::ClusterData, t_list::Vector{Transition})
-    ts = get_transitions(t_list, clusters)
+    ts = get_transitions(cd, clusters)
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
 
     dist_sum = map(x -> sum(view(cd.matrix, x, mtx_idx)), mtx_idx)

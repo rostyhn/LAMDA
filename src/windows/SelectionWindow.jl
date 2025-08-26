@@ -66,7 +66,7 @@ function build_selection_window(
         scd = @lift begin
             # adding a print statement makes it work...
             print("")
-            ts = get_transitions(t_list, $cc)
+            ts = get_transitions(cluster_data, $cc)
             ref_t, alignment = calculators["Alignment"](ts)
             return buildSingleClusterData(
                 cluster=$cc,
@@ -171,9 +171,9 @@ function build_selection_window(
         end
     end
 
-    function calc_cluster_bounding_box(hc, cd)::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
+    function calc_cluster_bounding_box(hc::Maybe{ClusterSet}, cd::ClusterData)::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}}
         if !isnothing(hc)
-            ts = get_transitions(t_list, hc)
+            ts = get_transitions(cd, hc)
             m_idx = map(x -> cd.t_to_mtx[x], ts)
 
             lo = minimum(m_idx)
@@ -272,11 +272,10 @@ function build_selection_window(
             @time export_all(trajectory_name,
                 cluster_info[],
                 cluster_data,
-                t_list,
                 cluster_annotations[],
                 ep, dataPath; overwrite=true)
         else
-            @time export_scratchpad(scratchpad, t_list, ep, dataPath)
+            @time export_scratchpad(scratchpad, ep, dataPath, cluster_data)
         end
 
         # thought we could do pdfs?

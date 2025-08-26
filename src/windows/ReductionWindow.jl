@@ -12,7 +12,6 @@ function build_reduction_window(active_trajectory::Trajectory,
     # only need transitions and distance matrix
     dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
     transitionSequence::Vector{Transition} = active_trajectory.transitions
-
     t_to_idx::Dict{Transition,Int} = active_trajectory.t_to_idx
 
     h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff), ignore_equal_values=true)
@@ -26,8 +25,8 @@ function build_reduction_window(active_trajectory::Trajectory,
 
     cluster_groups::Observable{Dict{Int,Vector{Int}}} = @lift begin
         # vector of ints in transitionSequence order corresponding to the cluster each index is assigned
-        assignments::Vector{Int} = cutree($clustering, h=$h_cutoff)
-        groups = Dict{Int,Vector{Int}}()
+        assignments::Vector{Index} = cutree($clustering, h=$h_cutoff)
+        groups = Dict{Index,Vector{Index}}()
         for (i, c) in enumerate(assignments)
             g = get(groups, c, [])
             push!(g, i)
@@ -40,12 +39,13 @@ function build_reduction_window(active_trajectory::Trajectory,
     # reorders distance matrix according to clustering
     reordered_matrix = @lift begin
         m = dms[$selected_dm]
-        # gets the correct idx 
-        rm = view(m, $clustering.order, $clustering.order)
         idx_to_mtx = Vector{Int}(undef, size(m)[1])
         for (i, r) in enumerate($clustering.order)
             idx_to_mtx[r] = i
         end
+
+        # gets the correct idx 
+        rm = view(m, $clustering.order, $clustering.order)
         # get minimum and maximum of entire matrix for cmap
         fl = vec(m) #vec doesn't allocate
         return rm, idx_to_mtx, (minimum(fl), maximum(fl))
@@ -127,11 +127,12 @@ function build_reduction_window(active_trajectory::Trajectory,
     reduced = @lift begin
         n = length(collect(keys($cluster_groups)))
         red_t_list = Vector{Transition}(undef, n)
-        red_t_to_idx = Dict{Transition,Int16}()
-        idxes = Vector{Int16}(undef, n)
+        red_t_to_idx = Dict{Transition,Index}()
+        idxes = Vector{Index}(undef, n)
+
+        m = dms[$selected_dm]
         for (i, (clusterIdx, g)) in enumerate($cluster_groups)
             # find reference t
-            m = dms[$selected_dm]
             dist_sum = map(x -> sum(view(m, x, g)), g)
             ref_t_idx = argmin(dist_sum)
 
@@ -223,7 +224,7 @@ end
 
 function main_window(active_trajectory::Trajectory,
     screen::GLMakie.Screen,
-    dm,
+    dm::AbstractArray{Float32},
     transitionSequence::Vector{Transition},
     clustering::Clustering.Hclust{Float32},
     selected_dm_name::String,
@@ -258,7 +259,6 @@ function main_window(active_trajectory::Trajectory,
 
         return iv
     end
-    # absolute index for volume data
     rel_t_to_idx::Dict{Transition,Int} = Dict(reverse.(collect(enumerate(transitionSequence))))
     h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff))
 
@@ -607,7 +607,7 @@ function main_window(active_trajectory::Trajectory,
         "Colorbar" => embed_colorbar,
         "CorrThreshold" => correlation_slider)
 
-    calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment, "GetTransitions" => get_transitions)
+    calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment)
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
     settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)), num_atoms)

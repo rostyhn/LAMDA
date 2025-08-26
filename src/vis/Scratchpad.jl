@@ -329,7 +329,7 @@ function scratchpad!(
                     push!(scene_listeners[], rs_listener)
                 else
                     # get transitions from general cluster object instead of the current one
-                    ts = get_transitions(t_list, obj)
+                    ts = get_transitions(cd, obj)
                     ref_t, alignment = calculators["Alignment"](ts)
                     render_views["SMovement"](ax3d, ts, atom_time, alignment, Observable(c2corr[][obj]))
                     center!(ax3d)
@@ -507,30 +507,30 @@ function group_scratchpad(s::Scratchpad)
     return top_level, hierarchy, loose, titles
 end
 
-function export_scratchpad(s::Scratchpad, t_list::AbstractArray{Transition}, ep::String, dpath::String)
+function export_scratchpad(s::Scratchpad, cd::ClusterData, ep::String, dpath::String)
     # export loose data in top folder
     top_level, hierarchy, loose, titles = group_scratchpad(s)
     if !isempty(loose)
-        export_scratchpad_children(dpath, ep, loose, t_list)
+        export_scratchpad_children(dpath, ep, loose, cd)
     end
 
     for b in top_level
-        _export_scratchpad_children(b, hierarchy, t_list, ep, dpath, titles)
+        _export_scratchpad_children(b, hierarchy, cd, ep, dpath, titles)
     end
 end
 
-function _export_scratchpad_children(bIdx, hierarchy, t_list::AbstractArray{Transition}, parent_dir::String, dpath::String, titles)
+function _export_scratchpad_children(bIdx, hierarchy, cd::ClusterData, parent_dir::String, dpath::String, titles)
     cf = joinpath(parent_dir, titles[bIdx])
     if !isdir(cf)
         mkdir(cf)
     end
     children = hierarchy[bIdx]
-    export_scratchpad_children(dpath, cf, children, t_list)
+    export_scratchpad_children(dpath, cf, children, cd)
     bChildren = filter(x -> x isa Integer, children)
-    foreach(b -> _export_scratchpad_children(b, hierarchy, t_list, cf, dpath, titles), bChildren)
+    foreach(b -> _export_scratchpad_children(b, hierarchy, cd, cf, dpath, titles), bChildren)
 end
 
-function export_scratchpad_children(dpath::String, p, children, t_list::AbstractArray{Transition})
+function export_scratchpad_children(dpath::String, p, children, cd::ClusterData)
     # write notes in folder
     notes = filter(x -> x isa String, children)
     if !isempty(notes)
@@ -544,7 +544,7 @@ function export_scratchpad_children(dpath::String, p, children, t_list::Abstract
     clusters = filter(x -> x isa Set{Int}, children)
     transitions = filter(x -> x isa Transition, children)
 
-    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(t_list, x), clusters), init=[]))
+    ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(cd, x), clusters), init=[]))
 
     if !isempty(ts)
         export_t = export_transitions()
