@@ -261,6 +261,7 @@ end
     mat::AbstractArray{Float32}
     colors::Vector{RGBAf}
     t_to_mtx::Dict{Transition,Index}
+    mtx_to_t::Dict{Index,Transition}
     rel_ts::Vector{Index} # absolute indices into matrix
     alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}}
 end
@@ -275,7 +276,7 @@ function buildSingleClusterData(; cluster::ClusterSet,
     # guaranteed to be in ts order, so other fns can just index into it and get the transition's absolute index
     rel_ts = map(x -> rel_t_to_idx[x], ts)
     colors = map(x -> cluster_data.colors[Set(UInt16(x))], rel_ts)
-    mat, t_to_mtx = get_local_matrix(cluster_data, ts)
+    mat, t_to_mtx, mtx_to_t = get_local_matrix(cluster_data, ts)
 
     return SingleClusterData(cluster=cluster,
         ts=ts,
@@ -283,6 +284,7 @@ function buildSingleClusterData(; cluster::ClusterSet,
         mat=mat,
         colors=colors,
         t_to_mtx=t_to_mtx,
+        mtx_to_t=mtx_to_t,
         alignment=alignment,
         rel_ts=rel_ts)
 end
@@ -314,12 +316,14 @@ function cluster_color(ci::ClusterInfo, cd::ClusterData, rel_t_to_idx::Dict{Tran
     return cd.colors[get_cluster_of_transition(ci, rel_t_to_idx, t)]
 end
 
-function get_local_matrix(cd::ClusterData, ts::AbstractArray{Transition})::Tuple{AbstractArray{Float32},Dict{Transition,Index}}
+function get_local_matrix(cd::ClusterData, ts::AbstractArray{Transition})::Tuple{AbstractArray{Float32},Dict{Transition,Index},Dict{Index,Transition}}
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
     # sortperm! doesn't mutate the arguments, spent a long time to figure this out
     s = sortperm(mtx_idx)
-    t_to_mtx::Dict{Transition,Int} = Dict(reverse.(enumerate(ts[s])))
-    return view(cd.matrix, view(mtx_idx, s), view(mtx_idx, s)), t_to_mtx
+    t_to_mtx::Dict{Transition,Index} = Dict(reverse.(enumerate(ts[s])))
+    mtx_to_t::Dict{Index,Transition} = Dict(enumerate(ts[s]))
+    return view(cd.matrix, view(mtx_idx, s), view(mtx_idx, s)), t_to_mtx,
+    mtx_to_t
 end
 
 function cluster_color(cd::ClusterData, c::ClusterSet)::RGBAf

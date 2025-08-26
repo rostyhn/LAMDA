@@ -449,7 +449,7 @@ function main_window(active_trajectory::Trajectory,
         res = let alignedPositionsMatrices = alignedPositionsMatrices, cluster_data = cluster_data, kernelWidth = kernel_width
 
             posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
-            distances, t_to_mtx = get_local_matrix(cluster_data, ts)
+            distances, t_to_mtx, mtx_to_t = get_local_matrix(cluster_data, ts)
             R = kmedoids(distances, 1)
             representativeIdx = first(R.medoids)
 

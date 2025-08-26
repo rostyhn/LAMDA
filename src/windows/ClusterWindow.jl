@@ -178,6 +178,11 @@ function build_cluster_window(
                 xy = mouseposition(hm_ax)
                 i, j = Int.(round.(xy))
                 mat_hovered[] = (i, j)
+                if i == j
+                    hovered_transition[] = cluster_data[].mtx_to_t[i]
+                else
+                    hovered_transition[] = nothing
+                end
             end
         else
             mat_hovered[] = (0, 0)
