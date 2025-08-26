@@ -210,6 +210,7 @@ function embedding_view!(
                     hovered[] = t
 
                     c = get_cluster_of_transition(cluster_data[], i)
+
                     hovered_cluster[] = c
                 elseif event.type === MouseEventTypes.out
                     hovered[] = nothing
@@ -329,15 +330,13 @@ function embedding_view!(
         end
 
         if !isnothing(hc)
-            ts = keys(to_value(t_to_pltidx))
-            for (i, t) in enumerate(ts)
+            for i in values(to_value(t_to_pltidx))
                 c = get_cluster_of_transition(cluster_data[], i)
                 if !isnothing(c) && length(intersect(c, hc)) > 0
-                    v_idx = to_value(t_to_pltidx)[t]
-                    if v_idx < length(frame_colors[])
-                        ogColor = frame_colors[][v_idx][]
-                        frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-                        push!(highlighted[], (v_idx, ogColor))
+                    if i <= length(frame_colors[])
+                        ogColor = frame_colors[][i][]
+                        frame_colors[][i][] = set_color_alpha(ogColor, 1.0)
+                        push!(highlighted[], (i, ogColor))
                     end
                 end
             end

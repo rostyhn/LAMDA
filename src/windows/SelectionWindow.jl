@@ -24,7 +24,7 @@ function build_selection_window(
 
     init_transitions = Set{Transition}()
     selected_transitions = Observable{Set{Transition}}(init_transitions)
-    hovered_transition = MaybeObservable{Transition}()
+    hovered_transition = MaybeObservable{Transition}(nothing, ignore_equal_values=true)
 
     cluster_annotations::Observable{ClusterAnnotation} = Observable(ClusterAnnotations())
 
@@ -32,7 +32,7 @@ function build_selection_window(
     selected_clusters = Observable{Set{ClusterSet}}(init_clusters)
 
     # will complain about being passed "nothing" as a value if something isn't inside the set
-    hovered_cluster = MaybeObservable{ClusterSet}(Set{UInt16}())
+    hovered_cluster = MaybeObservable{ClusterSet}(Set{UInt16}(), ignore_equal_values=true)
 
     # used to place transitions into scratchpad
     function on_transition_select(t::Transition)

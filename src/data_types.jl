@@ -274,7 +274,7 @@ function buildSingleClusterData(; cluster::ClusterSet,
 
     # guaranteed to be in ts order, so other fns can just index into it and get the transition's absolute index
     rel_ts = map(x -> rel_t_to_idx[x], ts)
-    colors = map(x -> cluster_data.colors[Set(x)], rel_ts)
+    colors = map(x -> cluster_data.colors[Set(UInt16(x))], rel_ts)
     mat, t_to_mtx = get_local_matrix(cluster_data, ts)
 
     return SingleClusterData(cluster=cluster,
@@ -287,14 +287,14 @@ function buildSingleClusterData(; cluster::ClusterSet,
         rel_ts=rel_ts)
 end
 
-function get_cluster_of_transition(cd::SingleClusterData, i::Index)
+function get_cluster_of_transition(cd::SingleClusterData, i::Index)::Set{UInt16}
     if i > length(cd.rel_ts)
         @warn "tried to get non-existent index to get cluster for transition!"
         return nothing
     end
 
     t_idx = cd.rel_ts[i]
-    return Set(t_idx)
+    return Set(UInt16(t_idx))
 end
 
 function get_cluster_of_transition(ci::ClusterInfo, rel_t_to_idx::Dict{Transition,Index}, t::Transition)
