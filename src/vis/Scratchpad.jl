@@ -371,6 +371,7 @@ function scratchpad!(
         end
     end
 
+    #TODO: implement as in embedding view
     highlighted = Ref([])
     hv_listeners = onany(hovered, hovered_cluster, weak=true) do hov, hc
         if isnothing(hov) && isnothing(hc)

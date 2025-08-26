@@ -134,10 +134,13 @@ function build_cluster_window(
     btn_centroid_to_scratchpad = Button(window, label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
 
+    c_plts = Ref([])
     centroid_plt_data = @lift begin
         (; ts, alignment) = $cluster_data
-        empty!(centroid_scene.scene.plots)
-        return render_views["SMovement"](centroid_scene.scene, ts, time, alignment, correlation)
+        foreach(x -> delete!(centroid_scene.scene, x), c_plts[])
+        h, s, v, d = render_views["SMovement"](centroid_scene.scene, ts, time, alignment, correlation)
+        c_plts[] = [h, s, v]
+        return d
     end
 
     to_scratchpad_listener = on(btn_centroid_to_scratchpad.clicks, weak=true) do n
@@ -246,7 +249,7 @@ function build_cluster_window(
         Observables.clear(colors)
         Observables.clear(title)
         Observables.clear(notes)
-        Observables.clear(centroid_plt_data[][4])
+        Observables.clear(centroid_plt_data[])
         Observables.clear(centroid_plt_data)
 
         ts = nothing

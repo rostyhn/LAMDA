@@ -313,7 +313,7 @@ function embedding_view!(
 
     # converts hovered into its cluster
     # since you can't hover both a cluster and a transition simultaneously, this frees up the logic underneath
-    on(hovered) do hov
+    hover_converter = on(hovered, weak=true) do hov
         pindx = to_value(t_to_pltidx)
         if !isnothing(hov) && haskey(pindx, hov)
             c = get_cluster_of_transition(cluster_data[], pindx[hov])
@@ -353,11 +353,10 @@ function embedding_view!(
             c_listener = nothing
             off(kb_events)
             kb_events = nothing
-            for l in hover_listener
-                off(l)
-                l = nothing
-            end
-            empty!(hover_listener)
+            off(hover_listener)
+            hover_listener = nothing
+            off(hover_converter)
+            hover_converter = nothing
         end
 
         Observables.clear(jittered_points)
