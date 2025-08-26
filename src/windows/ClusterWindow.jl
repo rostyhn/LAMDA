@@ -282,7 +282,7 @@ function layout_menu(window::Makie.Figure,
     all_cluster_data::ClusterData)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
 
 
-    opts = ["Grid", "SortedGrid", "MDS", "UMAP"]
+    opts = ["SortedGrid", "Grid", "MDS", "UMAP"]
     m = Menu(window, options=opts, default=first(opts))
     pts = @lift begin
         ms = $(m.selection)
@@ -312,9 +312,16 @@ function layout_menu(window::Makie.Figure,
             children = get_children(cd, scd.cluster)
             if !isnothing(children)
                 lc, rc = children
-                points = Vector{Point2f}(undef, length(ts))
+                # need to ensure points are in the same order as ts
                 lt = get_transitions(cd, lc)
+                lp = Dict(collect((zip(lt, grid_layout(lt)))))
+
                 rt = get_transitions(cd, rc)
+                # shift right points by the amount that the left takes up
+                rp = Dict(collect((zip(rt, grid_layout(rt) .+ Point2f(Int(round(sqrt(length(lt)))) + 1, 0.0)))))
+
+                points::Vector{Point2f} = collect(map(x -> get(lp, x, get(rp, x, nothing)), ts))
+
             else
                 points = grid_layout(ts)
             end
