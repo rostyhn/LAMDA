@@ -271,36 +271,37 @@ function set_text(txtbox, s)
     txtbox.stored_string[] = s
 end
 
-function multiline_tooltip(fig, text; margin=5)
-
-    texts = collect(split(text, "\n"))
+# as long as this is added last, it should be shown correctly on the screen
+function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
+    texts = reverse(collect(split(text, "\n")))
 
     tl = collect(length.(texts))
-    fs = 16
-    size = (maximum(tl) * (fs / 2), length(texts) * fs)
+    # 1px == 3/4pt
+    fs_px = fontsize * (4 / 3)
+
+    size = (maximum(tl) * (fontsize / 2), length(texts) * fs_px + margin)
     tt = Scene(fig.scene, size=size,
         show_axis=false,
         viewport=Rect2i(100, 100, size...),
-        backgroundcolor=:transparent,
-        camera=campixel!
+        backgroundcolor=colorant"#ffffca",
+        camera=campixel!,
+        clear=true,
     )
 
-    # need to figure out how to shift depth
-    wireframe!(
-        tt,
-        Rect2f(-1, -1, 2, 2),
-        transformation=(:xy, 0),
-        color=:black,
+    p = poly!(tt, Rect2i(0, 0, size...), color=colorant"#ffffca",
+        inspectable=false, strokecolor=:black, strokewidth=1)
+
+    txt = text!(tt, fill(margin, length(texts)), eachindex(texts) .* fs_px;
+        inspectable=false,
         overdraw=true,
-        linewidth=2,
-        space=:clip,
-        inspectable=false
-    )
+        color=:black,
+        align=(:left, :top),
+        text=texts,
+        fontsize=fontsize)
 
-    text!(tt, zeros(length(texts)), eachindex(texts) .* fs;
-        color=:black, align=(:left, :top), text=texts, fontsize=fs)
+    translate!(p, 0, 0, 100)
+    translate!(txt, 0, 0, 102)
 
-    translate!(tt, 0, 0, 100)
     return tt, size
 end
 
@@ -319,7 +320,7 @@ function inline_image(fig, img, tooltip::String)
     on(m_events.obs) do e
         if e.type == MouseEventTypes.over
             px, py = float.(mouseposition(fig.scene))
-            tt.viewport[] = Rect2i(px - (tSize[1] / 2), py, tSize)
+            tt.viewport[] = Rect2i(px - (tSize[1] / 2), py + 5, tSize)
             tt.visible[] = true
         else
             tt.visible[] = false

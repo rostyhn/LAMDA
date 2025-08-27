@@ -103,18 +103,6 @@ function build_cluster_window(
         colors,
         on_click=on_transition_select)
 
-    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nDouble click - Adds transition to scratchpad\nRight click and drag on empty space to pan camera\nMouse wheel - Zoom\nClicking a stem in the dendrogram updates the window to show corresponding cluster\n"
-
-    rg = hgrid!(render_menu, scalar_menu)
-    lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
-    colsize!(lg, 1, Auto(true, 4))
-    colsize!(lg, 2, Auto(false))
-
-    window[3, 1:2] = hgrid!(
-        vgrid!(rg, cbar),
-        vgrid!(lg, btn_centroid)
-    )
-
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
 
@@ -167,6 +155,17 @@ function build_cluster_window(
         lift(x -> x.mat, cluster_data),
         colorrange=all_cluster_data[].m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
+
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nDouble click on transition - Add to scratchpad\nMouse wheel - Zoom\nRight click and drag on empty space to pan camera"
+    rg = hgrid!(render_menu, scalar_menu)
+    lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
+    colsize!(lg, 1, Auto(true, 4))
+    colsize!(lg, 2, Auto(false))
+
+    window[3, 1:2] = hgrid!(
+        vgrid!(rg, cbar),
+        vgrid!(lg, btn_centroid)
+    )
 
     v_listener = on(cluster_data) do cd
         cutoff[] = 0.0
