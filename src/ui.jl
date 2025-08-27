@@ -13,6 +13,22 @@ function grid_layout(items::AbstractVector{<:Any})::Vector{Point2f}
     return points
 end
 
+#TODO: implement?
+#= function treemap(items::AbstractVector{<:Any})::Vector{Point2f}
+    s = Int(round(sqrt(length(items))))
+    points = Vector{Point2f}(undef, length(items))
+    r = 0
+    for i in eachindex(items)
+        x = mod1(i, s) * 1
+        if x == 1
+            r += 1
+        end
+        y = r
+        points[i] = Point2f(Float32(x), Float32(y))
+    end
+    return points
+end =#
+
 function simple_atom_view!(scene::Makie.Scene,
     ap::Tuple{Matrix{Float32},Matrix{Float32}},
     scalars::Observable{Vector{Float32}},
@@ -255,6 +271,39 @@ function set_text(txtbox, s)
     txtbox.stored_string[] = s
 end
 
+function multiline_tooltip(fig, text; margin=5)
+
+    texts = collect(split(text, "\n"))
+
+    tl = collect(length.(texts))
+    fs = 16
+    size = (maximum(tl) * (fs / 2), length(texts) * fs)
+    tt = Scene(fig.scene, size=size,
+        show_axis=false,
+        viewport=Rect2i(100, 100, size...),
+        backgroundcolor=:transparent,
+        camera=campixel!
+    )
+
+    # need to figure out how to shift depth
+    wireframe!(
+        tt,
+        Rect2f(-1, -1, 2, 2),
+        transformation=(:xy, 0),
+        color=:black,
+        overdraw=true,
+        linewidth=2,
+        space=:clip,
+        inspectable=false
+    )
+
+    text!(tt, zeros(length(texts)), eachindex(texts) .* fs;
+        color=:black, align=(:left, :top), text=texts, fontsize=fs)
+
+    translate!(tt, 0, 0, 100)
+    return tt, size
+end
+
 function inline_image(fig, img, tooltip::String)
     sc = Scene(fig.scene)
     campixel!(sc)
@@ -263,6 +312,18 @@ function inline_image(fig, img, tooltip::String)
     hidespines!(ax)
     disable_interactions(ax)
 
-    image!(ax, rotr90(img), inspector_label=(x, y, z) -> tooltip)
+    image!(ax, rotr90(img), inspectable=false)
+    tt, tSize = multiline_tooltip(fig, tooltip)
+    tt.visible[] = false
+    m_events = addmouseevents!(ax.scene)
+    on(m_events.obs) do e
+        if e.type == MouseEventTypes.over
+            px, py = float.(mouseposition(fig.scene))
+            tt.viewport[] = Rect2i(px - (tSize[1] / 2), py, tSize)
+            tt.visible[] = true
+        else
+            tt.visible[] = false
+        end
+    end
     return ax
 end

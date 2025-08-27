@@ -103,7 +103,7 @@ function build_cluster_window(
         colors,
         on_click=on_transition_select)
 
-    EMBEDDING_HELP = "PGUP - Increase size of visualizations PGDOWN - Decrease size of visualizations ARROW UP - Show parent cluster"
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nDouble click - Adds transition to scratchpad\nRight click and drag on empty space to pan camera\nMouse wheel - Zoom\nClicking a stem in the dendrogram updates the window to show corresponding cluster\n"
 
     rg = hgrid!(render_menu, scalar_menu)
     lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
