@@ -186,9 +186,9 @@ end
 function pure_align(P, Q)
     # finds transformation from Q to P
     H = P' * Q
-    R = sqrt(H' * H) * inv(H) #alternate formulation, not always stable
-    # F = svd(H, full=true, alg=LinearAlgebra.QRIteration())
-    # R = F.U * Diagonal([1, 1, det(F.U) * det(F.Vt)]) * F.Vt
+    #R = sqrt(H' * H) * inv(H) #alternate formulation, not always stable
+    F = svd(H, full=true, alg=LinearAlgebra.QRIteration())
+    R = F.U * Diagonal([1, 1, det(F.U) * det(F.Vt)]) * F.Vt
     # seems like flip step causes volumes to fail
     return R, norm(P - Q * R)
 end
@@ -219,6 +219,7 @@ function calculate_alignment(ref_t::Transition,
     rot = Dict{Transition,Tuple{Matrix{Float32},Bool}}()
     ref_s1_pos = posMats[ref_t][1]
 
+    @show size(ref_s1_pos)
     ref_s1, ref_s2 = ref_t
     ref_diff = features[ref_s2] - features[ref_s1]
     split_ref = split_delta(ref_diff)
