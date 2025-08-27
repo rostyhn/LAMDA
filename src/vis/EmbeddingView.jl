@@ -280,7 +280,7 @@ function embedding_view!(
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
-    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, weak=true) do xlim, ylim, mkr
+    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, jittered_points, weak=true) do xlim, ylim, mkr, p
         if length(views[]) == length(embedding[])
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             for (i, ptr) in enumerate(views[])

@@ -125,6 +125,7 @@ function build_selection_window(
     graph_ax = Axis(dGrid[1, 1], backgroundcolor=:transparent, title=matColLabel)
     deregister_interaction!(graph_ax, :rectanglezoom)
     hidexdecorations!(graph_ax)
+
     hm_ax = Axis(dGrid[2, 1], backgroundcolor=:transparent)
 
     deregister_interaction!(hm_ax, :rectanglezoom)

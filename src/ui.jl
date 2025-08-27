@@ -1,3 +1,18 @@
+function grid_layout(items::AbstractVector{<:Any})::Vector{Point2f}
+    s = Int(round(sqrt(length(items))))
+    points = Vector{Point2f}(undef, length(items))
+    r = 0
+    for i in eachindex(items)
+        x = mod1(i, s) * 1
+        if x == 1
+            r += 1
+        end
+        y = r
+        points[i] = Point2f(Float32(x), Float32(y))
+    end
+    return points
+end
+
 function simple_atom_view!(scene::Makie.Scene,
     ap::Tuple{Matrix{Float32},Matrix{Float32}},
     scalars::Observable{Vector{Float32}},
@@ -22,7 +37,7 @@ function simple_atom_view!(scene::Makie.Scene,
     return s
 end
 
-function apply_alignment_to_scene(scene, alignment)
+function apply_alignment_to_scene(scene::Makie.Scene, alignment)
     R, flip = alignment
     rr = hcat(R, [0, 0, 0])
     fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
@@ -31,11 +46,11 @@ end
 
 function simple_arrow_view!(scene::Makie.Scene,
     ap::Tuple{Matrix{Float32},Matrix{Float32}},
-    time::Observable{Float32},
+    time::Observable{<:AbstractFloat},
     cmap,
     vel::Vector{GeometryBasics.Point{3,Float32}},
     correlation::Vector{Float32},
-    corrThreshold::Observable{Float32})
+    corrThreshold::Observable{<:AbstractFloat})
 
     # use this function to set any variables that need to be equal length in a makie plot, need velocities, points and colors
     # i know its annoying to use a tuple, but its the only way to prevent crashes

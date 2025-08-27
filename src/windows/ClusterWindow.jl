@@ -31,7 +31,7 @@ function build_cluster_window(
     menu_bar[1, 1] = btn_notes
 
     function update_cluster(name, val)
-        set_val(cluster_annotations[], clusters[], name, val)
+        set_val(cluster_annotations[], cluster_data[].cluster, name, val)
         notify(cluster_annotations)
     end
 
@@ -50,7 +50,7 @@ function build_cluster_window(
         end
     end
 
-    notes_listener = on(clusters, weak=true) do c
+    function cleanup_notes()
         if !isnothing(nw)
             close(screen)
             screen = nothing
@@ -59,13 +59,12 @@ function build_cluster_window(
         end
     end
 
-
     colors = lift(x -> x.colors, cluster_data)
-
-    function update_colors(cutoff)
+    cutoff = Observable{Float32}(0.0)
+    function update_colors(cutoff_val)
         cut_clusters = clusters_above_cutoff(clusters[],
             all_cluster_data[],
-            cutoff)
+            cutoff_val)
 
         rel_ts = Set(cluster_data[].rel_ts)
         rel_ts_to_c = []
@@ -77,7 +76,7 @@ function build_cluster_window(
                 end
             end
         end
-
+        cutoff[] = cutoff_val
         colors[] = map(x -> all_cluster_data[].colors[x], rel_ts_to_c)
     end
 
@@ -91,8 +90,7 @@ function build_cluster_window(
         hovered_transition[] = cluster_data[].ref_t
     end
 
-    lm, embedding = layout_menu(window, cluster_data, all_cluster_data[])
-
+    embedding = layout(cluster_data, all_cluster_data[], cutoff)
     embedding_cleanup = embedding_view!(window[2, 1:2],
         cluster_data,
         embedding,
@@ -114,7 +112,7 @@ function build_cluster_window(
 
     window[3, 1:2] = hgrid!(
         vgrid!(rg, cbar),
-        vgrid!(lg, hgrid!(lm, btn_centroid))
+        vgrid!(lg, btn_centroid)
     )
 
     mat_grid = GridLayout()
@@ -130,8 +128,11 @@ function build_cluster_window(
         scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, clear=true),
     )
 
-    correlation, corr_slider = widgets["CorrThreshold"](window, Float32(0.7))
-    btn_centroid_to_scratchpad = Button(window, label="To scratchpad", tellwidth=false)
+    correlation, corr_slider = widgets["CorrThreshold"](window, 0.7)
+
+    btn_centroid_to_scratchpad = Button(window,
+        label="To scratchpad", tellwidth=false)
+
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
 
     c_plts = Ref([])
@@ -167,7 +168,9 @@ function build_cluster_window(
         colorrange=all_cluster_data[].m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    v_listener = on(cluster_data) do _
+    v_listener = on(cluster_data) do cd
+        cutoff[] = 0.0
+        cleanup_notes()
         reset_limits!(hm_ax)
         center!(hm_ax.scene)
     end
@@ -221,6 +224,7 @@ function build_cluster_window(
     cluster_cleanup = function ()
         @debug "Clear inside cluster window"
         embedding_cleanup()
+        cleanup_notes()
         embedding_cleanup = nothing
 
         update_colors = nothing
@@ -231,7 +235,6 @@ function build_cluster_window(
         off(hv_listener)
         off(mp_listener)
         off(v_listener)
-        off(notes_listener)
         off(notes_click_listener)
         off(centroid_click_listener)
 
@@ -270,72 +273,31 @@ function build_cluster_window(
     return window, cluster_cleanup
 end
 
-function grid_layout(items::AbstractVector{<:Any})::Vector{Point2f}
-    s = Int(round(sqrt(length(items))))
-    points = Vector{Point2f}(undef, length(items))
-    r = 0
-    for i in eachindex(items)
-        x = mod1(i, s) * 1
-        if x == 1
-            r += 1
-        end
-        y = r
-        points[i] = Point2f(Float32(x), Float32(y))
-    end
-    return points
-end
 
-function layout_menu(window::Makie.Figure,
+function layout(
     cluster_data::Observable{SingleClusterData},
-    all_cluster_data::ClusterData)::Tuple{Makie.Menu,Observable{Vector{Point2f}}}
+    all_cluster_data::ClusterData,
+    cutoff::Observable{Float32})::Observable{Vector{Point2f}}
 
-
-    opts = ["SortedGrid", "Grid", "MDS", "UMAP"]
-    m = Menu(window, options=opts, default=first(opts))
-    pts = @lift begin
-        ms = $(m.selection)
+    return @lift begin
         cd = all_cluster_data
         scd = $(cluster_data)
-
         ts = scd.ts
-        mat = scd.mat
 
-        if ms == "MDS"
-            mds = fit(MDS, mat; distances=true, maxoutdim=2)
-            points = Point2f.(eachcol(predict(mds)))
-        elseif ms == "UMAP"
-            if length(ts) > 2
-                em = umap(mat, 2;
-                    metric=:precomputed,
-                    min_dist=1,
-                    n_neighbors=min(length(ts) - 1, 15))
-                points = Point2f.(eachcol(em))
-            else
-                @warn "Not enough points for UMAP layout. Using grid layout instead."
-                points = grid_layout(ts)
-            end
-        elseif ms == "Grid"
-            points = grid_layout(ts)
-        elseif ms == "SortedGrid"
-            children = get_children(cd, scd.cluster)
-            if !isnothing(children)
-                lc, rc = children
-                # need to ensure points are in the same order as ts
-                lt = get_transitions(cd, lc)
-                lp = Dict(collect((zip(lt, grid_layout(lt)))))
+        clusters = clusters_above_cutoff(cluster_data[].cluster,
+            all_cluster_data,
+            $cutoff)
 
-                rt = get_transitions(cd, rc)
-                # shift right points by the amount that the left takes up
-                rp = Dict(collect((zip(rt, grid_layout(rt) .+ Point2f(Int(round(sqrt(length(lt)))) + 1, 0.0)))))
-
-                points::Vector{Point2f} = collect(map(x -> get(lp, x, get(rp, x, nothing)), ts))
-
-            else
-                points = grid_layout(ts)
-            end
+        shiftX = 0
+        allp = Dict{Transition,Point2f}()
+        for c in clusters
+            # need to ensure points are in the same order as ts
+            cts = get_transitions(cd, c)
+            cl = grid_layout(cts) .+ Point2f(shiftX, 0.0)
+            cp = Dict(collect((zip(cts, cl))))
+            shiftX += Int(round(sqrt(length(cts)))) + 1
+            merge!(allp, cp)
         end
-        return points
+        return collect(map(x -> allp[x], ts))
     end
-
-    return m, pts
 end

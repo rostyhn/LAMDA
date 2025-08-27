@@ -444,7 +444,7 @@ function main_window(active_trajectory::Trajectory,
         ts::AbstractArray{Transition},
         time::Observable{Float32},
         alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}},
-        correlationThreshold::Observable{Float32})
+        correlationThreshold::Observable{<:AbstractFloat})
 
         res = let alignedPositionsMatrices = alignedPositionsMatrices, cluster_data = cluster_data, kernelWidth = kernel_width
 
@@ -502,7 +502,7 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function time_slider(init_time::Float32, figure::Makie.Figure)
+    function time_slider(init_time::AbstractFloat, figure::Makie.Figure)
         time = Observable(init_time)
 
         t_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=init_time)
@@ -515,7 +515,7 @@ function main_window(active_trajectory::Trajectory,
         return time, sg
     end
 
-    function correlation_slider(figure::Makie.Figure, default::Float32)
+    function correlation_slider(figure::Makie.Figure, default::AbstractFloat)
         correlationThreshold = Observable(default)
         c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=default)
         on(c_slider.value) do x
