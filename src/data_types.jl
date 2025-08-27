@@ -381,10 +381,6 @@ function clusters_above_cutoff(cc::ClusterSet,
     cd::ClusterData,
     cutoff::AbstractFloat)::AbstractArray{ClusterSet}
 
-    if cutoff == 0.0
-        return Set.(collect(cc))
-    end
-
     cut_clusters = []
     _clusters_above_cutoff(cc, cd, cutoff, cut_clusters)
 

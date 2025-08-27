@@ -284,7 +284,10 @@ function layout(
         scd = $(cluster_data)
         ts = scd.ts
 
-        clusters = clusters_above_cutoff(cluster_data[].cluster,
+        thisroot = cluster_data[].cluster
+
+        # init by showing the cluster as one big thing
+        clusters = $cutoff == 0.0 ? [thisroot] : clusters_above_cutoff(thisroot,
             all_cluster_data,
             $cutoff)
 
