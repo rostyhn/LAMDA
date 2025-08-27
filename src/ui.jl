@@ -305,16 +305,19 @@ function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
     return tt, size
 end
 
-function inline_image(fig, img, tooltip::String)
-    sc = Scene(fig.scene)
-    campixel!(sc)
-    ax = Axis(sc, aspect=AxisAspect(1))
+function inline_image(fig, img, text::String; kwargs...)
+    ax = Axis(fig; aspect=AxisAspect(1), kwargs...)
     hidedecorations!(ax)
     hidespines!(ax)
     disable_interactions(ax)
 
+    attach_image(fig, ax, img, text)
+    return ax
+end
+
+function attach_image(fig, ax, img, text)
     image!(ax, rotr90(img), inspectable=false)
-    tt, tSize = multiline_tooltip(fig, tooltip)
+    tt, tSize = multiline_tooltip(fig, text)
     tt.visible[] = false
     m_events = addmouseevents!(ax.scene)
     on(m_events.obs) do e
@@ -326,5 +329,15 @@ function inline_image(fig, img, tooltip::String)
             tt.visible[] = false
         end
     end
+    return ax
+end
+
+function inset_image(fig, loc, img, text; kwargs...)
+    ax = Axis(loc; aspect=AxisAspect(1), kwargs...)
+    hidedecorations!(ax)
+    hidespines!(ax)
+    disable_interactions(ax)
+
+    attach_image(fig, ax, img, text)
     return ax
 end

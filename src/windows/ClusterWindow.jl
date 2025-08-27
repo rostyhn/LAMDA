@@ -117,12 +117,9 @@ function build_cluster_window(
     )
 
     correlation, corr_slider = widgets["CorrThreshold"](window, 0.7)
-
     btn_centroid_to_scratchpad = Button(window,
         label="To scratchpad", tellwidth=false)
-
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
-
     c_plts = Ref([])
     centroid_plt_data = @lift begin
         (; ts, alignment) = $cluster_data
@@ -156,12 +153,9 @@ function build_cluster_window(
         colorrange=all_cluster_data[].m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nDouble click on transition - Add to scratchpad\nMouse wheel - Zoom\nRight click and drag on empty space to pan camera"
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\nLMB on stem in the dendrogram - Show cluster in this window"
     rg = hgrid!(render_menu, scalar_menu)
     lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
-    colsize!(lg, 1, Auto(true, 4))
-    colsize!(lg, 2, Auto(false))
-
     window[3, 1:2] = hgrid!(
         vgrid!(rg, cbar),
         vgrid!(lg, btn_centroid)

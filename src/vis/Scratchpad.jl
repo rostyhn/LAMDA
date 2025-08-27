@@ -21,6 +21,7 @@ function scratchpad!(
     on_click::Function=(x) -> (),
     markersize=200)
 
+
     plot_theme = Theme(MeshScatter=(
             inspectable=false,
             markercolor=to_color(:blue)
