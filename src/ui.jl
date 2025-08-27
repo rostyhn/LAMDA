@@ -279,7 +279,11 @@ function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
     # 1px == 3/4pt
     fs_px = fontsize * (4 / 3)
 
-    size = (maximum(tl) * (fontsize / 2), length(texts) * fs_px + margin)
+    # gets actual pixel width of each string
+    bboxes = Makie.text_bb.(texts, Makie.defaultfont(), fontsize)
+    widths = getindex.(map(x -> x.widths, bboxes), 1)
+
+    size = (maximum(widths) + margin, length(texts) * fs_px + margin)
     tt = Scene(fig.scene, size=size,
         show_axis=false,
         viewport=Rect2i(100, 100, size...),
