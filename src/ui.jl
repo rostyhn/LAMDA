@@ -39,9 +39,10 @@ end
 
 function apply_alignment_to_scene(scene::Makie.Scene, alignment)
     R, flip = alignment
-    rr = hcat(R', [0, 0, 0])
+    # not sure if this should be transposed or not
+    rr = hcat(R, [0, 0, 0])
     fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-    scene.transformation.model[] = Float64.(fr) * scene.transformation.model[]
+    scene.transformation.model[] = Float64.(fr)
 end
 
 function simple_arrow_view!(scene::Makie.Scene,

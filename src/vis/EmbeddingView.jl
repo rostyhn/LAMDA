@@ -35,7 +35,8 @@ function embedding_view!(
     on_click::Function=(x) -> (),
     markersize::Observable{Int}=Observable(100),
 )
-    ax = Axis(loc, backgroundcolor=:transparent)
+    ax = Axis(loc, backgroundcolor=:transparent,
+        autolimitaspect=1)
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
     campixel!(ax.scene)
@@ -47,54 +48,16 @@ function embedding_view!(
     show_alignment = Observable(true)
     resolve_overlap = Observable(true)
 
-    jittered_points = @lift begin
-        points = $embedding
-        final = []
-
-        if $resolve_overlap
-            proj_marker = $(ax.scene.camera.pixel_space) * $markersize_4d
-            ms = max(proj_marker[1], proj_marker[2])
-            kd = RangeTree(Matrix{Float64}(undef, 2, 0), ms / 2)
-
-            for pt in points
-                np = deepcopy(pt)
-                found = false
-                iter = 0
-                while !found
-                    overlaps = final[AdaptiveKDTrees.RangeSearch.find_in_range(kd, np, ms / sqrt(pi))]
-                    if length(overlaps) == 0 || iter == 100
-                        push!(final, np)
-                        AdaptiveKDTrees.RangeSearch.add_point!(kd, np)
-                        found = true
-                    else
-                        po = first(overlaps)
-                        dminx, dmaxx, dminy, dmaxy = get_extents(np, ms)
-                        sminx, smaxx, sminy, smaxy = get_extents(po, ms)
-
-                        overlap_x = min(dmaxx, smaxx) - max(dminx, sminx)
-                        overlap_y = min(dmaxy, smaxy) - max(dminy, sminy)
-
-                        dir = np - po
-
-                        if overlap_x < overlap_y
-                            np += Point2f(sign(dir[1]) * overlap_x, 0.0)
-                        else
-                            np += Point2f(0.0, sign(dir[2]) * overlap_y)
-                        end
-                    end
-                    iter += 1
-                end
-            end
-            return Point2f.(final)
-        end
-        return Point2f.(points)
-    end
-
     umap_nodes = scatter!(ax,
-        jittered_points,
+        embedding,
         marker=:rect,
         color=:transparent,#:blue,
         inspector_label=(ins, idx, pos) -> string(cluster_data[].ts[idx]))
+
+    on(embedding, update=true) do e
+        autolimits!(ax)
+        center!(ax.scene)
+    end
 
     kb_events = on(events(ax.scene).keyboardbutton, weak=true) do event
         if ispressed(ax.scene, Exclusively(Keyboard.page_up))
@@ -241,6 +204,7 @@ function embedding_view!(
             push!(frame_colors[], frame_color)
             push!(scene_listeners[], (Ref(alignment_listener), Ref(mouse_listener)))
         end
+        center!(ax.scene)
         hovered[] = nothing
         enable_interactions(ax)
         return t_to_pltidx
@@ -280,8 +244,8 @@ function embedding_view!(
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
-    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, jittered_points, weak=true) do xlim, ylim, mkr, p
-        if length(views[]) == length(embedding[])
+    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, embedding, weak=true) do xlim, ylim, mkr, p
+        if length(views[]) == length(p)
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             for (i, ptr) in enumerate(views[])
                 scene = ptr[]
@@ -305,7 +269,7 @@ function embedding_view!(
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
             for (i, c) in enumerate(c_list)
-                frame_colors[][i][] = c
+                frame_colors[][i][] = set_color_alpha(c, 0.6)
             end
         end
     end
@@ -358,8 +322,6 @@ function embedding_view!(
             off(hover_converter)
             hover_converter = nothing
         end
-
-        Observables.clear(jittered_points)
 
         for (al, ml) in scene_listeners[]
             off(al[])

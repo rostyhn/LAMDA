@@ -172,7 +172,7 @@ function dendrogram!(ax::Makie.Axis,
         end
         hover_callbackfn(cl)
 
-        if hovered[] != cl
+        if isnothing(hovered[]) || hovered[] != cl
             hovered[] = cl
         end
 
@@ -234,7 +234,7 @@ function dendrogram!(ax::Makie.Axis,
 
     on(m_events.obs) do e
         if e.type === MouseEventTypes.leftdown
-            if !isnothing(hovered[]) && !cutoff_hovered[]
+            if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
                 on_click(hovered[])
             end
         elseif e.type === MouseEventTypes.over
@@ -262,8 +262,6 @@ function dendrogram!(ax::Makie.Axis,
                 notify(hovered)
             end
         elseif e.type == MouseEventTypes.leftdragstart
-            mp = mouseposition(ax.scene)
-            plot, idx = pick(ax, mp)
             if cutoff_hovered[]
                 dragging[] = true
             end
