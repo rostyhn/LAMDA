@@ -292,6 +292,7 @@ function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
         clear=true,
     )
 
+
     p = poly!(tt, Rect2i(0, 0, size...), color=colorant"#ffffca",
         inspectable=false, strokecolor=:black, strokewidth=1)
 
@@ -327,8 +328,27 @@ function attach_image(fig, ax, img, text)
     on(m_events.obs) do e
         if e.type == MouseEventTypes.over
             px, py = float.(mouseposition(fig.scene))
-            tt.viewport[] = Rect2i(px - (tSize[1] / 2), py + 5, tSize)
+            # proposed viewport
+            vp = Rect2i(px - (tSize[1] / 2), py + 5, tSize)
+
+            # intersected viewport
+            ivp = GeometryBasics.intersect(vp, fig.scene.viewport[])
+
+            wvp = widths(vp)
+            wivp = widths(ivp)
+
+            rx = wvp[1] - wivp[1]
+            ry = wvp[2] - wivp[2]
+
+            if rx > 0 || ry > 0
+                o = origin(vp)
+                tt.viewport[] = Rect2i(o[1] - rx, o[2] - ry, tSize)
+            else
+                tt.viewport[] = vp
+            end
+
             tt.visible[] = true
+
         else
             tt.visible[] = false
         end
