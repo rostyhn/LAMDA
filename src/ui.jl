@@ -102,48 +102,6 @@ function simple_arrow_view!(scene::Makie.Scene,
     return h, s, v, d
 end
 
-function volume_view!(scene::Makie.Scene,
-    vd::AbstractArray{Float32},
-    sampleRangeExtrema::Observable{Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64},Tuple{Float64,Float64}}},
-    vol_cmap::Observable{Vector{ColorTypes.RGBA{Float32}}},
-    volumeRange::Observable{Tuple{Float32,Float32}})
-
-    v_lo = volume!(scene,
-        lift(x -> x[1], sampleRangeExtrema),
-        lift(x -> x[2], sampleRangeExtrema),
-        lift(x -> x[3], sampleRangeExtrema),
-        vd;
-        colormap=lift(x -> view(x, 1:49), vol_cmap),
-        highclip=:transparent,
-        lowclip=:transparent,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        inspectable=false,
-        colorrange=lift(x -> (x[1], 0.0), volumeRange))
-
-    v_hi = volume!(scene,
-        lift(x -> x[1], sampleRangeExtrema),
-        lift(x -> x[2], sampleRangeExtrema),
-        lift(x -> x[3], sampleRangeExtrema),
-        vd;
-        colormap=lift(x -> view(x, 50:100), vol_cmap),
-        highclip=:transparent,
-        lowclip=:transparent,
-        algorithm=:absorption,
-        fxaa=false,
-        transparency=true,
-        shading=NoShading,
-        inspectable=false,
-        colorrange=lift(x -> (0.0, x[2]), volumeRange))
-
-    # https://github.com/MakieOrg/Makie.jl/blob/master/GLMakie/src/drawing_primitives.jl
-    update_cam!(parent_scene(v_lo))
-
-    return v_lo, v_hi
-end
-
 function fill_sq(mData::Tuple{Vector{Point3f},Vector{TriangleFace{UInt16}}},
     c::Float32)::GeometryBasics.Mesh
 

@@ -156,7 +156,6 @@ end
     name::String
     transitions::Vector{Transition}
     alignedPositionsMatrices::Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}
-    kdTrees::Dict{Transition,Tuple{KDTree,KDTree}}
     t1::Dict{Transition,Vector{Float32}}
     t2::Dict{Transition,Vector{Float32}}
     t3::Dict{Transition,Vector{Float32}}

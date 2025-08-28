@@ -14,10 +14,6 @@ function build_settings_menu(selected_invariant, selected_alignment, alignment_o
 
     window[2, 1] = hgrid!(Label(window, "Selected invariant"), invar_menu)
     window[3, 1] = hgrid!(Label(window, "Selected alignment"), alignment_menu)
-    sg = SliderGrid(window[4, 1],
-        (label="Volume Resolution", range=0.1:0.1:1, startvalue=0.2),
-        (label="Kernel Width", range=0.1:0.1:2.0, startvalue=1.0),
-        (label="Num Neighbors", range=1:1:num_atoms, startvalue=5))
 
     return window
 end

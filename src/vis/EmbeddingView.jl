@@ -151,9 +151,7 @@ function embedding_view!(
         sr = selected_render[]
         flip = alignment[t][2]
         # could figure out the function before, would reduce number of branches 
-        if sr == "Volume"
-            render_views[sr](ax3d, t)
-        elseif sr == "Atom"
+        if sr == "Atom"
             render_views["Atom"](ax3d,
                 t,
                 selected_scalar,
@@ -221,9 +219,7 @@ function embedding_view!(
         clear_listeners!(all_listeners, t)
         foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
         # same thing here, pass in fn as Ref?
-        if sr == "Volume"
-            render_views[sr](ax3d, t)
-        elseif sr == "Atom"
+        if sr == "Atom"
             render_views["Atom"](ax3d,
                 t,
                 selected_scalar,
@@ -270,7 +266,12 @@ function embedding_view!(
         scene.viewport[] = vp
     end
 
-    ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, embedding, t_to_pltidx, weak=true) do xlim, ylim, mkr, p, pindx
+    ax_listener = onany(ax.xaxis.attributes.limits,
+        ax.yaxis.attributes.limits,
+        markersize_4d,
+        embedding,
+        t_to_pltidx,
+        weak=true) do xlim, ylim, mkr, p, pindx
         if length(views[]) == length(p)
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             shift_point.(enumerate(views[]), Ref(ms))

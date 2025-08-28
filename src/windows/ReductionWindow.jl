@@ -231,7 +231,6 @@ function main_window(active_trajectory::Trajectory,
     init_h_cutoff::AbstractFloat,
     dataPath::String,
     cachePath::String;
-    chunk_size::Integer=250,
     align_with::Maybe{String}=nothing)
 
     (;
@@ -239,11 +238,8 @@ function main_window(active_trajectory::Trajectory,
         scalars,
         scalar_ranges,
         alignedPositionsMatrices,
-        kdTrees,
         alignments,
         name,
-        t_to_idx,
-        transitions
     ) = active_trajectory
 
     function select_invariant(selection::String)
@@ -271,85 +267,25 @@ function main_window(active_trajectory::Trajectory,
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     selected_alignment = Observable(init_alignment)
 
-    # get min max coordinates of atoms for bounding box
-    minX = 1.0e10
-    minY = 1.0e10
-    minZ = 1.0e10
-    maxX = -1.0e10
-    maxY = -1.0e10
-    maxZ = -1.0e10
-    @time for (key, positions) in alignedPositionsMatrices
-        p1, p2 = positions
-        minX1, maxX1 = extrema(view(p1, :, 1))
-        minY1, maxY1 = extrema(view(p1, :, 2))
-        minZ1, maxZ1 = extrema(view(p1, :, 3))
-
-        minX2, maxX2 = extrema(view(p2, :, 1))
-        minY2, maxY2 = extrema(view(p2, :, 2))
-        minZ2, maxZ2 = extrema(view(p2, :, 3))
-
-        minX = min(minX, min(minX1, minX2))
-        minY = min(minY, min(minY1, minY2))
-        minZ = min(minZ, min(minZ1, minZ2))
-
-        maxX = max(maxX, max(maxX1, maxX2))
-        maxY = max(maxY, max(maxY1, maxY2))
-        maxZ = max(maxZ, max(maxZ1, maxZ2))
-    end
-
-    volume_resolution = Observable(0.2)
-    kernel_width = Observable(1.0) # try with 0.5 to match superquadrics
-    num_neighbors = Observable(5)
-
-    sampleRanges = @lift begin
-        vr = $volume_resolution
-        return [minX-2*vr:vr:maxX+2*vr;],
-        [minY-2*vr:vr:maxY+2*vr;],
-        [minZ-2*vr:vr:maxZ+2*vr;]
-    end
-
-    # 0.1 is the thickness of the white part
-    volume_cmap = Observable(resample_cmap(:bam, 100; alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6))
-    volRange = Observable((floatmin(Float32), floatmax(Float32)))
     selected_invariant = Observable("t1", ignore_equal_values=true)
-
-    volumeData::Observable{Matrix{Float32}} = @lift begin
-        w = length($sampleRanges[1])
-        h = length($sampleRanges[2])
-        d = length($sampleRanges[3])
-        key = string($volume_resolution, "_", $kernel_width, "_", $num_neighbors, "_", $selected_invariant, "_", name)
-        fp, is_cached = get_mmap_file(key, cachePath)
-        if !is_cached
-            @info "Calculating volume data for $(key); will be saved as $(hash(key)).bin"
-            iv = select_invariant($selected_invariant)
-            invariants = collect(values(iv[]))
-            alignedPos = first.(values(alignedPositionsMatrices))
-            kd = first.(values(kdTrees))
-
-            volMin, volMax, absVolMin =
-                calculateVolumeData(fp, transitions, alignedPos, kd, invariants,
-                    $sampleRanges, $num_neighbors, $kernel_width; chunk_size=chunk_size)
-
-            save_volume_cache(key, cachePath, (volMin, volMax), (w, h, d), absVolMin)
-        end
-
-        volData = Mmap.mmap(fp, Array{Float32,2}, (w * h * d, length(transitions)), shared=false, grow=false)
-        volRange[] = read_volume_cache(key, cachePath)
-        #make it symmetric 
-        #maximumRange = max(abs(volRange[][1]), abs(volRange[][2]))
-        #volRange[] = (-maximumRange, maximumRange)
-
-        if $selected_invariant == "t2"
-            volume_cmap[] = resample_cmap(:matter, 100; alpha=([0:0.01:0.99;] ./ 0.05) .^ 2)
+    volume_cmap = @lift begin
+        if $selected_invariant == "t1"
+            # 0.1 is the thickness of the white part
+            return resample_cmap(:bam, 100;
+                alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
+        elseif $selected_invariant == "t2"
+            return resample_cmap(:matter, 100;
+                alpha=([0:0.01:0.99;] ./ 0.05) .^ 2)
         else
             # should be fine, seems off-center because abs(volMin) != abs(volMax)
-            lowmap = reverse(resample_cmap(:RdPu_3, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
-            himap = resample_cmap(:greens, 50; alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
-            volume_cmap[] = vcat(lowmap, himap)
-        end
-        return volData
-    end
+            lowmap = reverse(resample_cmap(:RdPu_3, 50;
+                alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
+            himap = resample_cmap(:greens, 50;
+                alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
 
+            return vcat(lowmap, himap)
+        end
+    end
     invariantRange = @lift begin
         iv = select_invariant($selected_invariant)
         vals = values(iv[])
@@ -385,7 +321,9 @@ function main_window(active_trajectory::Trajectory,
 
 
     # did this to avoid drilling down and passing parameters constantly
-    atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100, alpha=range(; start=0.01, stop=1.0, length=100))
+    atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100,
+        alpha=range(; start=0.01, stop=1.0, length=100))
+
     function render_atom_view(scene::Makie.Scene,
         transition::Transition,
         selected_scalar::Observable{String},
@@ -394,38 +332,21 @@ function main_window(active_trajectory::Trajectory,
 
         res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
             ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
-            simple_atom_view!(scene, ap,
+            simple_atom_view!(scene,
+                ap,
                 lift(x -> scalars[x][transition], selected_scalar),
                 lift(x -> scalar_ranges[x], selected_scalar),
                 atom_cmap,
-                time)
+                time
+            )
         end
         return res
     end
 
-    sampleRangeExtrema = @lift begin
-        return extrema.($sampleRanges)
-    end
-
-    # leak might just be julia caching data... in that case, we can't do anything else
-    function render_volume_view(scene::Makie.Scene, transition::Transition)
-        # directly indexing the mmap creates a copy, need to use a view
-        vvd = let volumeData = volumeData, t_to_idx = t_to_idx
-            view(volumeData[], :, t_to_idx[transition])
-        end
-        vd = reshape(vvd,
-            (
-                length(sampleRanges[][1]),
-                length(sampleRanges[][2]),
-                length(sampleRanges[][3])
-            )
-        )
-        return volume_view!(scene, vd, sampleRangeExtrema, volume_cmap, volRange)
-    end
-
-
     function render_superquadrics_view(scene::Makie.Scene, transition::Transition, flip::Bool=false)
-        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes
+        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices,
+            stretchedPrincipalAxes = stretchedPrincipalAxes
+
             t_ap = alignedPositionsMatrices[transition]
             idx = flip ? 2 : 1
             points = Point3f.(eachrow(t_ap[idx]))
@@ -446,7 +367,9 @@ function main_window(active_trajectory::Trajectory,
         alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}},
         correlationThreshold::Observable{<:AbstractFloat})
 
-        res = let alignedPositionsMatrices = alignedPositionsMatrices, cluster_data = cluster_data, kernelWidth = kernel_width
+        res = let alignedPositionsMatrices = alignedPositionsMatrices,
+            cluster_data = cluster_data,
+            kernelWidth = 1.0
 
             posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
             distances, t_to_mtx, mtx_to_t = get_local_matrix(cluster_data, ts)
@@ -510,7 +433,9 @@ function main_window(active_trajectory::Trajectory,
             time[] = x
         end
 
-        sg = hgrid!(Label(figure, "t", font=:italic), t_slider, Label(figure, lift(x -> string(x), time)))
+        sg = hgrid!(Label(figure, "t", font=:italic),
+            t_slider,
+            Label(figure, lift(x -> string(x), time)))
 
         return time, sg
     end
@@ -572,14 +497,17 @@ function main_window(active_trajectory::Trajectory,
         return gg, time, scalar_selection
     end
 
-    function embed_colorbar(figure::Makie.Figure, render_selection::Observable{String}, scalar_selection::Observable{String})
+    function embed_colorbar(figure::Makie.Figure,
+        render_selection::Observable{String},
+        scalar_selection::Observable{String}
+    )
         scalar_range = lift(x -> scalar_ranges[x], scalar_selection)
 
         currentRange = Observable((0.0, 1.0))
         currentCMap = Observable(atom_cmap)
 
-        listener = onany(render_selection, scalar_range, volRange, volume_cmap, update=true, weak=true) do rs, sr, vr, vc
-            if rs == "Volume" || rs == "Superquadric"
+        listener = onany(render_selection, scalar_range, invariantRange, volume_cmap, update=true, weak=true) do rs, sr, vr, vc
+            if rs == "Superquadric"
                 currentRange[] = vr
                 currentCMap[] = vc
             else
@@ -598,7 +526,6 @@ function main_window(active_trajectory::Trajectory,
 
     # just pass this dictionary around and pass in the arguments it needs
     render_views::Dict{String,Function} = Dict{String,Function}("Atom" => render_atom_view,
-        "Volume" => render_volume_view,
         "Superquadric" => render_superquadrics_view,
         "SMovement" => render_movement_view_ts)
 
@@ -643,11 +570,6 @@ function main_window(active_trajectory::Trajectory,
             clustering = nothing
 
             Observables.clear(cluster_info)
-
-            Observables.clear(volumeData)
-            Observables.clear(volume_resolution)
-            Observables.clear(volRange)
-            Observables.clear(kernel_width)
             Observables.clear(volume_cmap)
 
             #Observables.clear(invariantRange)

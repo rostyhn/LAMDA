@@ -14,91 +14,10 @@ function alignAtomPositions(xp::Matrix{AbstractFloat}, x::Matrix{AbstractFloat})
     return transpose(R * transpose(xs)) .+ sp
 end
 
-function calculateVolumeData(fp::String,
-    transitions::Vector{Transition},
-    positions::Vector{Matrix{Float32}},
-    kdTrees::AbstractVector{<:KDTree},
-    invariants::Vector{Vector{Float32}},
-    sampleRanges::Tuple{Vector{Float64},Vector{Float64},Vector{Float64}},
-    num_neighbors::Int,
-    kernel_width::Float64;
-    chunk_size::Int=100)
-
-    points = Vector{Tuple{Tuple{Int,Int,Int},Point3f}}()
-    for i in eachindex(sampleRanges[1]) # x
-        for j in eachindex(sampleRanges[2]) # y
-            for k in eachindex(sampleRanges[3]) # z
-                point = Point3f(sampleRanges[1][i], sampleRanges[2][j], sampleRanges[3][k])
-                push!(points, ((i, j, k), point))
-            end
-        end
-    end
-
-    absVolMin = floatmax(Float32)
-    volMin = floatmax(Float32)
-    volMax = floatmin(Float32)
-
-    processed = 0
-    prog = Progress(length(transitions))
-    ProgressMeter.update!(prog, processed)
-
-    chunks = Iterators.partition(eachindex(transitions), chunk_size)
-
-    # 500 seconds at the fastest
-    touch(fp)
-    io = open(fp, "w+")
-    try
-        for chunk in chunks
-            sub_chunks = Iterators.partition(chunk, div(length(chunk), nthreads(:default)))
-            tasks = map(sub_chunks) do ts
-                Threads.@spawn :default begin
-                    ap_chunk = @view positions[ts]
-                    kd_chunk = @view kdTrees[ts]
-                    iv_chunk = @view invariants[ts]
-                    return calc_vols(sampleRanges, num_neighbors, kernel_width, points, ts, kd_chunk, ap_chunk, iv_chunk)
-                end
-            end
-
-            errormonitor.(tasks)
-            data = fetch.(tasks)
-            vd = reduce(vcat, first.(data))
-
-            for d in vd
-                write(io, d)
-            end
-            processed += length(vd)
-
-            volMin = min(volMin, minimum(getindex.(data, 2)))
-            volMax = max(volMax, maximum(getindex.(data, 3)))
-            absVolMin = min(absVolMin, minimum(last.(data)))
-
-            ProgressMeter.update!(prog, processed)
-        end
-    catch e
-        rm(fp)
-        return error("Volume calculation failed: $(e).")
-    end
-    close(io)
-
-    return volMin, volMax, absVolMin
-end
-
-
 function check_directory_format(dir)
     contents = readdir(dir)
     return "ase_dict.pickle" in contents &&
            "transitions.pickle" in contents
-end
-
-function get_data_folders(path)
-    dirs = filter!(x -> check_directory_format(x),
-        filter!(x -> isdir(x), readdir(path, join=true)))
-
-    if length(dirs) == 0
-        return error("No valid folders in data folder.")
-    end
-
-    return dirs
 end
 
 function readDistanceMatrixFolder(folder::String)
@@ -116,28 +35,6 @@ function readDistanceMatrixFolder(folder::String)
     end
     return dms
 end
-
-function read_volume_cache(key, cachePath::String)
-    h = hash(key)
-    cache_file = joinpath(cachePath, "$(h).jdl2")
-
-    result = Nothing
-    if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
-        @info "Loading $(key) from $(basename(cache_file))"
-        result = JLD2.jldopen(cache_file) do file
-            file["volume_range"]
-        end
-    end
-    return result
-end
-
-function save_volume_cache(key, cachePath, volume_range, dimensions, absVolMin)
-    h = hash(key)
-    cache_file = joinpath(cachePath, "$(h).jdl2")
-    @info "Saving $(key) as $(basename(cache_file))"
-    JLD2.jldsave("$(cache_file)"; volume_range, dimensions, absVolMin)
-end
-
 
 function get_data_alt(dataPath::String, cachePath::String)::Trajectory
     t = basename(dataPath)
@@ -171,12 +68,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                 alignedPositions_pickle)
 
             # convert to point3fs & generate kd trees
-            @info "Computing KDTrees."
-            # https://github.com/KristofferC/NearestNeighbors.jl
-            # can store kdTrees as indices only, relinking positions when needed
-            # no need to cache this data, it computes really quickly
             alignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}()
-            kdTrees = Dict{Transition,Tuple{KDTree,KDTree}}()
             for (t::Transition, m::Tuple{Matrix{Float32},Matrix{Float32}}) in rawAlignedPositionsMatrices
                 # center atom positions first
                 cm1 = mean(m[1], dims=1)
@@ -185,7 +77,6 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                 p2 = (m[2] .- cm2)
 
                 alignedPositionsMatrices[t] = (p1, p2)
-                kdTrees[t] = (KDTree(p1'; reorder=false), KDTree(p2'; reorder=false))
             end
             rawAlignedPositionsMatrices = nothing
 
@@ -272,7 +163,6 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
             trajectory_data = Trajectory(name=t,
                 transitions=transitions,
                 alignedPositionsMatrices=alignedPositionsMatrices,
-                kdTrees=kdTrees,
                 t1=invariants["t1"],
                 t2=invariants["t2"],
                 t3=invariants["t3"],

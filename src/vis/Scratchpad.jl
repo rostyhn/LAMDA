@@ -311,10 +311,7 @@ function scratchpad!(
                     rs_listener = on(render_selection, weak=true, update=true) do rs
                         foreach(x -> delete!(ax3d, x), plt_rendered)
                         empty!(plt_rendered)
-                        if rs == "Volume"
-                            v_lo, v_hi = render_views[rs](ax3d, obj)
-                            plt_rendered = [v_lo, v_hi]
-                        elseif rs == "Atom"
+                        if rs == "Atom"
                             s = render_views["Atom"](ax3d,
                                 obj,
                                 scalar_selection,
