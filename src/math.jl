@@ -219,7 +219,6 @@ function calculate_alignment(ref_t::Transition,
     rot = Dict{Transition,Tuple{Matrix{Float32},Bool}}()
     ref_s1_pos = posMats[ref_t][1]
 
-    @show size(ref_s1_pos)
     ref_s1, ref_s2 = ref_t
     ref_diff = features[ref_s2] - features[ref_s1]
     split_ref = split_delta(ref_diff)
@@ -254,4 +253,16 @@ function calculate_alignment(ref_t::Transition,
 
     rot[ref_t] = (Matrix(1.0I, 3, 3), false)
     return rot
+end
+
+function int_sqrt(x)
+    n = Int(floor(sqrt(x)))
+    if (n * n) == x
+        return n, n
+    end
+    while mod(x, n) != 0
+        n -= 1
+    end
+    m = div(x, n)
+    return m, n
 end

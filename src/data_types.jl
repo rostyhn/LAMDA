@@ -353,6 +353,28 @@ function dfs(cd::ClusterData, cluster::ClusterSet, acc=Ref([]))
     dfs(cd, rc, acc)
 end
 
+function dfs_leaves(cd::ClusterData,
+    cluster::ClusterSet)::Vector{ClusterSet}
+
+    leaves = ClusterSet[]
+    _dfs_leaves(cd, cluster, leaves)
+    return leaves
+end
+
+function _dfs_leaves(cd::ClusterData,
+    cluster::ClusterSet,
+    leaves::Vector{ClusterSet})
+
+    children = get_children(cd, cluster)
+    if isnothing(children)
+        push!(leaves, cluster)
+        return
+    end
+    lc, rc = children
+    _dfs_leaves(cd, lc, leaves)
+    _dfs_leaves(cd, rc, leaves)
+end
+
 function get_neighbor(cd::ClusterData, cluster::ClusterSet, idx::Integer)::ClusterSet
     parent = cd.c_to_parent[cluster]
     children = cd.parent_to_c[parent]

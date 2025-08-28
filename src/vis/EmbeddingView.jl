@@ -51,8 +51,8 @@ function embedding_view!(
     umap_nodes = scatter!(ax,
         embedding,
         marker=:rect,
-        color=:transparent,#:blue,
-        inspector_label=(ins, idx, pos) -> string(cluster_data[].ts[idx]))
+        color=:transparent,
+        inspector_label=(ins, idx, pos) -> join(string.(cluster_data[].ts[idx], base=10), ","))
 
     on(embedding, update=true) do e
         autolimits!(ax)

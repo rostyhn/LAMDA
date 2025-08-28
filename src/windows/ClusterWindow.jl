@@ -274,26 +274,22 @@ function layout(
 
     return @lift begin
         cd = all_cluster_data
-        scd = $(cluster_data)
+        scd = $cluster_data
         ts = scd.ts
 
-        thisroot = cluster_data[].cluster
+        leaf_order = dfs_leaves(cd, scd.cluster)
+        t_order = reduce(vcat, get_transitions.(Ref(cd), leaf_order))
 
-        # init by showing the cluster as one big thing
-        clusters = $cutoff == 0.0 ? [thisroot] : clusters_above_cutoff(thisroot,
-            all_cluster_data,
-            $cutoff)
+        # could potentially use sqrt_int to build a perfect rect
+        # but may be a.) lopsided and b.) the library says it may be buggy
+        s = Int(ceil(sqrt(length(ts))))
+        H = gilbertindices((s, s))
 
-        shiftX = 0
-        allp = Dict{Transition,Point2f}()
-        for c in clusters
-            # need to ensure points are in the same order as ts
-            cts = get_transitions(cd, c)
-            cl = grid_layout(cts) .+ Point2f(shiftX, 0.0)
-            cp = Dict(collect((zip(cts, cl))))
-            shiftX += Int(round(sqrt(length(cts)))) + 1
-            merge!(allp, cp)
+        points = Dict()
+        for (i, t) in enumerate(t_order)
+            points[t] = Point2f(Tuple(H[i])...)
         end
-        return collect(map(x -> allp[x], ts))
+
+        return collect(map(x -> points[x], ts))
     end
 end

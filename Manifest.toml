@@ -2,7 +2,7 @@
 
 julia_version = "1.11.6"
 manifest_format = "2.0"
-project_hash = "c384118f39a0ea37766f55191d8001cd135ec78b"
+project_hash = "dd23f41162f70286436d653aa3d06153279f9e02"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "60665b326b75db6517939d0e1875850bc4a54368"
@@ -657,6 +657,11 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "6570366d757b50fabae9f4315ad74d2e40c0560a"
 uuid = "59f7168a-df46-5410-90c8-f2779963d0ec"
 version = "5.2.3+0"
+
+[[deps.GilbertCurves]]
+git-tree-sha1 = "3e076ca96e34a47e98a46657b2bec2655a366d80"
+uuid = "88fa7841-ef32-4516-bb70-c6ec135699d9"
+version = "0.1.0"
 
 [[deps.Glib_jll]]
 deps = ["Artifacts", "GettextRuntime_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Libiconv_jll", "Libmount_jll", "PCRE2_jll", "Zlib_jll"]

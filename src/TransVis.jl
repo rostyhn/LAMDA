@@ -33,6 +33,7 @@ using AdaptiveKDTrees
 using AdaptiveKDTrees.RangeSearch
 using UMAP
 using MultivariateStats
+using GilbertCurves
 
 include("constants.jl")
 include("data_types.jl")

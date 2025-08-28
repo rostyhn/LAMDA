@@ -13,22 +13,6 @@ function grid_layout(items::AbstractVector{<:Any})::Vector{Point2f}
     return points
 end
 
-#TODO: implement?
-#= function treemap(items::AbstractVector{<:Any})::Vector{Point2f}
-    s = Int(round(sqrt(length(items))))
-    points = Vector{Point2f}(undef, length(items))
-    r = 0
-    for i in eachindex(items)
-        x = mod1(i, s) * 1
-        if x == 1
-            r += 1
-        end
-        y = r
-        points[i] = Point2f(Float32(x), Float32(y))
-    end
-    return points
-end =#
-
 function simple_atom_view!(scene::Makie.Scene,
     ap::Tuple{Matrix{Float32},Matrix{Float32}},
     scalars::Observable{Vector{Float32}},
