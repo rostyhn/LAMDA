@@ -221,7 +221,7 @@ function dendrogram!(ax::Makie.Axis,
             if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
                 on_click(hovered[])
             end
-        elseif e.type == MouseEventTypes.rightdown
+        elseif e.type == MouseEventTypes.middledown
             if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
                 on_rmb(hovered[])
             end

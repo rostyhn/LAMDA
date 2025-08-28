@@ -153,7 +153,7 @@ function build_cluster_window(
         on_rmb=create_window
     )
 
-    DENDROGRAM_HELP = "LMB on stem - show cluster in this window \nRMB on stem - show cluster in new window \nLeft click and drag on cutoff - change cluster colors in embedding view \nARROW UP - Show parent cluster"
+    DENDROGRAM_HELP = "LMB on stem - show cluster in this window \nMiddle click on stem - show cluster in new window \nLeft click and drag on cutoff - change cluster colors in embedding view \nARROW UP - Show parent cluster"
 
     help_icon(window, mat_grid[2, 1], DENDROGRAM_HELP)
 
