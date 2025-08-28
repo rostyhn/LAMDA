@@ -104,6 +104,9 @@ function build_cluster_window(
         colors,
         on_click=on_transition_select)
 
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\nLMB on stem in the dendrogram - Show cluster in this window"
+    help_icon(window, window[2, 1:2], EMBEDDING_HELP)
+
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid
 
@@ -155,13 +158,8 @@ function build_cluster_window(
         colorrange=all_cluster_data[].m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\nLMB on stem in the dendrogram - Show cluster in this window"
-    rg = hgrid!(render_menu, scalar_menu)
-    lg = hgrid!(t_slider, inline_image(window, HELP_ICON, EMBEDDING_HELP))
-    window[3, 1:2] = hgrid!(
-        vgrid!(rg, cbar),
-        vgrid!(lg, btn_centroid)
-    )
+    rg = hgrid!(render_menu, scalar_menu, t_slider)
+    window[3, 1:2] = vgrid!(rg, hgrid!(cbar, btn_centroid))
 
     v_listener = on(cluster_data) do cd
         cutoff[] = 0.0

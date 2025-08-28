@@ -349,3 +349,8 @@ function inset_image(fig, loc, img, text; kwargs...)
     attach_image(fig, ax, img, text)
     return ax
 end
+
+function help_icon(fig, loc, txt)
+    # places help icon in top right corner
+    inset_image(fig, loc, HELP_ICON, txt; width=Makie.Fixed(15), height=Makie.Fixed(15), halign=1.0, valign=1.0, tellwidth=false, tellheight=false)
+end

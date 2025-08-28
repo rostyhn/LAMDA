@@ -263,7 +263,7 @@ function build_selection_window(
         on_click=on_show_cluster_click)
 
     SCRATCHPAD_HELP = "MMB and drag - move object\nRMB on object - delete\nLMB and drag - create visual group\nRMB and drag on empty space - pan camera\nDouble LMB - create text annotation"
-    inset_image(window, tGrid[1, 1], HELP_ICON, SCRATCHPAD_HELP; width=Makie.Fixed(15), height=Makie.Fixed(15), halign=1.0, valign=1.0, tellwidth=false, tellheight=false)
+    help_icon(window, tGrid[1, 1], SCRATCHPAD_HELP)
 
     on(export_btn.clicks) do n
         # export all clusters on screen
