@@ -435,7 +435,7 @@ function main_window(active_trajectory::Trajectory,
 
             # both fns allocate a bunch of space
             il, is, plots = superquadrics_view!(scene, points, colors, spa, volume_cmap, invariantRange)
-            push!(is, colors)
+            #push!(is, colors)
             return il, is, plots
         end
     end
@@ -529,7 +529,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure::Makie.Figure; default::String="Superquadric")
+    function render_menu(figure::Makie.Figure; default::String="Atom")
         scene_selector = Observable(default)
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,

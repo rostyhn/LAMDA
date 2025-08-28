@@ -145,7 +145,7 @@ function volume_view!(scene::Makie.Scene,
 end
 
 function fill_sq(mData::Tuple{Vector{Point3f},Vector{TriangleFace{UInt16}}},
-    c::AbstractArray{Float32})::GeometryBasics.Mesh
+    c::Float32)::GeometryBasics.Mesh
 
     p, f = mData
     return GeometryBasics.mesh(p, f, color=per_face(fill(c, length(f)), f))
@@ -199,7 +199,7 @@ function superquadrics_view!(scene::Makie.Scene,
     end
 
     update_cam!(parent_scene(m_lo))
-    return [cam_listener], [lo_sq, hi_sq], [m_lo, m_hi, v]
+    return [cam_listener], [sq], [m_lo, m_hi, v]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width::Int=1)
