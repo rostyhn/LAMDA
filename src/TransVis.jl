@@ -16,7 +16,6 @@ using StatsBase
 using SparseArrays
 using Distances
 using GeometryBasics
-using Mmap
 using FixedPointNumbers
 
 using MathTeXEngine
@@ -29,9 +28,6 @@ using Observables
 
 using Clustering: Clustering, hclust, cutree, kmedoids
 using NearestNeighbors
-using AdaptiveKDTrees
-using AdaptiveKDTrees.RangeSearch
-using UMAP
 using MultivariateStats
 using GilbertCurves
 
