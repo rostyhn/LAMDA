@@ -104,7 +104,7 @@ function build_cluster_window(
         colors,
         on_click=on_transition_select)
 
-    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nARROW UP - Show parent cluster\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\nLMB on stem in the dendrogram - Show cluster in this window"
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\n"
     help_icon(window, window[2, 1:2], EMBEDDING_HELP)
 
     mat_grid = GridLayout()
@@ -152,6 +152,10 @@ function build_cluster_window(
         on_click=(x -> switch_cluster(x, clusters)),
         on_rmb=create_window
     )
+
+    DENDROGRAM_HELP = "LMB on stem - show cluster in this window \nRMB on stem - show cluster in new window \nLeft click and drag on cutoff - change cluster colors in embedding view \nARROW UP - Show parent cluster"
+
+    help_icon(window, mat_grid[2, 1], DENDROGRAM_HELP)
 
     hm_ax, hm = heatmap(mat_grid[3, 1],
         lift(x -> x.mat, cluster_data),
