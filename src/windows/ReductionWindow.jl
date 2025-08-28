@@ -321,8 +321,9 @@ function main_window(active_trajectory::Trajectory,
 
 
     # did this to avoid drilling down and passing parameters constantly
-    atom_cmap = resample_cmap(:linear_wcmr_100_45_c42_n256, 100,
-        alpha=range(; start=0.01, stop=1.0, length=100))
+    #:linear_wcmr_100_45_c42_n256 
+    atom_cmap = resample_cmap(:linear_bmy_10_95_c71_n256, 100,
+        alpha=range(; start=0.1, stop=1.0, length=100))
 
     function render_atom_view(scene::Makie.Scene,
         transition::Transition,
