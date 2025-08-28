@@ -87,6 +87,7 @@ function embedding_view!(
     all_listeners = Dict{Transition,Any}()
     scene_listeners = Ref([])
     highlighted = Ref([])
+    frame_widths = Ref([])
 
     function create_scene(d, ms, alignment)
         i, t = d
@@ -117,7 +118,8 @@ function embedding_view!(
         end
 
         # sets to color of original leaves
-        frame_color = Observable(set_color_alpha(colors[][i], 0.6))
+        frame_color = Observable(colors[][i])
+        linewidth = Observable(3)
         # sets to color of assignment 
         # set_color_alpha(cluster_color(cluster_info, t), 0.6))
 
@@ -127,7 +129,7 @@ function embedding_view!(
             transformation=(:xy, 0),
             color=frame_color,
             overdraw=true,
-            linewidth=10,
+            linewidth=linewidth,
             space=:clip,
             depth_shift=1.0e-3,
             inspectable=false
@@ -168,7 +170,9 @@ function embedding_view!(
         yield()
         push!(views[], Ref(ax3d))
         push!(frame_colors[], frame_color)
-        push!(scene_listeners[], (Ref(alignment_listener), Ref(mouse_listener)))
+        push!(frame_widths[], linewidth)
+
+        return Ref(alignment_listener), Ref(mouse_listener), m_events
     end
 
     t_to_pltidx = @lift begin
@@ -176,10 +180,12 @@ function embedding_view!(
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
-        for (al, ml) in scene_listeners[]
+        for (al, ml, m_events) in scene_listeners[]
             off(al[])
             off(ml[])
+            Observables.clear(m_events.obs)
         end
+        empty!(scene_listeners[])
 
         for ax3d in views[]
             s = ax3d[]
@@ -190,11 +196,11 @@ function embedding_view!(
         end
 
         empty!(views[])
+        empty!(frame_widths[])
         empty!(frame_colors[]) # update frame colors
         empty!(highlighted[])
         GC.gc(true)
 
-        reset_limits!(ax)
         center!(ax.scene)
 
         cd = $(cluster_data)
@@ -204,7 +210,8 @@ function embedding_view!(
         t_to_pltidx = Dict(reverse.(enumerate(ts)))
 
         ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
-        create_scene.(enumerate(ts), Ref(ms), Ref(alignment))
+        scene_listeners[] = create_scene.(enumerate(ts), Ref(ms), Ref(alignment))
+
         center!(ax.scene)
         hovered[] = nothing
         enable_interactions(ax)
@@ -282,7 +289,7 @@ function embedding_view!(
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
             for (i, c) in enumerate(c_list)
-                frame_colors[][i][] = set_color_alpha(c, 0.6)
+                frame_colors[][i][] = c
             end
         end
     end
@@ -299,8 +306,8 @@ function embedding_view!(
     end
 
     hover_listener = on(hovered_cluster, weak=true) do hc
-        for (v_idx, ogColor) in highlighted[]
-            frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
+        for v_idx in highlighted[]
+            frame_widths[][v_idx][] = 3
         end
         empty!(highlighted[])
 
@@ -308,10 +315,9 @@ function embedding_view!(
             for i in values(to_value(t_to_pltidx))
                 c = get_cluster_of_transition(cluster_data[], i)
                 if !isnothing(c) && length(intersect(c, hc)) > 0
-                    if i <= length(frame_colors[])
-                        ogColor = frame_colors[][i][]
-                        frame_colors[][i][] = set_color_alpha(ogColor, 1.0)
-                        push!(highlighted[], (i, ogColor))
+                    if i <= length(frame_widths[])
+                        frame_widths[][i][] = 10
+                        push!(highlighted[], i)
                     end
                 end
             end
@@ -336,9 +342,10 @@ function embedding_view!(
             hover_converter = nothing
         end
 
-        for (al, ml) in scene_listeners[]
+        for (al, ml, m_events) in scene_listeners[]
             off(al[])
             off(ml[])
+            Observables.clear(m_events.obs)
         end
 
         for ptr in views[]
@@ -353,6 +360,8 @@ function embedding_view!(
         empty!(views[])
         Observables.clear.(frame_colors[])
         empty!(frame_colors[]) # update frame colors
+        empty!(frame_widths[])
+
         for t in keys(all_listeners)
             clear_listeners!(all_listeners, t)
         end
