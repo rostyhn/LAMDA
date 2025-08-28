@@ -341,15 +341,22 @@ function get_children(cd::ClusterData, cluster::ClusterSet)::Maybe{Tuple{Cluster
     return get(cd.parent_to_c, cluster, nothing)
 end
 
-function dfs(cd::ClusterData, cluster::ClusterSet, acc=Ref([]))
-    push!(acc[], cluster)
+function descend_tree(cd::ClusterData, cluster::ClusterSet)
+    nodes = ClusterSet[]
+    _descend_tree(cd, cluster, nodes)
+    return nodes
+end
+
+# dfs but include parents along the way
+function _descend_tree(cd::ClusterData, cluster::ClusterSet, acc::Vector{ClusterSet})
+    push!(acc, cluster)
     children = get_children(cd, cluster)
     if isnothing(children)
         return
     end
     lc, rc = children
-    dfs(cd, lc, acc)
-    dfs(cd, rc, acc)
+    _descend_tree(cd, lc, acc)
+    _descend_tree(cd, rc, acc)
 end
 
 function dfs_leaves(cd::ClusterData,

@@ -1,8 +1,7 @@
 # renders the clustering at the specified cutoff value
 function treepositions(hc::Clustering.Hclust, cutoff::AbstractFloat)::Tuple{
     Vector{Tuple{Point2f,Point2f}},
-    Vector{ClusterSet},
-    Dict{ClusterSet,Vector{Index}}}
+    Vector{ClusterSet}}
 
     # guarantees consistent labeling with main cluster info 
     clusterIdx = collect(eachindex(hc.order))
@@ -11,8 +10,6 @@ function treepositions(hc::Clustering.Hclust, cutoff::AbstractFloat)::Tuple{
 
     lines = []
     clusters = []
-    c2lx = Dict{ClusterSet,Vector{Int}}()
-    lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
         lt = hc.merges[i, 1] # left subtree
@@ -37,26 +34,16 @@ function treepositions(hc::Clustering.Hclust, cutoff::AbstractFloat)::Tuple{
             rg = get_st_clusters(hc.merges, rt, clusterIdx)
             push!(lines, (Point2(x2, max(cutoff, y2)), Point2(x2, ypos)))
             push!(clusters, rg)
-
-            lg_ar = get(c2lx, lg, [])
-            rg_ar = get(c2lx, rg, [])
-            pg_ar = get(c2lx, pg, [])
-
-            push!(lg_ar, lx - 1)
-            push!(rg_ar, lx + 1)
-            push!(pg_ar, lx)
-
-            lx += 3
         end
     end
 
-    return lines, clusters, c2lx
+    return lines, clusters
 end
 
 function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
     Vector{Tuple{Point2f,Point2f}},
-    Vector{ClusterSet},
-    Dict{ClusterSet,Vector{Int}}}
+    Vector{ClusterSet}
+}
 
     # guarantees consistent labeling with main cluster info 
     clusterIdx = collect(eachindex(hc.order))
@@ -65,8 +52,6 @@ function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
 
     lines = []
     clusters = []
-    c2lx = Dict{ClusterSet,Vector{Int}}()
-    lx = 2
     for i in 1:size(hc.merges, 1)
         # negative id is a leaf, positive is a subtree
         lt = hc.merges[i, 1] # left subtree
@@ -93,23 +78,14 @@ function treepositions(hc::Clustering.Hclust, root::ClusterSet)::Tuple{
             push!(lines, (Point2(x2, y2), Point2(x2, ypos)))
             push!(clusters, rg)
 
-            lg_ar = get(c2lx, lg, [])
-            rg_ar = get(c2lx, rg, [])
-            pg_ar = get(c2lx, pg, [])
-
-            push!(lg_ar, lx - 1)
-            push!(rg_ar, lx + 1)
-            push!(pg_ar, lx)
-
             if intersection == root
                 break
             end
 
-            lx += 3
         end
     end
 
-    return lines, clusters, c2lx
+    return lines, clusters
 end
 
 function dendrogram!(ax::Makie.Axis,
@@ -135,9 +111,19 @@ function dendrogram!(ax::Makie.Axis,
         end
 
         if !isnothing($cutoff)
-            lines, clusters, c2lx = treepositions(cluster_data.clustering, $cutoff)
+            lines, clusters = treepositions(cluster_data.clustering, $cutoff)
         else
-            lines, clusters, c2lx = treepositions(cluster_data.clustering, $root)
+            lines, clusters = treepositions(cluster_data.clustering, $root)
+        end
+
+        # for some reason, width indices are set by point instead of by color?
+        c2lx = Dict{ClusterSet,Vector{Int}}()
+        x = 1
+        for y in clusters
+            ar = get!(c2lx, y, [])
+            push!(ar, x)
+            push!(ar, x + 1)
+            x += 2
         end
 
         function get_cluster(i)
@@ -164,6 +150,7 @@ function dendrogram!(ax::Makie.Axis,
     end
 
     d_colors = lift(x -> x[2], dendrogram)
+    d_width = lift(x -> fill(1, length(x[1]) * 2), dendrogram)
     c_dict = lift(x -> x[4], dendrogram)
 
     function on_hover(plt, idx, pos)
@@ -182,31 +169,27 @@ function dendrogram!(ax::Makie.Axis,
     end
 
     on(hovered) do hov
-        for (h, ogCol) in highlighted
-            d_colors.val[h] = ogCol
-        end
+        d_width.val[highlighted] .= 1
         empty!(highlighted)
 
         if !isnothing(hov)
-            children = Ref([])
-            dfs(to_value(cluster_data), hov, children)
-            for c in children[]
-                if c in keys(c_dict[])
-                    idx = c_dict[][Set(c)]
-                    ogColor = d_colors.val[idx]
-                    d_colors.val[idx] = set_color_alpha(ogColor, 1.0)
-                    push!(highlighted, (idx, ogColor))
-                end
-            end
-            # mark children for gc, don't trust julia to do anything
-            children = nothing
+            children = descend_tree(cluster_data, hov)
+            highlighted = reduce(vcat,
+                filter!(!isnothing,
+                    map(x -> get(c_dict[], x, nothing), children)
+                ),
+                init=[]
+            )
+            d_width.val[highlighted] .= 5
         end
-        d_colors[] = d_colors[]
+        d_width[] = d_width[]
+        notify(d_width)
     end
 
     linesegments!(ax,
         lift(x -> x[1], dendrogram);
         color=d_colors,
+        linewidth=d_width,
         inspector_label=on_hover,
     )
 
