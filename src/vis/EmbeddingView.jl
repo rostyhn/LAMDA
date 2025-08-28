@@ -88,6 +88,90 @@ function embedding_view!(
     scene_listeners = Ref([])
     highlighted = Ref([])
 
+    function create_scene(d, ms, alignment)
+        i, t = d
+        clear_listeners!(all_listeners, t)
+        pos = position_on_plot(umap_nodes, i, apply_transform=false)
+        # x, y is in global pixel coords
+        x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
+        # calculate shifted size of marker
+        vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
+
+        ax3d = Scene(ax.scene,
+            show_axis=false,
+            viewport=vp,
+            backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
+            clear=true,
+            camera=cam3d!,
+            size=(ms, ms))
+
+        alignment_listener = on(show_alignment, update=true, weak=true) do showAlignment
+            if showAlignment
+                R, flip = alignment[t]
+                rr = hcat(R, [0, 0, 0])
+                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+                ax3d.transformation.model[] = Float64.(fr)
+            else
+                ax3d.transformation.model[] = Matrix(1.0I, 4, 4)
+            end
+        end
+
+        # sets to color of original leaves
+        frame_color = Observable(set_color_alpha(colors[][i], 0.6))
+        # sets to color of assignment 
+        # set_color_alpha(cluster_color(cluster_info, t), 0.6))
+
+        wireframe!(
+            ax3d,
+            Rect2f(-1, -1, 2, 2),
+            transformation=(:xy, 0),
+            color=frame_color,
+            overdraw=true,
+            linewidth=10,
+            space=:clip,
+            depth_shift=1.0e-3,
+            inspectable=false
+        )
+
+        m_events = addmouseevents!(ax3d)
+        mouse_listener = on(m_events.obs, weak=true) do event
+            if event.type === MouseEventTypes.over
+                #show_data(ins, umap_nodes, i)
+                hovered[] = t
+
+            elseif event.type === MouseEventTypes.out
+                hovered[] = nothing
+                hovered_cluster[] = nothing
+            elseif event.type === MouseEventTypes.leftdoubleclick
+                on_click(t)
+            end
+        end
+
+        # initial render
+        sr = selected_render[]
+        flip = alignment[t][2]
+        if sr == "Volume"
+            render_views[sr](ax3d, t)
+        elseif sr == "Atom"
+            render_views["Atom"](ax3d,
+                t,
+                selected_scalar,
+                atom_time,
+                flip
+            )
+        else
+            listeners, obs, _ = render_views["Superquadric"](ax3d,
+                t,
+                flip)
+            all_listeners[t] = (listeners, obs)
+        end
+        center!(ax3d)
+        yield()
+        push!(views[], Ref(ax3d))
+        push!(frame_colors[], frame_color)
+        push!(scene_listeners[], (Ref(alignment_listener), Ref(mouse_listener)))
+    end
+
     t_to_pltidx = @lift begin
         @debug "Rendering embedding"
         disable_interactions(ax)
@@ -121,93 +205,36 @@ function embedding_view!(
         t_to_pltidx = Dict(reverse.(enumerate(ts)))
 
         ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
-
-        @time for (i, t) in enumerate(ts)
-            clear_listeners!(all_listeners, t)
-            pos = position_on_plot(umap_nodes, i, apply_transform=false)
-            # x, y is in global pixel coords
-            x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
-            # calculate shifted size of marker
-            vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
-
-            ax3d = Scene(ax.scene,
-                show_axis=false,
-                viewport=vp,
-                backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
-                clear=true,
-                camera=cam3d!,
-                size=(ms, ms))
-
-            alignment_listener = on(show_alignment, update=true, weak=true) do showAlignment
-                if showAlignment
-                    R, flip = alignment[t]
-                    rr = hcat(R, [0, 0, 0])
-                    fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-                    ax3d.transformation.model[] = Float64.(fr)
-                else
-                    ax3d.transformation.model[] = Matrix(1.0I, 4, 4)
-                end
-            end
-
-            # sets to color of original leaves
-            frame_color = Observable(set_color_alpha(colors[][i], 0.6))
-            # sets to color of assignment 
-            # set_color_alpha(cluster_color(cluster_info, t), 0.6))
-
-            wireframe!(
-                ax3d,
-                Rect2f(-1, -1, 2, 2),
-                transformation=(:xy, 0),
-                color=frame_color,
-                overdraw=true,
-                linewidth=10,
-                space=:clip,
-                depth_shift=1.0e-3,
-                inspectable=false
-            )
-
-            m_events = addmouseevents!(ax3d)
-            mouse_listener = on(m_events.obs, weak=true) do event
-                if event.type === MouseEventTypes.over
-                    #show_data(ins, umap_nodes, i)
-                    hovered[] = t
-
-                elseif event.type === MouseEventTypes.out
-                    hovered[] = nothing
-                    hovered_cluster[] = nothing
-                elseif event.type === MouseEventTypes.leftdoubleclick
-                    on_click(t)
-                end
-            end
-
-            # initial render
-            sr = selected_render[]
-            flip = alignment[t][2]
-            if sr == "Volume"
-                render_views[sr](ax3d, t)
-            elseif sr == "Atom"
-                render_views["Atom"](ax3d,
-                    t,
-                    selected_scalar,
-                    atom_time,
-                    flip
-                )
-            else
-                listeners, obs, _ = render_views["Superquadric"](ax3d,
-                    t,
-                    flip)
-                all_listeners[t] = (listeners, obs)
-            end
-            center!(ax3d)
-            yield()
-            push!(views[], Ref(ax3d))
-            push!(frame_colors[], frame_color)
-            push!(scene_listeners[], (Ref(alignment_listener), Ref(mouse_listener)))
-        end
+        create_scene.(enumerate(ts), Ref(ms), Ref(alignment))
         center!(ax.scene)
         hovered[] = nothing
         enable_interactions(ax)
         return t_to_pltidx
+    end
+
+    function update_scene(d, ts, alignment, sr)
+        i, ptr = d
+        ax3d = ptr[]
+        t = ts[i]
+        flip = alignment[t][2]
+        clear_listeners!(all_listeners, t)
+        foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
+        if sr == "Volume"
+            render_views[sr](ax3d, t)
+        elseif sr == "Atom"
+            render_views["Atom"](ax3d,
+                t,
+                selected_scalar,
+                atom_time, flip)
+        else
+            listeners, obs, _ = render_views["Superquadric"](ax3d,
+                t, flip)
+            all_listeners[t] = (listeners, obs)
+        end
+        center!(ax3d)
+        # block for a millisecond so makie can catch up
+        # otherwise it seems like the renderer gets overwhelmed & it just goes oom
+        yield()
     end
 
     sr_listener = on(selected_render, weak=true) do sr
@@ -215,29 +242,7 @@ function embedding_view!(
         if length(views[]) == length(embedding[])
             ts = cluster_data[].ts
             alignment = cluster_data[].alignment
-            @time for (i, ptr) in enumerate(views[])
-                ax3d = ptr[]
-                t = ts[i]
-                flip = alignment[t][2]
-                clear_listeners!(all_listeners, t)
-                foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
-                if sr == "Volume"
-                    render_views[sr](ax3d, t)
-                elseif sr == "Atom"
-                    render_views["Atom"](ax3d,
-                        t,
-                        selected_scalar,
-                        atom_time, flip)
-                else
-                    listeners, obs, _ = render_views["Superquadric"](ax3d,
-                        t, flip)
-                    all_listeners[t] = (listeners, obs)
-                end
-                center!(ax3d)
-                # block for a millisecond so makie can catch up
-                # otherwise it seems like the renderer gets overwhelmed & it just goes oom
-                yield()
-            end
+            update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr))
             GC.gc(true)
         end
         enable_interactions(ax)
