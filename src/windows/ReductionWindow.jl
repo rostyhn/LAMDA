@@ -423,6 +423,7 @@ function main_window(active_trajectory::Trajectory,
         return volume_view!(scene, vd, sampleRangeExtrema, volume_cmap, volRange)
     end
 
+
     function render_superquadrics_view(scene::Makie.Scene, transition::Transition, flip::Bool=false)
         il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices, stretchedPrincipalAxes = stretchedPrincipalAxes
             t_ap = alignedPositionsMatrices[transition]
@@ -430,11 +431,10 @@ function main_window(active_trajectory::Trajectory,
             points = Point3f.(eachrow(t_ap[idx]))
             # do the invariant values need to be flipped as well?
             spa = stretchedPrincipalAxes[transition]
-            colors = lift(x -> view(select_invariant(x)[][transition], eachindex(points)), selected_invariant)
+            colors = @lift view(select_invariant($selected_invariant)[][transition], eachindex(points))
 
             # both fns allocate a bunch of space
-            sq = collect(superquadric.(1.0, points, spa, 3.0, 0.2))
-            il, is, plots = superquadrics_view!(scene, points, sq, colors, volume_cmap, invariantRange)
+            il, is, plots = superquadrics_view!(scene, points, colors, spa, volume_cmap, invariantRange)
             push!(is, colors)
             return il, is, plots
         end
@@ -529,7 +529,7 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure::Makie.Figure; default::String="Atom")
+    function render_menu(figure::Makie.Figure; default::String="Superquadric")
         scene_selector = Observable(default)
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,
@@ -597,8 +597,10 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # just pass this dictionary around and pass in the arguments it needs
-    render_views::Dict{String,Function} = Dict{String,Function}("Atom" => render_atom_view, "Volume" => render_volume_view,
-        "Superquadric" => render_superquadrics_view, "SMovement" => render_movement_view_ts)
+    render_views::Dict{String,Function} = Dict{String,Function}("Atom" => render_atom_view,
+        "Volume" => render_volume_view,
+        "Superquadric" => render_superquadrics_view,
+        "SMovement" => render_movement_view_ts)
 
     widgets::Dict{String,Function} = Dict{String,Function}("Atom" => atom_widgets,
         "Movement" => time_slider,

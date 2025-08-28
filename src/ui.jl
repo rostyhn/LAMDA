@@ -144,50 +144,35 @@ function volume_view!(scene::Makie.Scene,
     return v_lo, v_hi
 end
 
+function fill_sq(mData::Tuple{Vector{Point3f},Vector{TriangleFace{UInt16}}},
+    c::AbstractArray{Float32})::GeometryBasics.Mesh
+
+    p, f = mData
+    return GeometryBasics.mesh(p, f, color=per_face(fill(c, length(f)), f))
+end
+
 function superquadrics_view!(scene::Makie.Scene,
     points::Vector{Point3f},
-    sq::Vector{<:GeometryBasics.AbstractMesh},
     colors::Observable{<:AbstractArray{Float32}},
+    spa::Vector{Vector{Vec3f}},
     vol_cmap::Observable{Vector{RGBAf}},
     invariantRange::Observable{Tuple{Float32,Float32}})
     # try to only render visible points, helps with point picking when hovering 
+    sq = @lift begin
+        ip = collect(zip($colors, eachindex(points)))
 
-    ip = lift(x -> collect(zip(x, eachindex(points))), colors)
-    v_lo = lift(xx -> getindex.(filter(x -> x[1] < -0.01, xx), 2), ip)
-    v_hi = lift(xx -> getindex.(filter(x -> x[1] > 0.01, xx), 2), ip)
+        v_lo = getindex.(filter(x -> x[1] < -0.01, ip), 2)
+        v_hi = getindex.(filter(x -> x[1] > 0.01, ip), 2)
 
-    lo_sq = Observable(view(sq, v_lo[]))
-    # in what universe is this sane 
-    lo_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
-            collect(zip(view(sq, v_lo[]), view(colors[], v_lo[])))), init=Float32[]))
+        lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, 0.2), view($colors, v_lo)))
+        hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, 0.2), view($colors, v_hi)))
 
-    hi_sq = Observable(view(sq, v_hi[]))
-    hi_col = Observable(reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])),
-            collect(zip(view(sq, v_hi[]), view(colors[], v_hi[])))), init=Float32[]))
-
-    vlol = on(v_lo, weak=true) do idx
-        meshes = view(sq, idx)
-        sel_col = view(colors[], idx)
-        lo_sq.val = meshes
-
-        lo_col[] = reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])), collect(zip(meshes, sel_col))), init=[])
-        notify(lo_sq)
-    end
-
-    vhil = on(v_hi, weak=true) do idx
-        meshes = view(sq, idx)
-        sel_col = view(colors[], idx)
-        hi_sq.val = meshes
-
-        hi_col[] = reduce(vcat, map(x -> fill(x[2], length(x[1].vertex_attributes[:position])), collect(zip(meshes, sel_col))), init=[])
-
-        notify(hi_sq)
+        return lo_sq, hi_sq
     end
 
     m_lo = mesh!(
         scene,
-        lo_sq,
-        color=lo_col,
+        lift(x -> x[1], sq),
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
         inspectable=false
@@ -195,12 +180,12 @@ function superquadrics_view!(scene::Makie.Scene,
 
     m_hi = mesh!(
         scene,
-        hi_sq,
-        color=hi_col,
+        lift(x -> x[2], sq),
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift(x -> x[50:100], vol_cmap),
         inspectable=false
     )
+
     v = meshscatter!(scene,
         points;
         color=:gray,
@@ -209,15 +194,15 @@ function superquadrics_view!(scene::Makie.Scene,
         inspectable=false,
         markersize=0.2)
 
-    cam_listener = on(lo_sq) do ls
+    cam_listener = on(sq) do ls
         update_cam!(parent_scene(m_lo))
     end
 
     update_cam!(parent_scene(m_lo))
-    return [cam_listener, vlol, vhil], [lo_sq, hi_sq, lo_col, hi_col], [m_lo, m_hi, v]
+    return [cam_listener], [lo_sq, hi_sq], [m_lo, m_hi, v]
 end
 
-function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width=1)
+function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width::Int=1)
     bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
 
     p = wireframe!(
@@ -256,10 +241,10 @@ function set_text(txtbox, s)
 end
 
 # as long as this is added last, it should be shown correctly on the screen
+# TODO: observable version
 function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
     texts = reverse(collect(split(text, "\n")))
 
-    tl = collect(length.(texts))
     # 1px == 3/4pt
     fs_px = fontsize * (4 / 3)
 
@@ -275,7 +260,6 @@ function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
         camera=campixel!,
         clear=true,
     )
-
 
     p = poly!(tt, Rect2i(0, 0, size...), color=colorant"#ffffca",
         inspectable=false, strokecolor=:black, strokewidth=1)

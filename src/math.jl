@@ -55,7 +55,7 @@ function superquadric(scale::AbstractFloat,
     position::Point3f,
     principalStretches::Vector{Vec3f},
     sharpness::AbstractFloat,
-    resolution::AbstractFloat=0.2)::GeometryBasics.Mesh
+    resolution::AbstractFloat=0.2)::Tuple{Vector{Point3f},Vector{TriangleFace{UInt16}}}
 
     stretchRatio1 = norm(view(principalStretches, 3))
     stretchRatio2 = norm(view(principalStretches, 2))
@@ -64,7 +64,6 @@ function superquadric(scale::AbstractFloat,
     stretchDirection1 = principalStretches[3] / stretchRatio1
     stretchDirection2 = principalStretches[2] / stretchRatio2
     stretchDirection3 = principalStretches[1] / stretchRatio3
-
 
     cl = (stretchRatio1 - stretchRatio2) / (stretchRatio1 + stretchRatio2 + stretchRatio3)   #linear anisotopy
     cp = 2 * (stretchRatio2 - stretchRatio3) / (stretchRatio1 + stretchRatio2 + stretchRatio3) # planar anisotropy
@@ -138,10 +137,8 @@ function superquadric(scale::AbstractFloat,
         end
         triFaces = call_trifaces.(eachcol(indices))
      =#
-
-    triFaces = TriangleFace.(indices)
-    m = GeometryBasics.Mesh(points, triFaces)
-    return m
+    f = TriangleFace.(indices)
+    return points, f
 end
 
 
