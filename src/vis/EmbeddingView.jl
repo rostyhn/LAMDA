@@ -244,24 +244,29 @@ function embedding_view!(
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
+
+    #broadcast to try and speed it up a bit
+    function shift_point(d, ms::Int)
+        i, ptr = d
+        scene = ptr[]
+        pos = position_on_plot(umap_nodes, i, apply_transform=false)
+        x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
+
+        vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
+        vp = GeometryBasics.intersect(vp, ax.scene.viewport[])
+        vw = widths(vp)
+
+        if any(w -> w <= 0, vw)
+            vp = Rect2i(0, 0, 0, 0)
+        end
+
+        scene.viewport[] = vp
+    end
+
     ax_listener = onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d, embedding, t_to_pltidx, weak=true) do xlim, ylim, mkr, p, pindx
         if length(views[]) == length(p)
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
-            for (i, ptr) in enumerate(views[])
-                scene = ptr[]
-                pos = position_on_plot(umap_nodes, i, apply_transform=false)
-                x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
-
-                vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
-                vp = GeometryBasics.intersect(vp, ax.scene.viewport[])
-                vw = widths(vp)
-
-                if any(w -> w <= 0, vw)
-                    vp = Rect2i(0, 0, 0, 0)
-                end
-
-                scene.viewport[] = vp
-            end
+            shift_point.(enumerate(views[]), Ref(ms))
         end
     end
 
