@@ -9,6 +9,7 @@ function build_cluster_window(
     hovered_cluster::MaybeObservable{ClusterSet},
     cluster_annotations::Observable{ClusterAnnotation};
     on_cluster_select::Function=(x, y) -> (),
+    create_window::Function=(x) -> (),
     on_up::Function=(x) -> (),
     on_left::Function=(x) -> (),
     on_right::Function=(x) -> (),
@@ -146,6 +147,7 @@ function build_cluster_window(
         cutoff_reset=true,
         root=clusters,
         on_click=(x -> switch_cluster(x, clusters)),
+        on_rmb=create_window
     )
 
     hm_ax, hm = heatmap(mat_grid[3, 1],

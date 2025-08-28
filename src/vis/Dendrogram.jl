@@ -118,6 +118,7 @@ function dendrogram!(ax::Makie.Axis,
     cluster_annotations::Observable{ClusterAnnotation};
     hover_callbackfn::Function=(x -> ()),
     on_click::Function=(x -> ()),
+    on_rmb::Function=(x -> ()),
     on_cutoff_line_drag::Function=(x -> ()),
     cutoff_reset::Bool=false,
     root::Union{Observable{ClusterSet},Observable{Nothing}}=Observable(nothing),
@@ -236,6 +237,10 @@ function dendrogram!(ax::Makie.Axis,
         if e.type === MouseEventTypes.leftdown
             if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
                 on_click(hovered[])
+            end
+        elseif e.type == MouseEventTypes.rightdown
+            if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
+                on_rmb(hovered[])
             end
         elseif e.type === MouseEventTypes.over
             plot, idx = pick(ax, 10)

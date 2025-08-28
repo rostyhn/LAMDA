@@ -70,7 +70,7 @@ function build_selection_window(
             ref_t, alignment = calculators["Alignment"](ts)
             return buildSingleClusterData(
                 cluster=$cc,
-                ref_t=ref_t, # probably don't need this, passed from alignment
+                ref_t=ref_t,
                 ts=ts,
                 alignment=alignment,
                 cluster_data=cluster_data,
@@ -89,6 +89,7 @@ function build_selection_window(
             hovered_cluster,
             cluster_annotations,
             on_cluster_select=on_cluster_select,
+            create_window=(x) -> on_show_cluster_click(x),
             on_up=cw_on_up,
             switch_cluster=switch_cluster,
         )
