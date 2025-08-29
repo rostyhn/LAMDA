@@ -124,7 +124,7 @@ function build_cluster_window(
         scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, clear=true),
     )
 
-    correlation, corr_slider = widgets["CorrThreshold"](window, 0.7)
+    correlation, corr_slider = widgets["CorrThreshold"](window)
     btn_centroid_to_scratchpad = Button(window,
         label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)

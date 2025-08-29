@@ -202,8 +202,8 @@ function find_group_centroid(clusters::Set{Int}, cd::ClusterData, t_list::Vector
 end
 
 function split_delta(d)
-    pos = ifelse.(d .< Float32(0.0), d .^ 1, Float32(0.0))
-    neg = ifelse.(d .> Float32(0.0), d .^ 1, Float32(0.0))
+    pos = ifelse.(d .> Float32(0.0), d .^ 1, Float32(0.0))
+    neg = ifelse.(d .< Float32(0.0), d .^ 1, Float32(0.0))
 
     return (hcat(pos, neg), hcat(-neg, -pos))
 end

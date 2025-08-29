@@ -49,7 +49,7 @@ function embedding_view!(
     show_alignment = Observable(true)
     resolve_overlap = Observable(true)
 
-    umap_nodes = scatter!(ax,
+    nodes = scatter!(ax,
         embedding,
         marker=:rect,
         color=:transparent,
@@ -93,9 +93,9 @@ function embedding_view!(
     function create_scene(d, ms, alignment)
         i, t = d
         clear_listeners!(all_listeners, t)
-        pos = position_on_plot(umap_nodes, i, apply_transform=false)
+        pos = position_on_plot(nodes, i, apply_transform=false)
         # x, y is in global pixel coords
-        x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
+        x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
         # calculate shifted size of marker
         vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
 
@@ -139,9 +139,7 @@ function embedding_view!(
         m_events = addmouseevents!(ax3d)
         mouse_listener = on(m_events.obs, weak=true) do event
             if event.type === MouseEventTypes.over
-                #show_data(ins, umap_nodes, i)
                 hovered[] = t
-
             elseif event.type === MouseEventTypes.out
                 hovered[] = nothing
                 hovered_cluster[] = nothing
@@ -263,8 +261,8 @@ function embedding_view!(
     function shift_point(d, ms::Int)
         i, ptr = d
         scene = ptr[]
-        pos = position_on_plot(umap_nodes, i, apply_transform=false)
-        x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
+        pos = position_on_plot(nodes, i, apply_transform=false)
+        x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
 
         vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
         vp = GeometryBasics.intersect(vp, ax.scene.viewport[])

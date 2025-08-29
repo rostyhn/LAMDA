@@ -1,32 +1,4 @@
-function clear_layout(layout::GridLayout)
-    # Begin by removing the blocks from the recursive GridLayout structure
-    items_to_remove = []
-    for block in Makie.contents(layout)
-        if typeof(block) == GridLayout
-            clear_layout(block)
-        else
-            push!(items_to_remove, block)
-        end
-    end
 
-    for i in items_to_remove
-        empty!(i.blockscene)
-        delete!(i)
-    end
-    Makie.trim!(layout)
-    #Makie.GridLayoutBase.remove_from_gridlayout!(layout.layoutobservables.gridcontent[])
-end
-
-# almost works but menus will still fire events
-function toggle_block_vis(layout::GridLayout)
-    for block in Makie.contents(layout)
-        if typeof(block) == GridLayout
-            toggle_block_vis(block)
-        else
-            block.blockscene.visible[] = !block.blockscene.visible[]
-        end
-    end
-end
 
 function simple_atom_view!(scene::Makie.Scene,
     ap::Tuple{Matrix{Float32},Matrix{Float32}},
@@ -128,7 +100,9 @@ function superquadrics_view!(scene::Makie.Scene,
     colors::Observable{<:AbstractArray{Float32}},
     spa::Vector{Vector{Vec3f}},
     vol_cmap::Observable{Vector{RGBAf}},
-    invariantRange::Observable{Tuple{Float32,Float32}})
+    invariantRange::Observable{Tuple{Float32,Float32}},
+    resolution=0.5,
+)
     # try to only render visible points, helps with point picking when hovering 
     sq = @lift begin
         ip = collect(zip($colors, eachindex(points)))
@@ -137,14 +111,14 @@ function superquadrics_view!(scene::Makie.Scene,
         v_hi = getindex.(filter(x -> x[1] > 0.01, ip), 2)
 
         if length(v_lo) > 0
-            lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, 0.2), view($colors, v_lo)))
+            lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, resolution), view($colors, v_lo)))
         else
             lo_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
                     [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
         end
 
         if length(v_hi) > 0
-            hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, 0.2), view($colors, v_hi)))
+            hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, resolution), view($colors, v_hi)))
         else
             hi_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
                     [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
@@ -199,6 +173,23 @@ function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width::Int=1)
     return p
 end
 
+function clear_layout(layout::GridLayout)
+    items_to_remove = []
+    for block in Makie.contents(layout)
+        if typeof(block) == GridLayout
+            clear_layout(block)
+        else
+            push!(items_to_remove, block)
+        end
+    end
+
+    for i in items_to_remove
+        empty!(i.blockscene)
+        delete!(i)
+    end
+    Makie.trim!(layout)
+end
+
 function top_bar(window, title, num_cols)
     g = GridLayout()
     # https://juliagraphics.github.io/Colors.jl/stable/namedcolors/
@@ -215,6 +206,19 @@ function top_bar(window, title, num_cols)
     # Box(g[1, 3], color=:green)
 
     return gg
+end
+
+function setup_menu(figure::Makie.Figure, options::Vector{String}, s::Observable{String}; kwargs...)
+    render_menu = Menu(figure;
+        options=options,
+        default=s[],
+        kwargs...)
+
+    onany(render_menu, render_menu.selection) do _, sel
+        s[] = sel
+    end
+
+    return s, render_menu
 end
 
 function set_text(txtbox, s)
@@ -260,16 +264,6 @@ function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
     return tt, size
 end
 
-function inline_image(fig, img, text; kwargs...)
-    ax = Axis(fig; aspect=AxisAspect(1), kwargs...)
-    hidedecorations!(ax)
-    hidespines!(ax)
-    disable_interactions(ax)
-
-    attach_image(fig, ax, img, text)
-    return ax
-end
-
 function attach_image(fig, ax, img, text)
     image!(ax, rotr90(img), inspectable=false)
     tt, tSize = multiline_tooltip(fig, text)
@@ -303,6 +297,16 @@ function attach_image(fig, ax, img, text)
             tt.visible[] = false
         end
     end
+    return ax
+end
+
+function inline_image(fig, img, text; kwargs...)
+    ax = Axis(fig; aspect=AxisAspect(1), kwargs...)
+    hidedecorations!(ax)
+    hidespines!(ax)
+    disable_interactions(ax)
+
+    attach_image(fig, ax, img, text)
     return ax
 end
 

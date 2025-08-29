@@ -1,8 +1,374 @@
 const MIN_NODE_SIZE = 10.0
 const MAX_NODE_SIZE = 100.0
 
-function build_selection_window(
-    t_list::Vector{Transition},
+function setup_selection_window(active_trajectory::Trajectory,
+    screen::GLMakie.Screen,
+    dm::AbstractArray{Float32},
+    transitionSequence::Vector{Transition},
+    clustering::Clustering.Hclust{Float32},
+    selected_dm_name::String,
+    init_h_cutoff::AbstractFloat,
+    dataPath::String,
+    align_with::Maybe{String}=nothing)
+
+    (;
+        stretchedPrincipalAxes,
+        scalars,
+        scalar_ranges,
+        alignedPositionsMatrices,
+        alignments,
+        name,
+    ) = active_trajectory
+
+    function select_invariant(selection::String)
+        if selection == "t1"
+            iv = Ref(active_trajectory.t1)
+        elseif selection == "t2"
+            iv = Ref(active_trajectory.t2)
+        elseif selection == "t3"
+            iv = Ref(active_trajectory.t3)
+        else
+            error("Invalid invariant selected")
+        end
+
+        return iv
+    end
+
+    rel_t_to_idx::Dict{Transition,Int} = Dict(reverse.(collect(enumerate(transitionSequence))))
+    h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff))
+
+    rm = view(dm, clustering.order, clustering.order)
+    cluster_data = ClusterData(clustering, transitionSequence, rm)
+    cluster_info = @lift begin
+        return ClusterInfo(cluster_data, transitionSequence, $h_cutoff)
+    end
+
+    init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
+    selected_alignment = Observable(init_alignment)
+
+    # should be fine, seems off-center because abs(volMin) != abs(volMax)
+    lowmap = reverse(resample_cmap(:RdPu_3, 50;
+        alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
+    himap = resample_cmap(:greens, 50;
+        alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
+    t3map = vcat(lowmap, himap)
+
+    volume_cmaps = Dict("t1" => resample_cmap(:bam, 100;
+            alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6),
+        "t2" => resample_cmap(:matter, 100;
+            alpha=([0:0.01:0.99;] ./ 0.05) .^ 2),
+        "t3" => t3map)
+
+    function get_invariant_range(x)
+        iv = select_invariant(x)
+        vals = values(iv[])
+        absInvMin = minimum(minimum.(vals))
+        absInvMax = maximum(maximum.(vals))
+        return (absInvMin, absInvMax)
+    end
+
+    invariantRanges = Dict("t1" => get_invariant_range("t1"),
+        "t2" => get_invariant_range("t2"),
+        "t3" => get_invariant_range("t3"))
+
+    # https://docs.julialang.org/en/v1.12-dev/manual/performance-tips/#man-performance-captured
+    # convenience function to avoid passing around all the data
+    function calc_alignment(ts::AbstractArray{Transition})::Tuple{Transition,Dict{Transition,Tuple{Matrix{Float32},Bool}}}
+        res = let rel_t_to_idx = rel_t_to_idx,
+            alignments = alignments,
+            dm = dm,
+            alignedPositionsMatrices = alignedPositionsMatrices,
+            selected_alignment = selected_alignment
+
+            if !isempty(ts)
+                ts_idx = map(x -> rel_t_to_idx[x], ts)
+                features = alignments[selected_alignment[]]
+
+                dist_sum = map(x -> sum(view(dm, x, ts_idx)), ts_idx)
+                ref_t_idx = argmin(dist_sum)
+
+                ref_t = ts[ref_t_idx]
+                return ref_t, calculate_alignment(ref_t, ts, alignedPositionsMatrices, features)
+            else
+                return (1, 1), Dict{Transition,Tuple{Matrix{Float32},Bool}}()
+            end
+        end
+        return res
+    end
+
+    # did this to avoid drilling down and passing parameters constantly
+    #:linear_wcmr_100_45_c42_n256 
+    atom_cmap = resample_cmap(:linear_bmy_10_95_c71_n256, 100,
+        alpha=range(; start=0.1, stop=1.0, length=100))
+
+    function render_atom_view(scene::Makie.Scene,
+        transition::Transition,
+        selected_scalar::Observable{String},
+        time::Observable{<:AbstractFloat},
+        flip::Bool=false)
+
+        res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
+            ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
+            simple_atom_view!(scene,
+                ap,
+                lift(x -> scalars[x][transition], selected_scalar),
+                lift(x -> scalar_ranges[x], selected_scalar),
+                atom_cmap,
+                time
+            )
+        end
+        return res
+    end
+
+    function render_superquadrics_view(scene::Makie.Scene, transition::Transition, si::Observable{String}, flip::Bool=false)
+        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices,
+            stretchedPrincipalAxes = stretchedPrincipalAxes
+
+            t_ap = alignedPositionsMatrices[transition]
+            idx = flip ? 2 : 1
+            points = Point3f.(eachrow(t_ap[idx]))
+            # do the invariant values need to be flipped as well?
+            spa = stretchedPrincipalAxes[transition]
+            colors = @lift view(select_invariant($si)[][transition], eachindex(points))
+
+            # both fns allocate a bunch of space
+            il, is, plots = superquadrics_view!(scene,
+                points,
+                colors,
+                spa,
+                lift(x -> volume_cmaps[x], si),
+                lift(x -> invariantRanges[x], si))
+
+            #push!(is, colors)
+            return il, is, plots
+        end
+    end
+
+    function render_movement_view_ts(scene::Makie.Scene,
+        ts::AbstractArray{Transition},
+        time::Observable{Float32},
+        alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}},
+        correlationThreshold::Observable{<:AbstractFloat})
+
+        res = let alignedPositionsMatrices = alignedPositionsMatrices,
+            cluster_data = cluster_data,
+            kernelWidth = 1.0
+
+            posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
+            distances, t_to_mtx, mtx_to_t = get_local_matrix(cluster_data, ts)
+            R = kmedoids(distances, 1)
+            representativeIdx = first(R.medoids)
+
+            positions = [Point3f.(eachrow(p)) for p in first.(posValsTup)]
+            refPositions = positions[representativeIdx] # chose the median in the future
+            velocities = last.(posValsTup) .- first.(posValsTup)
+
+            vd = fill(Point3f(0.0, 0.0, 0.0), length(refPositions))
+            correlationMeasure = zeros(Float32, length(refPositions))
+
+            num_neighbors = 50
+            clusterKd = KDTree.(positions)
+            for pId in eachindex(refPositions)
+                vectorList = fill(Point3f(0.0, 0.0, 0.0), length(clusterKd))
+                for t in eachindex(clusterKd)
+                    knn, dists = NearestNeighbors.knn(clusterKd[t], refPositions[pId], num_neighbors)
+                    pos = view(positions[t], knn, :)
+                    k = ((2pi)^(3 / 2) * kernelWidth[]^3)
+                    kf = kernelFunction.(Ref(refPositions[pId]), pos, kernelWidth[])
+
+                    uValue = sum(k * kf .* view(velocities[t], knn, 1))
+                    vValue = sum(k * kf .* view(velocities[t], knn, 2))
+                    wValue = sum(k * kf .* view(velocities[t], knn, 3))
+
+                    vd[pId] += Point3f(uValue, vValue, wValue) * (1.0 / length(clusterKd))
+                    vectorList[t] = Point3f(uValue, vValue, wValue)
+                end
+                meanV = mean(vectorList)
+                dotmV = dot(meanV, meanV)
+                for v in vectorList
+                    correlationMeasure[pId] += (dot(meanV, v)) / (dotmV + dot(v, v))
+                end
+                correlationMeasure[pId] *= 1.0 / length(vectorList)
+                correlationMeasure[pId] += 0.5
+            end
+
+            inits = first.(posValsTup)[representativeIdx]
+            fins = last.(posValsTup)[representativeIdx]
+
+            plt = simple_arrow_view!(scene,
+                (inits, fins),
+                time,
+                CLUSTER_CONSENSUS_COLORMAP,
+                vd,
+                correlationMeasure,
+                correlationThreshold)
+            return plt
+        end
+
+        return res
+    end
+
+    function time_slider(figure::Makie.Figure,
+        time::Observable{Float32}=Observable(Float32(0.0)))
+
+        t_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=time[])
+        onany(t_slider, t_slider.value) do _, x
+            time[] = x
+        end
+
+        sg = hgrid!(Label(figure, "t", font=:italic),
+            t_slider,
+            Label(figure, lift(x -> string(x), time)))
+
+        return time, sg
+    end
+
+    # could be one func
+    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Atom"))
+        return setup_menu(figure, SINGLE_TRANSITION_RENDER_OPTIONS, scene_selector; tellwidth=false)
+    end
+
+    scalar_opts = sort(collect(keys(scalars)))
+    function scalar_menu(figure::Makie.Figure, scalar_selection::Observable{String}=Observable(first(scalar_opts)))
+        return setup_menu(figure, scalar_opts, scalar_selection)
+    end
+
+    SQ_HELP = "T1: x -> -Inf indicates extension; x -> Inf dilation \nT2 - magnitude of distortion \nT3: x-> -1 indicates linear anisotropy (rods); x -> 1 planar anisotropy (disks)"
+    function invariants_menu(figure::Makie.Figure,
+        si::Observable{String}=Observable("t1"))
+
+        _, invar_menu = setup_menu(figure, ["t1", "t2", "t3"], si)
+        g = hgrid!(invar_menu, inline_image(figure, HELP_ICON, SQ_HELP; tellheight=false))
+
+        return si, g
+    end
+
+    function correlation_slider(figure::Makie.Figure, correlationThreshold::Observable{Float32}=Observable(Float32(0.7)))
+        c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=correlationThreshold[])
+        onany(c_slider, c_slider.value) do _, x
+            correlationThreshold[] = x
+        end
+
+        sg = hgrid!(Label(figure, "Correlation", font=:italic),
+            c_slider,
+            Label(figure, lift(x -> string(x), correlationThreshold), tellwidth=false))
+
+        return correlationThreshold, sg
+    end
+
+    function embed_colorbar(figure::Makie.Figure,
+        render_selection::Observable{String},
+        scalar_selection::Observable{String},
+        invariant_selection::Observable{String}
+    )
+        scalar_range = lift(x -> scalar_ranges[x], scalar_selection)
+        invariant_range = lift(x -> invariantRanges[x], invariant_selection)
+        volume_cmap = lift(x -> volume_cmaps[x], invariant_selection)
+
+        currentRange = Observable((0.0, 1.0))
+        currentCMap = Observable(atom_cmap)
+
+        cbar = Colorbar(figure,
+            colorrange=currentRange,
+            vertical=false,
+            colormap=currentCMap)
+
+        listener = onany(cbar,
+            render_selection,
+            scalar_range,
+            invariant_range,
+            volume_cmap,
+            update=true,
+            weak=true) do _, rs, sr, vr, vc
+
+            if rs == "Superquadric"
+                currentRange[] = vr
+                currentCMap[] = vc
+            else
+                currentRange[] = sr
+                currentCMap[] = atom_cmap
+            end
+        end
+
+        return cbar, listener
+    end
+
+    # just pass this dictionary around and pass in the arguments it needs
+    render_views::Dict{String,Function} = Dict{String,Function}(
+        "Atom" => render_atom_view,
+        "Superquadric" => render_superquadrics_view,
+        "SMovement" => render_movement_view_ts)
+
+    widgets::Dict{String,Function} = Dict{String,Function}(
+        "Movement" => time_slider,
+        "Render" => render_menu,
+        "Invariant" => invariants_menu,
+        "Scalar" => scalar_menu,
+        "Colorbar" => embed_colorbar,
+        "CorrThreshold" => correlation_slider)
+
+    calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment)
+    # get number of atoms
+    num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
+    settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)), num_atoms)
+
+    window, cleanup = selection_window_ui(
+        rel_t_to_idx,
+        cluster_data,
+        cluster_info,
+        h_cutoff,
+        settings_window,
+        render_views,
+        widgets,
+        selected_dm_name,
+        calculators,
+        name,
+        dataPath
+    )
+
+    # create inspector after render to avoid bugs
+    ds = DataInspector(window)
+    GLMakie.set_title!(screen, "LAMDA - Selection Window")
+    display(screen, window)
+    on(events(window).window_open) do e
+        if !e
+            @debug "Killing main"
+            cleanup()
+            dm = nothing
+            transitionSequence = nothing
+            clustering = nothing
+
+            Observables.clear(cluster_info)
+
+            for x in values(calculators)
+                x = nothing
+            end
+            empty!(calculators)
+
+            for x in values(widgets)
+                x = nothing
+            end
+            empty!(widgets)
+
+            for x in values(render_views)
+                x = nothing
+            end
+            empty!(render_views)
+
+            empty!(window)
+            empty!(settings_window)
+            Makie.free(settings_window.scene)
+            Makie.free(window.scene)
+
+            select_invariant = nothing
+            settings_window = nothing
+            window = nothing
+            ds = nothing
+        end
+    end
+end
+
+function selection_window_ui(
     rel_t_to_idx::Dict{Transition,Index},
     cluster_data::ClusterData,
     cluster_info::Observable{ClusterInfo},
@@ -243,7 +609,7 @@ function build_selection_window(
     time, scratchpad_t_slider = widgets["Movement"](window)
     sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection, invariant_selection)
 
-    ax, scratchpad, scratchpad_cleanup = scratchpad!(
+    ax, scratchpad_contents, scratchpad_cleanup = scratchpad!(
         window,
         tGrid[1, 1],
         selected_transitions,
@@ -271,6 +637,10 @@ function build_selection_window(
         ep = relative_path("export")
         if !isdir(ep)
             mkdir(ep)
+        else
+            @warn "Removing export folder to create new one"
+            rm(ep, force=true, recursive=true)
+            mkdir(ep)
         end
 
         if export_menu.selection[] == "All"
@@ -281,7 +651,7 @@ function build_selection_window(
                 cluster_annotations[],
                 ep, dataPath; overwrite=true)
         else
-            @time export_scratchpad(scratchpad, ep, dataPath, cluster_data)
+            @time export_scratchpad(scratchpad_contents(), cluster_data, ep, dataPath)
         end
 
         # thought we could do pdfs?

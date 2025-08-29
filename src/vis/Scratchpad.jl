@@ -40,10 +40,6 @@ function scratchpad!(
     campixel!(ax.scene)
 
     points = Observable{Vector{Point2f}}(Point2f[Point2f(0.0)])
-    # run once on creation to bind axis
-    reset_limits!(ax)
-    center!(ax.scene)
-
     obj_to_idx = Observable(Dict{Union{ClusterSet,Transition},Index}())
     rendered_idxes = Ref(Set{Index}())
     num_objs = Ref(1)
@@ -171,8 +167,11 @@ function scratchpad!(
         end
     end
 
-    nodes = scatter!(ax, points, marker=:rect, visible=false)
-    nodes.inspectable[] = false
+    nodes = scatter!(ax, points, marker=:rect, color=:transparent, inspectable=false)
+    on(points, update=true) do _
+        autolimits!(ax)
+        center!(ax.scene)
+    end
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
@@ -327,7 +326,7 @@ function scratchpad!(
                     push!(scene_listeners[], rs_listener)
                 else
                     # get transitions from general cluster object instead of the current one
-                    ts = get_transitions(cd, obj)
+                    ts = get_transitions(cluster_data, obj)
                     ref_t, alignment = calculators["Alignment"](ts)
                     render_views["SMovement"](ax3d, ts, atom_time, alignment, Observable(c2corr[][obj]))
                     center!(ax3d)
@@ -407,6 +406,10 @@ function scratchpad!(
         end
     end
 
+    contents = function ()
+        return group_scratchpad(boxes[], viewports[], txt_to_notes[], obj_to_idx[])
+    end
+
     cleanup = function ()
         @debug "cleanup scratchpad"
         clear_listener_list(select_listeners)
@@ -429,21 +432,21 @@ function scratchpad!(
         end
     end
 
-    return ax, Scratchpad(boxes=boxes, views=viewports, notes=txt_to_notes, objs=obj_to_idx), cleanup
+    return ax, contents, cleanup
 end
 
-@kwdef mutable struct Scratchpad
-    boxes
-    views
-    notes
-    objs
+@kwdef struct Scratchpad
+    top_level
+    hierarchy
+    loose
+    titles
 end
 
 # returns a dictionary of box indices to their children and the top level boxes in the hierarchy
 # any "loose" children are returned separately
-function group_scratchpad(s::Scratchpad)
+function group_scratchpad(cboxes, views, notes, objs)::Scratchpad
     # start with the smallest boxes and work outwards for points
-    boxes = collect(values(s.boxes[]))
+    boxes = collect(values(cboxes))
 
     sort!(boxes, by=x -> area(x))
     seen_boxes = Set()
@@ -455,9 +458,9 @@ function group_scratchpad(s::Scratchpad)
     for (bIdx, box) in enumerate(boxes)
         title = string(bIdx)
         children = Union{ClusterSet,Transition,String,Int}[]
-        for (obj, idx) in s.objs[]
+        for (obj, idx) in objs
             v_idx = idx - 1
-            vp = s.views[][v_idx]
+            vp = views[v_idx]
             # seen lets us place things at bottom level
             if vp in box && !(idx in seen)
                 push!(children, obj)
@@ -465,7 +468,7 @@ function group_scratchpad(s::Scratchpad)
             end
         end
 
-        for (i, (pos, text, is_title)) in enumerate(values(s.notes[]))
+        for (i, (pos, text, is_title)) in enumerate(values(notes))
             if pos in box && !(i in seen_text)
                 if !is_title
                     push!(children, text)
@@ -489,26 +492,25 @@ function group_scratchpad(s::Scratchpad)
     end
 
     top_level = filter(x -> !(x in seen_boxes), keys(hierarchy))
-
     loose = Union{ClusterSet,Transition,String}[]
-    for (obj, idx) in s.objs[]
+    for (obj, idx) in objs
         if !(idx in seen)
             push!(loose, obj)
         end
     end
 
-    for (i, n) in enumerate(values(s.notes[]))
+    for (i, n) in enumerate(values(notes))
         if !(i in seen_text)
             push!(loose, n[2])
         end
     end
 
-    return top_level, hierarchy, loose, titles
+    return Scratchpad(top_level=top_level, hierarchy=hierarchy, loose=loose, titles=titles)
 end
 
 function export_scratchpad(s::Scratchpad, cd::ClusterData, ep::String, dpath::String)
     # export loose data in top folder
-    top_level, hierarchy, loose, titles = group_scratchpad(s)
+    (; top_level, hierarchy, loose, titles) = s
     if !isempty(loose)
         export_scratchpad_children(dpath, ep, loose, cd)
     end
@@ -531,6 +533,7 @@ end
 
 function export_scratchpad_children(dpath::String, p, children, cd::ClusterData)
     # write notes in folder
+    @show p
     notes = filter(x -> x isa String, children)
     if !isempty(notes)
         foreach(x -> x * "\n", notes)
@@ -539,11 +542,12 @@ function export_scratchpad_children(dpath::String, p, children, cd::ClusterData)
         write(nf, note)
     end
 
+    @show children
     # concat all children
-    clusters = filter(x -> x isa Set{Int}, children)
+    clusters = filter(x -> x isa ClusterSet, children)
     transitions = filter(x -> x isa Transition, children)
-
     ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(cd, x), clusters), init=[]))
+    @show ts
 
     if !isempty(ts)
         export_t = export_transitions()

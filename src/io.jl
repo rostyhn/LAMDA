@@ -71,10 +71,10 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
             alignedPositionsMatrices = Dict{Transition,Tuple{Matrix{Float32},Matrix{Float32}}}()
             for (t::Transition, m::Tuple{Matrix{Float32},Matrix{Float32}}) in rawAlignedPositionsMatrices
                 # center atom positions first
-                cm1 = mean(m[1], dims=1)
+                cm1 = mean(m[1], dims=1) # mean over columns
                 cm2 = mean(m[2], dims=1)
-                p1 = (m[1] .- cm1)
-                p2 = (m[2] .- cm2)
+                p1 = m[1] .- cm1
+                p2 = m[2] .- cm2
 
                 alignedPositionsMatrices[t] = (p1, p2)
             end

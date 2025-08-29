@@ -78,7 +78,7 @@ function go(trajectory_name::String; cachePath::String=default_cache(), kwargs..
     active_trajectory = get_data_alt(dataPath, cachePath)
     set_theme!(UI_THEME)
 
-    @time window, final_cleanup = build_reduction_window(active_trajectory, dataPath, cachePath; kwargs...)
+    @time window, final_cleanup = build_reduction_window(active_trajectory, dataPath; kwargs...)
     screen = GLMakie.Screen(title="LAMDA - Reduction Window")
     display(screen, window)
     wait(screen)
