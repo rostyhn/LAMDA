@@ -136,9 +136,19 @@ function superquadrics_view!(scene::Makie.Scene,
         v_lo = getindex.(filter(x -> x[1] < -0.01, ip), 2)
         v_hi = getindex.(filter(x -> x[1] > 0.01, ip), 2)
 
-        lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, 0.2), view($colors, v_lo)))
-        hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, 0.2), view($colors, v_hi)))
+        if length(v_lo) > 0
+            lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, 0.2), view($colors, v_lo)))
+        else
+            lo_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
+                    [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
+        end
 
+        if length(v_hi) > 0
+            hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, 0.2), view($colors, v_hi)))
+        else
+            hi_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
+                    [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
+        end
         return lo_sq, hi_sq
     end
 
@@ -154,7 +164,7 @@ function superquadrics_view!(scene::Makie.Scene,
         scene,
         lift(x -> x[2], sq),
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
-        colormap=lift(x -> x[50:100], vol_cmap),
+        colormap=lift((x, y) -> y[1] < 0.0 ? x[50:100] : x, vol_cmap, invariantRange),
         inspectable=false
     )
 
