@@ -260,7 +260,7 @@ function multiline_tooltip(fig, text; margin=2.5, fontsize=16)
     return tt, size
 end
 
-function inline_image(fig, img, text::String; kwargs...)
+function inline_image(fig, img, text; kwargs...)
     ax = Axis(fig; aspect=AxisAspect(1), kwargs...)
     hidedecorations!(ax)
     hidespines!(ax)

@@ -445,9 +445,11 @@ function main_window(active_trajectory::Trajectory,
         return time, sg
     end
 
+    SQ_HELP = "T1: x -> -Inf indicates extension; x -> Inf dilation \nT2 - magnitude of distortion \nT3: x-> -1 indicates linear anisotropy (rods); x -> 1 planar anisotropy (disks)"
     function invariants_menu(figure::Makie.Figure,
         si::Observable{String}=Observable("t1"))
 
+        g = GridLayout()
         invar_menu = Menu(figure,
             options=["t1", "t2", "t3"],
             default=si[],
@@ -457,7 +459,10 @@ function main_window(active_trajectory::Trajectory,
             si[] = val
         end
 
-        return si, invar_menu
+        g[1, 1] = invar_menu
+        g[1, 2] = inline_image(figure, HELP_ICON, SQ_HELP; tellheight=false)
+
+        return si, g
     end
 
     function correlation_slider(figure::Makie.Figure, default::AbstractFloat)

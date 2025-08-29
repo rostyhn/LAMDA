@@ -238,8 +238,8 @@ function build_selection_window(
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
-    invariant_selection, invar_menu = widgets["Invariant"](window)
-    invar_menu.blockscene.visible[] = false
+    invariant_selection = Observable("t1")
+
     time, scratchpad_t_slider = widgets["Movement"](window)
     sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection, invariant_selection)
 
