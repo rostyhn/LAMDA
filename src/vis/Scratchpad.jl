@@ -9,9 +9,9 @@ function scratchpad!(
     render_views::Dict{String,Function},
     render_selection::Observable{String},
     scalar_selection::Observable{String},
+    invariant_selection::Observable{String},
     atom_time::Observable{Float32},
     selected_clusters::Observable{Set{ClusterSet}},
-    t_list::Vector{Transition},
     rel_t_to_idx::Dict{Transition,Int},
     calculators::Dict{String,Function},
     cluster_annotations::Observable{ClusterAnnotation},
@@ -319,7 +319,7 @@ function scratchpad!(
                             plt_rendered = [s]
                         else
                             il, is, plots = render_views["Superquadric"](ax3d,
-                                obj,)
+                                obj, invariant_selection)
                             plt_rendered = plots
                         end
                         center!(ax3d)

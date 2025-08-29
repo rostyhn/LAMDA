@@ -27,6 +27,7 @@ function embedding_view!(
     embedding::Observable{Vector{Point2f}},
     selected_render::Observable{String},
     selected_scalar::Observable{String},
+    invariant_selection::Observable{String},
     atom_time::Observable{Float32},
     render_views::Dict{String,Function},
     hovered::MaybeObservable{Transition},
@@ -163,6 +164,7 @@ function embedding_view!(
         else
             listeners, obs, _ = render_views["Superquadric"](ax3d,
                 t,
+                invariant_selection,
                 flip)
             all_listeners[t] = (listeners, obs)
         end
@@ -224,7 +226,9 @@ function embedding_view!(
         t = ts[i]
         flip = alignment[t][2]
         clear_listeners!(all_listeners, t)
-        foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
+        foreach(x -> delete!(ax3d, x),
+            filter(y -> !(y isa Wireframe), ax3d.plots))
+
         # same thing here, pass in fn as Ref?
         if sr == "Atom"
             render_views["Atom"](ax3d,
@@ -233,7 +237,7 @@ function embedding_view!(
                 atom_time, flip)
         else
             listeners, obs, _ = render_views["Superquadric"](ax3d,
-                t, flip)
+                t, invariant_selection, flip)
             all_listeners[t] = (listeners, obs)
         end
         center!(ax3d)

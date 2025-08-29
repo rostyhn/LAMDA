@@ -13,7 +13,6 @@ function build_selection_window(
     matColLabel::String,
     calculators::Dict{String,Function},
     trajectory_name::String,
-    cachePath::String,
     dataPath::String;
     fig_size::Tuple{Integer,Integer}=(1920, 1080)
 )
@@ -239,8 +238,10 @@ function build_selection_window(
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
-    time, scratchpad_t_slider = widgets["Movement"](Float32(0.0), window)
-    sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection)
+    invariant_selection, invar_menu = widgets["Invariant"](window)
+    invar_menu.blockscene.visible[] = false
+    time, scratchpad_t_slider = widgets["Movement"](window)
+    sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection, invariant_selection)
 
     ax, scratchpad, scratchpad_cleanup = scratchpad!(
         window,
@@ -251,9 +252,9 @@ function build_selection_window(
         render_views,
         render_selection,
         scalar_selection,
+        invariant_selection,
         time,
         selected_clusters,
-        t_list,
         rel_t_to_idx,
         calculators,
         cluster_annotations,
@@ -290,7 +291,24 @@ function build_selection_window(
     end
 
     scg[1, 1] = scratchpad_render_menu
-    scg[1, 2] = hgrid!(scalar_menu, scratchpad_t_slider)
+    g = GridLayout()
+    g[1, 1] = scalar_menu
+    g[1, 2] = scratchpad_t_slider
+    scg[1, 2] = g
+
+    onany(window, render_selection) do _, x
+        clear_layout(g)
+        if x == "Atom"
+            _, m = widgets["Scalar"](window, scalar_selection)
+            _, ts = widgets["Movement"](window, time)
+            g[1, 1] = m
+            g[1, 2] = ts
+        else
+            _, m = widgets["Invariant"](window, invariant_selection)
+            g[1, 1:2] = m
+        end
+    end
+
     scg[2, 1:2] = sc_cbar
     @debug "Finished selection window"
 

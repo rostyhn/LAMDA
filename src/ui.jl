@@ -1,16 +1,31 @@
-function grid_layout(items::AbstractVector{<:Any})::Vector{Point2f}
-    s = Int(round(sqrt(length(items))))
-    points = Vector{Point2f}(undef, length(items))
-    r = 0
-    for i in eachindex(items)
-        x = mod1(i, s) * 1
-        if x == 1
-            r += 1
+function clear_layout(layout::GridLayout)
+    # Begin by removing the blocks from the recursive GridLayout structure
+    items_to_remove = []
+    for block in Makie.contents(layout)
+        if typeof(block) == GridLayout
+            clear_layout(block)
+        else
+            push!(items_to_remove, block)
         end
-        y = r
-        points[i] = Point2f(Float32(x), Float32(y))
     end
-    return points
+
+    for i in items_to_remove
+        empty!(i.blockscene)
+        delete!(i)
+    end
+    Makie.trim!(layout)
+    #Makie.GridLayoutBase.remove_from_gridlayout!(layout.layoutobservables.gridcontent[])
+end
+
+# almost works but menus will still fire events
+function toggle_block_vis(layout::GridLayout)
+    for block in Makie.contents(layout)
+        if typeof(block) == GridLayout
+            toggle_block_vis(block)
+        else
+            block.blockscene.visible[] = !block.blockscene.visible[]
+        end
+    end
 end
 
 function simple_atom_view!(scene::Makie.Scene,
@@ -104,7 +119,6 @@ end
 
 function fill_sq(mData::Tuple{Vector{Point3f},Vector{TriangleFace{UInt16}}},
     c::Float32)::GeometryBasics.Mesh
-
     p, f = mData
     return GeometryBasics.mesh(p, f, color=per_face(fill(c, length(f)), f))
 end

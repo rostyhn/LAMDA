@@ -83,8 +83,11 @@ function build_cluster_window(
 
     scene_selector, render_menu = widgets["Render"](window)
     scalar_selector, scalar_menu = widgets["Scalar"](window)
-    cbar, cbar_listeners = widgets["Colorbar"](window, scene_selector, scalar_selector)
-    time, t_slider = widgets["Movement"](Float32(0.0), window)
+    invariant_selection, invar_menu = widgets["Invariant"](window)
+    invar_menu.blockscene.visible[] = false
+    cbar, cbar_listeners = widgets["Colorbar"](window, scene_selector, scalar_selector, invariant_selection)
+
+    time, t_slider = widgets["Movement"](window)
 
     btn_centroid = Button(window, label="Show centroid")
     centroid_click_listener = on(btn_centroid.clicks, weak=true) do n
@@ -97,6 +100,7 @@ function build_cluster_window(
         embedding,
         scene_selector,
         scalar_selector,
+        invariant_selection,
         time,
         render_views,
         hovered_transition,
@@ -162,7 +166,24 @@ function build_cluster_window(
         colorrange=all_cluster_data[].m_extrema,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
-    rg = hgrid!(render_menu, scalar_menu, t_slider)
+    g = GridLayout()
+    g[1, 1] = scalar_menu
+    g[1, 2] = t_slider
+
+    onany(window, scene_selector) do _, x
+        clear_layout(g)
+        if x == "Atom"
+            _, m = widgets["Scalar"](window, scalar_selector)
+            _, ts = widgets["Movement"](window, time)
+            g[1, 1] = m
+            g[1, 2] = ts
+        else
+            _, m = widgets["Invariant"](window, invariant_selection)
+            g[1, 1:2] = m
+        end
+    end
+
+    rg = hgrid!(render_menu, g)
     window[3, 1:2] = vgrid!(rg, hgrid!(cbar, btn_centroid))
 
     v_listener = on(cluster_data) do cd

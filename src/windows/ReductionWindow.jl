@@ -267,32 +267,30 @@ function main_window(active_trajectory::Trajectory,
     init_alignment = (!isnothing(align_with) && align_with in keys(alignments)) ? align_with : first(keys(alignments))
     selected_alignment = Observable(init_alignment)
 
-    selected_invariant = Observable("t1", ignore_equal_values=true)
-    volume_cmap = @lift begin
-        if $selected_invariant == "t1"
-            # 0.1 is the thickness of the white part
-            return resample_cmap(:bam, 100;
-                alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6)
-        elseif $selected_invariant == "t2"
-            return resample_cmap(:matter, 100;
-                alpha=([0:0.01:0.99;] ./ 0.05) .^ 2)
-        else
-            # should be fine, seems off-center because abs(volMin) != abs(volMax)
-            lowmap = reverse(resample_cmap(:RdPu_3, 50;
-                alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
-            himap = resample_cmap(:greens, 50;
-                alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
+    # should be fine, seems off-center because abs(volMin) != abs(volMax)
+    lowmap = reverse(resample_cmap(:RdPu_3, 50;
+        alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
+    himap = resample_cmap(:greens, 50;
+        alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
+    t3map = vcat(lowmap, himap)
 
-            return vcat(lowmap, himap)
-        end
-    end
-    invariantRange = @lift begin
-        iv = select_invariant($selected_invariant)
+    volume_cmaps = Dict("t1" => resample_cmap(:bam, 100;
+            alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6),
+        "t2" => resample_cmap(:matter, 100;
+            alpha=([0:0.01:0.99;] ./ 0.05) .^ 2),
+        "t3" => t3map)
+
+    function get_invariant_range(x)
+        iv = select_invariant(x)
         vals = values(iv[])
         absInvMin = minimum(minimum.(vals))
         absInvMax = maximum(maximum.(vals))
         return (absInvMin, absInvMax)
     end
+
+    invariantRanges = Dict("t1" => get_invariant_range("t1"),
+        "t2" => get_invariant_range("t2"),
+        "t3" => get_invariant_range("t3"))
 
     # https://docs.julialang.org/en/v1.12-dev/manual/performance-tips/#man-performance-captured
     # convenience function to avoid passing around all the data
@@ -344,7 +342,7 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function render_superquadrics_view(scene::Makie.Scene, transition::Transition, flip::Bool=false)
+    function render_superquadrics_view(scene::Makie.Scene, transition::Transition, si::Observable{String}, flip::Bool=false)
         il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices,
             stretchedPrincipalAxes = stretchedPrincipalAxes
 
@@ -353,10 +351,16 @@ function main_window(active_trajectory::Trajectory,
             points = Point3f.(eachrow(t_ap[idx]))
             # do the invariant values need to be flipped as well?
             spa = stretchedPrincipalAxes[transition]
-            colors = @lift view(select_invariant($selected_invariant)[][transition], eachindex(points))
+            colors = @lift view(select_invariant($si)[][transition], eachindex(points))
 
             # both fns allocate a bunch of space
-            il, is, plots = superquadrics_view!(scene, points, colors, spa, volume_cmap, invariantRange)
+            il, is, plots = superquadrics_view!(scene,
+                points,
+                colors,
+                spa,
+                lift(x -> volume_cmaps[x], si),
+                lift(x -> invariantRanges[x], si))
+
             #push!(is, colors)
             return il, is, plots
         end
@@ -426,11 +430,11 @@ function main_window(active_trajectory::Trajectory,
         return res
     end
 
-    function time_slider(init_time::AbstractFloat, figure::Makie.Figure)
-        time = Observable(init_time)
+    function time_slider(figure::Makie.Figure,
+        time::Observable{Float32}=Observable(Float32(0.0)))
 
-        t_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=init_time)
-        on(t_slider.value) do x
+        t_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=time[])
+        onany(t_slider, t_slider.value) do _, x
             time[] = x
         end
 
@@ -441,10 +445,25 @@ function main_window(active_trajectory::Trajectory,
         return time, sg
     end
 
+    function invariants_menu(figure::Makie.Figure,
+        si::Observable{String}=Observable("t1"))
+
+        invar_menu = Menu(figure,
+            options=["t1", "t2", "t3"],
+            default=si[],
+            tellwidth=false)
+
+        onany(invar_menu, invar_menu.selection) do _, val
+            si[] = val
+        end
+
+        return si, invar_menu
+    end
+
     function correlation_slider(figure::Makie.Figure, default::AbstractFloat)
         correlationThreshold = Observable(default)
         c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=default)
-        on(c_slider.value) do x
+        onany(c_slider, c_slider.value) do _, x
             correlationThreshold[] = x
         end
         sg = hgrid!(Label(figure, "Correlation", font=:italic),
@@ -455,13 +474,14 @@ function main_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure::Makie.Figure; default::String="Atom")
-        scene_selector = Observable(default)
+    function render_menu(figure::Makie.Figure;
+        scene_selector::Observable{String}=Observable("Atom"))
+
         render_menu = Menu(figure,
             options=SINGLE_TRANSITION_RENDER_OPTIONS,
             default=scene_selector[], tellwidth=false)
 
-        on(render_menu.selection) do s
+        onany(render_menu, render_menu.selection) do _, s
             scene_selector[] = s
         end
 
@@ -469,24 +489,30 @@ function main_window(active_trajectory::Trajectory,
     end
 
     scalar_opts = sort(collect(keys(scalars)))
-    function scalar_menu(figure::Makie.Figure)
-        scalar_selection = Observable(first(scalar_opts))
+    function scalar_menu(figure::Makie.Figure,
+        scalar_selection::Observable{String}=Observable(first(scalar_opts))
+    )
         m = Menu(figure, options=scalar_opts, default=scalar_selection[])
-        on(m.selection) do ms
+        onany(m, m.selection) do _, ms
             scalar_selection[] = ms
         end
 
         return scalar_selection, m
     end
 
-    function atom_widgets(init_time::Float32, figure::Makie.Figure, grid)
+    function atom_widgets(figure::Makie.Figure,
+        grid,
+        init_time::Observable{Float32}=Observable(Float32(0.0)),
+        scalar_selection::Observable{String}=Observable(first(scalar_opts))
+    )
+
         gg = GridLayout(grid[end+1, :])
 
         time, t_slider = time_slider(init_time, figure)
 
         gg[1, 1:2] = t_slider
 
-        scalar_selection, m = scalar_menu(figure)
+        _, m = scalar_menu(figure, scalar_selection)
         gg[2, 1] = m
 
         Colorbar(gg[2, 2],
@@ -500,14 +526,22 @@ function main_window(active_trajectory::Trajectory,
 
     function embed_colorbar(figure::Makie.Figure,
         render_selection::Observable{String},
-        scalar_selection::Observable{String}
+        scalar_selection::Observable{String},
+        invariant_selection::Observable{String}
     )
         scalar_range = lift(x -> scalar_ranges[x], scalar_selection)
+        invariant_range = lift(x -> invariantRanges[x], invariant_selection)
+        volume_cmap = lift(x -> volume_cmaps[x], invariant_selection)
 
         currentRange = Observable((0.0, 1.0))
         currentCMap = Observable(atom_cmap)
 
-        listener = onany(render_selection, scalar_range, invariantRange, volume_cmap, update=true, weak=true) do rs, sr, vr, vc
+        cbar = Colorbar(figure,
+            colorrange=currentRange,
+            vertical=false,
+            colormap=currentCMap)
+
+        listener = onany(cbar, render_selection, scalar_range, invariant_range, volume_cmap, update=true, weak=true) do _, rs, sr, vr, vc
             if rs == "Superquadric"
                 currentRange[] = vr
                 currentCMap[] = vc
@@ -517,22 +551,20 @@ function main_window(active_trajectory::Trajectory,
             end
         end
 
-        cbar = Colorbar(figure,
-            colorrange=currentRange,
-            vertical=false,
-            colormap=currentCMap)
-
         return cbar, listener
     end
 
     # just pass this dictionary around and pass in the arguments it needs
-    render_views::Dict{String,Function} = Dict{String,Function}("Atom" => render_atom_view,
+    render_views::Dict{String,Function} = Dict{String,Function}(
+        "Atom" => render_atom_view,
         "Superquadric" => render_superquadrics_view,
         "SMovement" => render_movement_view_ts)
 
-    widgets::Dict{String,Function} = Dict{String,Function}("Atom" => atom_widgets,
+    widgets::Dict{String,Function} = Dict{String,Function}(
+        "Atom" => atom_widgets,
         "Movement" => time_slider,
         "Render" => render_menu,
+        "Invariant" => invariants_menu,
         "Scalar" => scalar_menu,
         "Colorbar" => embed_colorbar,
         "CorrThreshold" => correlation_slider)
@@ -540,7 +572,7 @@ function main_window(active_trajectory::Trajectory,
     calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment)
     # get number of atoms
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
-    settings_window = build_settings_menu(selected_invariant, selected_alignment, collect(keys(alignments)), num_atoms)
+    settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)), num_atoms)
 
     window, cleanup = build_selection_window(
         transitionSequence,
@@ -554,7 +586,6 @@ function main_window(active_trajectory::Trajectory,
         selected_dm_name,
         calculators,
         name,
-        cachePath,
         dataPath
     )
 
@@ -571,9 +602,6 @@ function main_window(active_trajectory::Trajectory,
             clustering = nothing
 
             Observables.clear(cluster_info)
-            Observables.clear(volume_cmap)
-
-            #Observables.clear(invariantRange)
 
             for x in values(calculators)
                 x = nothing
