@@ -1,5 +1,6 @@
 const TITLE_HOTKEY = Keyboard.t
 
+#TODO: bind listeners to scratchpad lifetime with Makie.onany calls
 function scratchpad!(
     window::Makie.Figure,
     loc,

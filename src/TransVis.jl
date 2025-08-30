@@ -85,7 +85,7 @@ function go(trajectory_name::String; cachePath::String=default_cache(), kwargs..
     @debug "Final cleanup"
     final_cleanup()
     final_cleanup = nothing
-    active_trajectory = nothing
+    finalize(active_trajectory)
     empty!(window)
     GLMakie.closeall()
     GC.gc(true)

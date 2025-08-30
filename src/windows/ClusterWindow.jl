@@ -1,9 +1,10 @@
 function build_cluster_window(
     clusters::Observable{ClusterSet},
-    cluster_data::Observable{SingleClusterData},
+    rel_t_to_idx::Dict{Transition,Index},
     all_cluster_data::Base.RefValue{ClusterData},
     render_views::Dict{String,Function},
     widgets::Dict{String,Function},
+    calculators::Dict{String,Function},
     on_transition_select::Function,
     hovered_transition::MaybeObservable{Transition},
     hovered_cluster::MaybeObservable{ClusterSet},
@@ -20,6 +21,20 @@ function build_cluster_window(
 )
     set_theme!(UI_THEME)
     window = Figure(size=fig_size)
+
+    cluster_data = lift(window.scene, clusters) do c
+        # adding a print statement makes it work...
+        ts = get_transitions(all_cluster_data[], c)
+        ref_t, alignment = calculators["Alignment"](ts)
+        return buildSingleClusterData(
+            cluster=c,
+            ref_t=ref_t,
+            ts=ts,
+            alignment=alignment,
+            cluster_data=all_cluster_data[],
+            rel_t_to_idx=rel_t_to_idx,
+        )
+    end
 
     # the transitions being hovered on in the dist matrix
     mat_hovered = Observable((0, 0))
@@ -38,7 +53,7 @@ function build_cluster_window(
 
     screen = nothing
     nw = nothing
-    notes_click_listener = on(btn_notes.clicks, weak=true) do n
+    Makie.onany(window.scene, btn_notes.clicks) do n
         if isnothing(screen)
             nw = NoteWindow(title, notes, update_cluster)
             screen = GLMakie.Screen(title="LAMDA - $(title[]) Notes")
@@ -60,7 +75,10 @@ function build_cluster_window(
         end
     end
 
-    colors = lift(x -> x.colors, cluster_data)
+    colors = lift(window.scene, cluster_data) do cd
+        return cd.colors
+    end
+
     cutoff = Observable{Float32}(0.0)
     function update_colors(cutoff_val)
         cut_clusters = clusters_above_cutoff(clusters[],
@@ -90,11 +108,14 @@ function build_cluster_window(
     time, t_slider = widgets["Movement"](window)
 
     btn_centroid = Button(window, label="Show centroid")
-    centroid_click_listener = on(btn_centroid.clicks, weak=true) do n
+    Makie.onany(window.scene, btn_centroid.clicks) do n
         hovered_transition[] = cluster_data[].ref_t
     end
 
-    embedding = layout(cluster_data, all_cluster_data[], cutoff)
+    embedding = lift(window.scene, cluster_data) do cd
+        return layout(cd, all_cluster_data[])
+    end
+
     embedding_cleanup = embedding_view!(window[2, 1:2],
         cluster_data,
         embedding,
@@ -128,16 +149,17 @@ function build_cluster_window(
     btn_centroid_to_scratchpad = Button(window,
         label="To scratchpad", tellwidth=false)
     centroid_grid[3, 1] = hgrid!(btn_centroid_to_scratchpad, corr_slider)
+
+    # bad, but requires internal rewrite of render_movement_view
     c_plts = Ref([])
-    centroid_plt_data = @lift begin
-        (; ts, alignment) = $cluster_data
+    lift(window.scene, cluster_data) do cd
+        (; ts, alignment) = cd
         foreach(x -> delete!(centroid_scene.scene, x), c_plts[])
-        h, s, v, d = render_views["SMovement"](centroid_scene.scene, ts, time, alignment, correlation)
+        h, s, v = render_views["SMovement"](centroid_scene.scene, ts, time, alignment, correlation)
         c_plts[] = [h, s, v]
-        return d
     end
 
-    to_scratchpad_listener = on(btn_centroid_to_scratchpad.clicks, weak=true) do n
+    Makie.onany(window.scene, btn_centroid_to_scratchpad.clicks) do n
         # save correlation to scratchpad, quick fix for now
         on_cluster_select(clusters[], correlation[])
     end
@@ -170,7 +192,7 @@ function build_cluster_window(
     g[1, 1] = scalar_menu
     g[1, 2] = t_slider
 
-    onany(window, scene_selector) do _, x
+    Makie.onany(window.scene, scene_selector) do x
         clear_layout(g)
         if x == "Atom"
             _, m = widgets["Scalar"](window, scalar_selector)
@@ -186,7 +208,7 @@ function build_cluster_window(
     rg = hgrid!(render_menu, g)
     window[3, 1:2] = vgrid!(rg, hgrid!(cbar, btn_centroid))
 
-    v_listener = on(cluster_data) do cd
+    Makie.onany(window.scene, cluster_data) do cd
         cutoff[] = 0.0
         cleanup_notes()
         reset_limits!(hm_ax)
@@ -195,7 +217,7 @@ function build_cluster_window(
     hidedecorations!(hm_ax)
     deregister_interaction!(hm_ax, :rectanglezoom)
 
-    mp_listener = on(events(hm_ax).mouseposition, weak=true) do mp
+    on(events(hm_ax).mouseposition) do mp
         plot, _ = pick(hm_ax)
         if is_mouseinside(hm_ax.scene)
             if plot == hm
@@ -215,7 +237,7 @@ function build_cluster_window(
     end
 
     lastBbox = nothing
-    hv_listener = on(hovered_transition, weak=true) do ht
+    Makie.onany(window.scene, hovered_transition) do ht
         if !isnothing(lastBbox)
             delete!(parent_scene(lastBbox), lastBbox)
         end
@@ -225,7 +247,7 @@ function build_cluster_window(
         end
     end
 
-    keyboard_listener = on(events(window).keyboardbutton) do event
+    on(events(window).keyboardbutton) do event
         if ispressed(window, Exclusively(LEFT_KEY))
             on_left(clusters)
         elseif ispressed(window, Exclusively(RIGHT_KEY))
@@ -248,30 +270,11 @@ function build_cluster_window(
         update_colors = nothing
         clear_listener_list(cbar_listeners)
 
-        off(keyboard_listener)
-        off(to_scratchpad_listener)
-        off(hv_listener)
-        off(mp_listener)
-        off(v_listener)
-        off(notes_click_listener)
-        off(centroid_click_listener)
-
-        centroid_click_listener = nothing
-        keyboard_listener = nothing
-        to_scratchpad_listener = nothing
-        hv_listener = nothing
-        mp_listener = nothing
-        v_listener = nothing
-        notes_listener = nothing
-        notes_click_listener = nothing
-
         Observables.clear(embedding)
         Observables.clear(correlation)
         Observables.clear(colors)
         Observables.clear(title)
         Observables.clear(notes)
-        Observables.clear(centroid_plt_data[])
-        Observables.clear(centroid_plt_data)
 
         ts = nothing
         alignment = nothing
@@ -292,29 +295,23 @@ function build_cluster_window(
 end
 
 
-function layout(
-    cluster_data::Observable{SingleClusterData},
-    all_cluster_data::ClusterData,
-    cutoff::Observable{Float32})::Observable{Vector{Point2f}}
+function layout(cluster_data::SingleClusterData, all_cluster_data::ClusterData)::Vector{Point2f}
+    cd = all_cluster_data
+    scd = cluster_data
+    ts = scd.ts
 
-    return @lift begin
-        cd = all_cluster_data
-        scd = $cluster_data
-        ts = scd.ts
+    leaf_order = dfs_leaves(cd, scd.cluster)
+    t_order = reduce(vcat, get_transitions.(Ref(cd), leaf_order))
 
-        leaf_order = dfs_leaves(cd, scd.cluster)
-        t_order = reduce(vcat, get_transitions.(Ref(cd), leaf_order))
+    # could potentially use sqrt_int to build a perfect rect
+    # but may be a.) lopsided and b.) the library says it may be buggy
+    s = Int(ceil(sqrt(length(ts))))
+    H = gilbertindices((s, s))
 
-        # could potentially use sqrt_int to build a perfect rect
-        # but may be a.) lopsided and b.) the library says it may be buggy
-        s = Int(ceil(sqrt(length(ts))))
-        H = gilbertindices((s, s))
-
-        points = Dict()
-        for (i, t) in enumerate(t_order)
-            points[t] = Point2f(Tuple(H[i])...)
-        end
-
-        return collect(map(x -> points[x], ts))
+    points = Dict()
+    for (i, t) in enumerate(t_order)
+        points[t] = Point2f(Tuple(H[i])...)
     end
+
+    return collect(map(x -> points[x], ts))
 end

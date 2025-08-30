@@ -78,7 +78,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
 
                 alignedPositionsMatrices[t] = (p1, p2)
             end
-            rawAlignedPositionsMatrices = nothing
+            finalize(rawAlignedPositionsMatrices)
 
             if isdir(cachePath) && cache_file in readdir(cachePath, join=true)
                 @info "Loading $(t) from cache."
@@ -95,7 +95,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                 @info "Calculating transition invariants."
                 (t1, t2, t3, stretchedPrincipalAxes) =
                     computeTransitionInvariants(transitions, alignedPositionsMatrices, distanceMatrices)
-
+                finalize(distanceMatrices)
                 invariants = Dict{String,Any}("t1" => t1,
                     "t2" => t2,
                     "t3" => t3,
@@ -125,6 +125,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                     fname, ext = splitext(sf)
                     if isfile(sf) && ext == ".pickle"
                         try
+                            # slow and definitely can be better
                             d = Dict{Transition,Array{Float32}}(Pickle.npyload(sf))
                             totExtrema::Vector{Tuple{Float32,Float32}} = extrema.(values(d))
                             totMin = minimum(first.(totExtrema))
@@ -172,7 +173,6 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                 scalar_ranges=scalar_ranges,
                 alignments=alignments,
                 t_to_idx=Dict(reverse.(collect(enumerate(transitions)))))
-            GC.gc(true)
         else
             return error("Supplied folder $(dataPath) does not contain transitions or state information.")
         end

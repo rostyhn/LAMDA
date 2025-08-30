@@ -1,5 +1,13 @@
+function apply_alignment_to_scene(scene::Makie.Scene, alignment)
+    R, flip = alignment
+    # not sure if this should be transposed or not
+    rr = hcat(R, [0, 0, 0])
+    fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
+    scene.transformation.model[] = Float64.(fr)
+end
 
-
+#TODO: these can be rewritten as recipes
+#https://docs.makie.org/stable/explanations/recipes.html 
 function simple_atom_view!(scene::Makie.Scene,
     ap::Tuple{Matrix{Float32},Matrix{Float32}},
     scalars::Observable{Vector{Float32}},
@@ -7,8 +15,11 @@ function simple_atom_view!(scene::Makie.Scene,
     cmap,
     time::Observable{Float32})
 
-    points = @lift Point3f.(eachrow((ap[1] + ((ap[2] - ap[1]) .* $time))))
-    s = meshscatter!(scene,
+    points = lift(scene, time) do t
+        return Point3f.(eachrow((ap[1] + ((ap[2] - ap[1]) .* t))))
+    end
+
+    meshscatter!(scene,
         points;
         color=scalars,
         colorrange=scalar_range,
@@ -16,20 +27,10 @@ function simple_atom_view!(scene::Makie.Scene,
         colormap=cmap,
         ssao=true,
         transparency=true,
-        markersize=0.7)
+        markersize=0.7,
+        inspectable=false)
 
-    s.inspectable[] = false
-    update_cam!(parent_scene(s))
-
-    return s
-end
-
-function apply_alignment_to_scene(scene::Makie.Scene, alignment)
-    R, flip = alignment
-    # not sure if this should be transposed or not
-    rr = hcat(R, [0, 0, 0])
-    fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-    scene.transformation.model[] = Float64.(fr)
+    update_cam!(scene)
 end
 
 function simple_arrow_view!(scene::Makie.Scene,
@@ -42,9 +43,9 @@ function simple_arrow_view!(scene::Makie.Scene,
 
     # use this function to set any variables that need to be equal length in a makie plot, need velocities, points and colors
     # i know its annoying to use a tuple, but its the only way to prevent crashes
-    d = @lift begin
-        points = Point3f.(eachrow(ap[1])) .+ (vel .* Ref($time))
-        velocities = vel .* (correlation .>= Ref($corrThreshold))
+    d = lift(scene, time, corrThreshold) do t, ct
+        points = Point3f.(eachrow(ap[1])) .+ (vel .* Ref(t))
+        velocities = vel .* (correlation .>= Ref(ct))
         return points, velocities, correlation
     end
 
@@ -60,7 +61,7 @@ function simple_arrow_view!(scene::Makie.Scene,
         inspectable=false,
     )
 
-    v = meshscatter!(scene,
+    s = meshscatter!(scene,
         lift(x -> x[1], d);
         color=lift(x -> x[3], d),
         colorrange=lift(x -> (0.0, x), corrThreshold),
@@ -72,7 +73,7 @@ function simple_arrow_view!(scene::Makie.Scene,
         inspectable=false,
         markersize=0.2)
 
-    s = meshscatter!(scene,
+    v = meshscatter!(scene,
         lift(x -> x[1], d);
         color=lift(x -> x[3], d),
         marker=:Sphere,
@@ -83,10 +84,10 @@ function simple_arrow_view!(scene::Makie.Scene,
         colorrange=lift(x -> (x, 1.0), corrThreshold),
         markersize=0.7)
 
-    update_cam!(parent_scene(s))
-    center!(parent_scene(s))
+    update_cam!(scene)
+    center!(scene)
 
-    return h, s, v, d
+    return h, s, v
 end
 
 function fill_sq(mData::Tuple{Vector{Point3f},Vector{TriangleFace{UInt16}}},
@@ -104,21 +105,21 @@ function superquadrics_view!(scene::Makie.Scene,
     resolution=0.5,
 )
     # try to only render visible points, helps with point picking when hovering 
-    sq = @lift begin
-        ip = collect(zip($colors, eachindex(points)))
+    sq = lift(scene, colors) do c
+        ip = collect(zip(c, eachindex(points)))
 
         v_lo = getindex.(filter(x -> x[1] < -0.01, ip), 2)
         v_hi = getindex.(filter(x -> x[1] > 0.01, ip), 2)
 
         if length(v_lo) > 0
-            lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, resolution), view($colors, v_lo)))
+            lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, resolution), view(c, v_lo)))
         else
             lo_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
                     [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
         end
 
         if length(v_hi) > 0
-            hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, resolution), view($colors, v_hi)))
+            hi_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_hi), view(spa, v_hi), 3.0, resolution), view(c, v_hi)))
         else
             hi_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
                     [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
@@ -126,7 +127,7 @@ function superquadrics_view!(scene::Makie.Scene,
         return lo_sq, hi_sq
     end
 
-    m_lo = mesh!(
+    mesh!(
         scene,
         lift(x -> x[1], sq),
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
@@ -134,7 +135,7 @@ function superquadrics_view!(scene::Makie.Scene,
         inspectable=false
     )
 
-    m_hi = mesh!(
+    mesh!(
         scene,
         lift(x -> x[2], sq),
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
@@ -142,7 +143,7 @@ function superquadrics_view!(scene::Makie.Scene,
         inspectable=false
     )
 
-    v = meshscatter!(scene,
+    meshscatter!(scene,
         points;
         color=:gray,
         marker=:Sphere,
@@ -150,12 +151,8 @@ function superquadrics_view!(scene::Makie.Scene,
         inspectable=false,
         markersize=0.2)
 
-    cam_listener = on(sq) do ls
-        update_cam!(parent_scene(m_lo))
-    end
+    update_cam!(scene)
 
-    update_cam!(parent_scene(m_lo))
-    return [cam_listener], [sq], [m_lo, m_hi, v]
 end
 
 function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width::Int=1)
@@ -214,7 +211,7 @@ function setup_menu(figure::Makie.Figure, options::Vector{String}, s::Observable
         default=s[],
         kwargs...)
 
-    onany(render_menu, render_menu.selection) do _, sel
+    Makie.onany(render_menu.blockscene, render_menu.selection) do sel
         s[] = sel
     end
 

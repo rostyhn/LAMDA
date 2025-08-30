@@ -11,6 +11,8 @@ function setup_selection_window(active_trajectory::Trajectory,
     dataPath::String,
     align_with::Maybe{String}=nothing)
 
+    @debug "Allocating data and functions"
+    init_memory = Sys.free_memory() / 2^20
     (;
         stretchedPrincipalAxes,
         scalars,
@@ -107,7 +109,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         time::Observable{<:AbstractFloat},
         flip::Bool=false)
 
-        res = let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
+        let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
             ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
             simple_atom_view!(scene,
                 ap,
@@ -117,11 +119,10 @@ function setup_selection_window(active_trajectory::Trajectory,
                 time
             )
         end
-        return res
     end
 
     function render_superquadrics_view(scene::Makie.Scene, transition::Transition, si::Observable{String}, flip::Bool=false)
-        il, is, plots = let alignedPositionsMatrices = alignedPositionsMatrices,
+        let alignedPositionsMatrices = alignedPositionsMatrices,
             stretchedPrincipalAxes = stretchedPrincipalAxes
 
             t_ap = alignedPositionsMatrices[transition]
@@ -132,15 +133,12 @@ function setup_selection_window(active_trajectory::Trajectory,
             colors = @lift view(select_invariant($si)[][transition], eachindex(points))
 
             # both fns allocate a bunch of space
-            il, is, plots = superquadrics_view!(scene,
+            superquadrics_view!(scene,
                 points,
                 colors,
                 spa,
                 lift(x -> volume_cmaps[x], si),
                 lift(x -> invariantRanges[x], si))
-
-            #push!(is, colors)
-            return il, is, plots
         end
     end
 
@@ -212,7 +210,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         time::Observable{Float32}=Observable(Float32(0.0)))
 
         t_slider = Slider(figure, range=0.0:0.05:1.0, startvalue=time[])
-        onany(t_slider, t_slider.value) do _, x
+        Makie.onany(t_slider.blockscene, t_slider.value) do x
             time[] = x
         end
 
@@ -245,7 +243,7 @@ function setup_selection_window(active_trajectory::Trajectory,
 
     function correlation_slider(figure::Makie.Figure, correlationThreshold::Observable{Float32}=Observable(Float32(0.7)))
         c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=correlationThreshold[])
-        onany(c_slider, c_slider.value) do _, x
+        Makie.onany(c_slider.blockscene, c_slider.value) do x
             correlationThreshold[] = x
         end
 
@@ -273,13 +271,13 @@ function setup_selection_window(active_trajectory::Trajectory,
             vertical=false,
             colormap=currentCMap)
 
-        listener = onany(cbar,
+        listener = Makie.onany(cbar.blockscene,
             render_selection,
             scalar_range,
             invariant_range,
             volume_cmap,
             update=true,
-            weak=true) do _, rs, sr, vr, vc
+        ) do rs, sr, vr, vc
 
             if rs == "Superquadric"
                 currentRange[] = vr
@@ -312,6 +310,9 @@ function setup_selection_window(active_trajectory::Trajectory,
     num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
     settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)), num_atoms)
 
+    final_memory = Sys.free_memory() / 2^20
+
+    @debug init_memory, final_memory
     window, cleanup = selection_window_ui(
         rel_t_to_idx,
         cluster_data,
@@ -382,6 +383,9 @@ function selection_window_ui(
     dataPath::String;
     fig_size::Tuple{Integer,Integer}=(1920, 1080)
 )
+    @debug "Building selection window"
+    sinit_memory = Sys.free_memory() / 2^20
+
     set_theme!(UI_THEME)
 
     window::Makie.Figure = Figure(size=fig_size)
@@ -424,31 +428,17 @@ function selection_window_ui(
         cc[] = x
     end
 
-    cluster_window_listeners = []
     function on_show_cluster_click(clusters::ClusterSet)
         init_memory = Sys.free_memory() / 2^20
-        cc = Observable(clusters, ignore_equal_values=true)
-        scd = @lift begin
-            # adding a print statement makes it work...
-            print("")
-            ts = get_transitions(cluster_data, $cc)
-            ref_t, alignment = calculators["Alignment"](ts)
-            return buildSingleClusterData(
-                cluster=$cc,
-                ref_t=ref_t,
-                ts=ts,
-                alignment=alignment,
-                cluster_data=cluster_data,
-                rel_t_to_idx=rel_t_to_idx,
-            )
-        end
 
+        cc = Observable(clusters, ignore_equal_values=true)
         w, cluster_cleanup = build_cluster_window(
             cc,
-            scd,
+            rel_t_to_idx,
             Ref(cluster_data),
             render_views,
             widgets,
+            calculators,
             on_transition_select,
             hovered_transition,
             hovered_cluster,
@@ -463,15 +453,13 @@ function selection_window_ui(
 
         # create inspector after render to avoid bugs
         ds = DataInspector(w)
-        close_listener = on(events(w).window_open, weak=true) do e
+        Makie.onany(window.scene, events(w).window_open) do e
             if !e
                 @debug "Clear outside cluster window"
                 if !isnothing(cluster_cleanup)
                     cluster_cleanup()
                     cluster_cleanup = nothing
                     Observables.clear(cc)
-                    Observables.clear(scd)
-                    scd = nothing
                     cc = nothing
                 end
                 GC.gc(true)
@@ -482,7 +470,6 @@ function selection_window_ui(
                 @debug init_memory, final_memory
             end
         end
-        push!(cluster_window_listeners, close_listener)
     end
 
     dGrid = GridLayout()
@@ -519,22 +506,20 @@ function selection_window_ui(
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     hm_m_events = addmouseevents!(hm_ax.scene)
-    hm_m_listener = on(hm_m_events.obs) do e
-        if e.type === MouseEventTypes.leftdown
-            plot, _ = pick(hm_ax)
-            if !isnothing(plot)
-                ord = cluster_data.mtx_to_t
-                xy = mouseposition(hm_ax)
-                i, j = Int.(round.(xy))
-                t1 = ord[i]
-                t2 = ord[j]
-                push!(selected_transitions[], t1)
-                if t1 != t2
-                    push!(selected_transitions[], t2)
-                end
-
-                notify(selected_transitions)
+    onmouseleftdown(hm_m_events) do e
+        plot, _ = pick(hm_ax)
+        if !isnothing(plot)
+            ord = cluster_data.mtx_to_t
+            xy = mouseposition(hm_ax)
+            i, j = Int.(round.(xy))
+            t1 = ord[i]
+            t2 = ord[j]
+            push!(selected_transitions[], t1)
+            if t1 != t2
+                push!(selected_transitions[], t2)
             end
+
+            notify(selected_transitions)
         end
     end
 
@@ -552,7 +537,7 @@ function selection_window_ui(
     end
 
     rendered_clusters = []
-    on(h_cutoff, update=true) do _
+    Makie.onany(window.scene, h_cutoff, update=true) do _
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
         for c in values(cluster_info[].a2c)
             p = calc_cluster_bounding_box(Set(c), cluster_data)
@@ -564,7 +549,7 @@ function selection_window_ui(
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
     last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
-    on(hovered_cluster) do hc
+    Makie.onany(window.scene, hovered_cluster) do hc
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
         end
@@ -666,7 +651,7 @@ function selection_window_ui(
     g[1, 2] = scratchpad_t_slider
     scg[1, 2] = g
 
-    onany(window, render_selection) do _, x
+    Makie.onany(window.scene, render_selection) do x
         clear_layout(g)
         if x == "Atom"
             _, m = widgets["Scalar"](window, scalar_selection)
@@ -680,7 +665,9 @@ function selection_window_ui(
     end
 
     scg[2, 1:2] = sc_cbar
+    sfinal_memory = Sys.free_memory() / 2^20
     @debug "Finished selection window"
+    @debug sinit_memory, sfinal_memory
 
     cleanup = function ()
         @debug "Killing selection"
@@ -699,7 +686,6 @@ function selection_window_ui(
         end
 
         clear_listener_list(cbar_listeners)
-        clear_listener_list(cluster_window_listeners)
     end
     return window, cleanup
 end

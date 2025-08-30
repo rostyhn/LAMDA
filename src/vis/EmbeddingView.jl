@@ -36,6 +36,7 @@ function embedding_view!(
     on_click::Function=(x) -> (),
     markersize::Observable{Int}=Observable(100),
 )
+    # the makie.onany calls here ensure that the listeners are bound to the scene and get gc'd correctly
     ax = Axis(loc, backgroundcolor=:transparent,
         autolimitaspect=1)
     deregister_interaction!(ax, :rectanglezoom)
@@ -55,12 +56,12 @@ function embedding_view!(
         color=:transparent,
         inspector_label=(ins, idx, pos) -> join(string.(cluster_data[].ts[idx], base=10), ","))
 
-    on(embedding, update=true) do e
+    Makie.onany(ax.scene, embedding, update=true) do e
         autolimits!(ax)
         center!(ax.scene)
     end
 
-    kb_events = on(events(ax.scene).keyboardbutton, weak=true) do event
+    on(events(ax.scene).keyboardbutton) do event
         if ispressed(ax.scene, Exclusively(Keyboard.page_up))
             markersize[] = markersize[] + 25
         elseif ispressed(ax.scene, Exclusively(Keyboard.page_down))
@@ -85,14 +86,11 @@ function embedding_view!(
     ins = DataInspector()
     frame_colors = Ref([])
     views::Base.RefValue{Vector{Base.RefValue{Makie.Scene}}} = Ref(Base.RefValue{Makie.Scene}[])
-    all_listeners = Dict{Transition,Any}()
-    scene_listeners = Ref([])
     highlighted = Ref([])
     frame_widths = Ref([])
 
-    function create_scene(d, ms, alignment)
+    function create_scene(d, ms, alignment, render_fn)
         i, t = d
-        clear_listeners!(all_listeners, t)
         pos = position_on_plot(nodes, i, apply_transform=false)
         # x, y is in global pixel coords
         x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
@@ -107,7 +105,8 @@ function embedding_view!(
             camera=cam3d!,
             size=(ms, ms))
 
-        alignment_listener = on(show_alignment, update=true, weak=true) do showAlignment
+        # for debug purposes only! note that the flip is going to propagate regardless to avoid recalculation
+        Makie.onany(ax3d, show_alignment, update=true) do showAlignment
             if showAlignment
                 R, flip = alignment[t]
                 rr = hcat(R, [0, 0, 0])
@@ -118,11 +117,8 @@ function embedding_view!(
             end
         end
 
-        # sets to color of original leaves
         frame_color = Observable(colors[][i])
         linewidth = Observable(3)
-        # sets to color of assignment 
-        # set_color_alpha(cluster_color(cluster_info, t), 0.6))
 
         wireframe!(
             ax3d,
@@ -137,56 +133,32 @@ function embedding_view!(
         )
 
         m_events = addmouseevents!(ax3d)
-        mouse_listener = on(m_events.obs, weak=true) do event
-            if event.type === MouseEventTypes.over
-                hovered[] = t
-            elseif event.type === MouseEventTypes.out
-                hovered[] = nothing
-                hovered_cluster[] = nothing
-            elseif event.type === MouseEventTypes.leftdoubleclick
-                on_click(t)
-            end
+        onmouseover(m_events) do e
+            hovered[] = t
+        end
+        onmouseout(m_events) do e
+            hovered[] = nothing
+            hovered_cluster[] = nothing
+        end
+        onmouseleftdoubleclick(m_events) do e
+            on_click(t)
         end
 
         # initial render
-        sr = selected_render[]
         flip = alignment[t][2]
-        # could figure out the function before, would reduce number of branches 
-        if sr == "Atom"
-            render_views["Atom"](ax3d,
-                t,
-                selected_scalar,
-                atom_time,
-                flip
-            )
-        else
-            listeners, obs, _ = render_views["Superquadric"](ax3d,
-                t,
-                invariant_selection,
-                flip)
-            all_listeners[t] = (listeners, obs)
-        end
+        render_fn(ax3d, t, flip)
         center!(ax3d)
         yield()
         push!(views[], Ref(ax3d))
         push!(frame_colors[], frame_color)
         push!(frame_widths[], linewidth)
-
-        return Ref(alignment_listener), Ref(mouse_listener), m_events
     end
 
-    t_to_pltidx = @lift begin
+    t_to_pltidx = lift(ax.scene, cluster_data) do cd
         @debug "Rendering embedding"
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
-        for (al, ml, m_events) in scene_listeners[]
-            off(al[])
-            off(ml[])
-            Observables.clear(m_events.obs)
-        end
-        empty!(scene_listeners[])
-
         for ax3d in views[]
             s = ax3d[]
             empty!(s)
@@ -201,16 +173,27 @@ function embedding_view!(
         empty!(highlighted[])
         GC.gc(true)
 
-        center!(ax.scene)
-
-        cd = $(cluster_data)
         ts = cd.ts
         alignment = cd.alignment
 
         t_to_pltidx = Dict(reverse.(enumerate(ts)))
 
+        sr = selected_render[]
+        render_fn = (sr == "Atom") ? (x, y, z) ->
+            render_views["Atom"](
+                x,
+                y,
+                selected_scalar,
+                atom_time,
+                z
+            ) : (x, y, z) ->
+            render_views["Superquadric"](x,
+                y,
+                invariant_selection,
+                z)
+
         ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
-        scene_listeners[] = create_scene.(enumerate(ts), Ref(ms), Ref(alignment))
+        create_scene.(enumerate(ts), Ref(ms), Ref(alignment), Ref(render_fn))
 
         center!(ax.scene)
         hovered[] = nothing
@@ -218,44 +201,45 @@ function embedding_view!(
         return t_to_pltidx
     end
 
-    function update_scene(d, ts, alignment, sr)
+    function update_scene(d, ts, alignment, sr, render_fn)
         i, ptr = d
         ax3d = ptr[]
         t = ts[i]
         flip = alignment[t][2]
-        clear_listeners!(all_listeners, t)
         foreach(x -> delete!(ax3d, x),
             filter(y -> !(y isa Wireframe), ax3d.plots))
 
-        # same thing here, pass in fn as Ref?
-        if sr == "Atom"
-            render_views["Atom"](ax3d,
-                t,
-                selected_scalar,
-                atom_time, flip)
-        else
-            listeners, obs, _ = render_views["Superquadric"](ax3d,
-                t, invariant_selection, flip)
-            all_listeners[t] = (listeners, obs)
-        end
+        render_fn(ax3d, t, flip)
         center!(ax3d)
         # block for a millisecond so makie can catch up
         # otherwise it seems like the renderer gets overwhelmed & it just goes oom
         yield()
     end
 
-    sr_listener = on(selected_render, weak=true) do sr
+    Makie.onany(ax.scene, selected_render) do sr
         disable_interactions(ax)
         if length(views[]) == length(embedding[])
             ts = cluster_data[].ts
             alignment = cluster_data[].alignment
-            update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr))
+            sr = selected_render[]
+            render_fn = (sr == "Atom") ? (x, y, z) ->
+                render_views["Atom"](
+                    x,
+                    y,
+                    selected_scalar,
+                    atom_time,
+                    z
+                ) : (x, y, z) ->
+                render_views["Superquadric"](x,
+                    y,
+                    invariant_selection,
+                    z)
+            update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr), Ref(render_fn))
             GC.gc(true)
         end
         enable_interactions(ax)
     end
 
-    #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
 
     #broadcast to try and speed it up a bit
     function shift_point(d, ms::Int)
@@ -275,19 +259,20 @@ function embedding_view!(
         scene.viewport[] = vp
     end
 
-    ax_listener = onany(ax.xaxis.attributes.limits,
+    #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
+    Makie.onany(ax.scene,
+        ax.xaxis.attributes.limits,
         ax.yaxis.attributes.limits,
         markersize_4d,
         embedding,
-        t_to_pltidx,
-        weak=true) do xlim, ylim, mkr, p, pindx
+        t_to_pltidx) do xlim, ylim, mkr, p, pindx
         if length(views[]) == length(p)
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             shift_point.(enumerate(views[]), Ref(ms))
         end
     end
 
-    c_listener = on(colors, weak=true) do c_list
+    Makie.onany(ax.scene, colors) do c_list
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
             for (i, c) in enumerate(c_list)
@@ -299,7 +284,7 @@ function embedding_view!(
 
     # converts hovered into its cluster
     # since you can't hover both a cluster and a transition simultaneously, this frees up the logic underneath
-    hover_converter = on(hovered, weak=true) do hov
+    Makie.onany(ax.scene, hovered) do hov
         pindx = to_value(t_to_pltidx)
         if !isnothing(hov) && haskey(pindx, hov)
             c = get_cluster_of_transition(cluster_data[], pindx[hov])
@@ -307,7 +292,7 @@ function embedding_view!(
         end
     end
 
-    hover_listener = on(hovered_cluster, weak=true) do hc
+    Makie.onany(ax.scene, hovered_cluster) do hc
         for v_idx in highlighted[]
             frame_widths[][v_idx][] = 3
         end
@@ -330,26 +315,6 @@ function embedding_view!(
     # if I wanted to do this I could just write C
     cleanup = function ()
         @debug "kill embedding"
-
-        if !isnothing(sr_listener)
-            off(sr_listener)
-            sr_listener = nothing
-            off(c_listener)
-            c_listener = nothing
-            off(kb_events)
-            kb_events = nothing
-            off(hover_listener)
-            hover_listener = nothing
-            off(hover_converter)
-            hover_converter = nothing
-        end
-
-        for (al, ml, m_events) in scene_listeners[]
-            off(al[])
-            off(ml[])
-            Observables.clear(m_events.obs)
-        end
-
         for ptr in views[]
             ax3d = ptr[]
             empty!(ax3d)
@@ -357,16 +322,11 @@ function embedding_view!(
             ax3d = nothing
             ptr = nothing
         end
-        clear_listener_list(ax_listener)
 
         empty!(views[])
         Observables.clear.(frame_colors[])
         empty!(frame_colors[]) # update frame colors
         empty!(frame_widths[])
-
-        for t in keys(all_listeners)
-            clear_listeners!(all_listeners, t)
-        end
 
         empty!(ax.scene)
         Makie.free(ax.scene)
