@@ -217,10 +217,11 @@ function calculate_alignment(ref_t::Transition,
     ref_s1_pos = posMats[ref_t][1]
 
     ref_s1, ref_s2 = ref_t
+    #TODO: calculate beforehand and save 
     ref_diff = features[ref_s2] - features[ref_s1]
     split_ref = split_delta(ref_diff)
-
     ref_s1_com = reduce(vcat, map(x -> com(ref_s1_pos, x), eachcol(split_ref[1])))
+
     ref_s1_shift = mean(ref_s1_com, dims=1)
     ref_s1_com = ref_s1_com .- ref_s1_shift
 

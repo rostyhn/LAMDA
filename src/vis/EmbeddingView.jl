@@ -66,13 +66,14 @@ function embedding_view!(
             markersize[] = markersize[] + 25
         elseif ispressed(ax.scene, Exclusively(Keyboard.page_down))
             markersize[] = markersize[] - 25
-        elseif ispressed(ax.scene, Exclusively(Keyboard.f))
+        elseif ispressed(ax.scene, Exclusively(Keyboard.a))
             show_alignment[] = !show_alignment[]
             if show_alignment[]
                 println("aligned")
             else
                 println("identity")
             end
+            return Consume(true)
         elseif ispressed(ax.scene, Exclusively(Keyboard.o))
             resolve_overlap[] = !resolve_overlap[]
             if resolve_overlap[]
