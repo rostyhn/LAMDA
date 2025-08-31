@@ -51,9 +51,9 @@ function setup_selection_window(active_trajectory::Trajectory,
 
     # should be fine, seems off-center because abs(volMin) != abs(volMax)
     lowmap = reverse(resample_cmap(:RdPu_3, 50;
-        alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6))
+        alpha=([(0.0):0.02:(0.99);] ./ 0.75) .^ 2))
     himap = resample_cmap(:greens, 50;
-        alpha=([(0.0):0.02:(0.99);] ./ 0.05) .^ 6)
+        alpha=([(0.0):0.02:(0.99);] ./ 0.75) .^ 2)
     t3map = vcat(lowmap, himap)
 
     volume_cmaps = Dict("t1" => resample_cmap(:bam, 100;
