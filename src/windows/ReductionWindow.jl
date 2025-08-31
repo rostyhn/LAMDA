@@ -174,7 +174,7 @@ function build_reduction_window(active_trajectory::Trajectory,
             reduced[][3],
             selected_dm[],
             h_cutoff[],
-            dataPath,
+            dataPath;
             kwargs...)
         empty!(window)
         Makie.free(window.scene)

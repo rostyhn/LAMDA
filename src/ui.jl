@@ -101,7 +101,7 @@ function superquadrics_view!(scene::Makie.Scene,
     colors::Observable{<:AbstractArray{Float32}},
     spa::Vector{Vector{Vec3f}},
     vol_cmap::Observable{Vector{RGBAf}},
-    invariantRange::Observable{Tuple{Float32,Float32}},
+    invariantRange::Observable{Tuple{Float32,Float32}};
     resolution=0.5,
 )
     # try to only render visible points, helps with point picking when hovering 
@@ -110,6 +110,7 @@ function superquadrics_view!(scene::Makie.Scene,
 
         v_lo = getindex.(filter(x -> x[1] < -0.01, ip), 2)
         v_hi = getindex.(filter(x -> x[1] > 0.01, ip), 2)
+        v_z = getindex.(filter(x -> x[1] <= 0.01 && x[1] >= -0.01, ip), 2)
 
         if length(v_lo) > 0
             lo_sq = GeometryBasics.merge(fill_sq.(superquadric.(1.0, view(points, v_lo), view(spa, v_lo), 3.0, resolution), view(c, v_lo)))
@@ -124,7 +125,7 @@ function superquadrics_view!(scene::Makie.Scene,
             hi_sq = fill_sq((fill(Point3f(0.0, 0.0, 0.0), 3),
                     [TriangleFace((UInt16(1), UInt16(2), UInt16(3)))]), Float32(0.0))
         end
-        return lo_sq, hi_sq
+        return lo_sq, hi_sq, v_z
     end
 
     mesh!(
@@ -132,7 +133,8 @@ function superquadrics_view!(scene::Makie.Scene,
         lift(x -> x[1], sq),
         colorrange=lift(x -> (x[1], 0.0), invariantRange),
         colormap=lift(x -> x[1:49], vol_cmap),
-        inspectable=false
+        inspectable=false,
+        transparency=true
     )
 
     mesh!(
@@ -140,11 +142,12 @@ function superquadrics_view!(scene::Makie.Scene,
         lift(x -> x[2], sq),
         colorrange=lift(x -> (0.0, x[2]), invariantRange),
         colormap=lift((x, y) -> y[1] < 0.0 ? x[50:100] : x, vol_cmap, invariantRange),
-        inspectable=false
+        inspectable=false,
+        transparency=true
     )
 
     meshscatter!(scene,
-        points;
+        lift(x -> points[x[3]], sq);
         color=:gray,
         marker=:Sphere,
         transparency=true,

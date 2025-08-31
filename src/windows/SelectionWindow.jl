@@ -9,7 +9,8 @@ function setup_selection_window(active_trajectory::Trajectory,
     selected_dm_name::String,
     init_h_cutoff::AbstractFloat,
     dataPath::String,
-    align_with::Maybe{String}=nothing)
+    align_with::Maybe{String}=nothing;
+    sq_resolution=0.5)
 
     @debug "Allocating data and functions"
     init_memory = Sys.free_memory() / 2^20
@@ -138,7 +139,9 @@ function setup_selection_window(active_trajectory::Trajectory,
                 colors,
                 spa,
                 lift(x -> volume_cmaps[x], si),
-                lift(x -> invariantRanges[x], si))
+                lift(x -> invariantRanges[x], si);
+                resolution=sq_resolution
+            )
         end
     end
 
@@ -222,7 +225,7 @@ function setup_selection_window(active_trajectory::Trajectory,
     end
 
     # could be one func
-    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Atom"))
+    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Superquadric"))
         return setup_menu(figure, SINGLE_TRANSITION_RENDER_OPTIONS, scene_selector; tellwidth=false)
     end
 
