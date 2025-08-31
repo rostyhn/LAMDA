@@ -53,6 +53,28 @@ function link_cameras_lscenes(scenes; step::AbstractFloat=0.01)
     end
 end
 
+function screenshot_3d!(scene, render_fn, fname, width=1920)
+    sw, sh = widths(scene.viewport[])
+    aspect = sh / sw
+    height = width * aspect
+
+    f = Figure(size=(width, height))
+    ax = LScene(f.scene,
+        show_axis=false,
+        scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, camera=cam3d!, clear=true),
+    )
+    f[1, 1] = ax
+
+    render_fn(ax)
+    update_cam!(ax, cameracontrols(scene))
+    GLMakie.save(fname, f, update=false)
+    @info "Saved screenshot to $(relative_path)/f"
+
+    empty!(f)
+    Makie.free(ax.scene)
+    Makie.free(f)
+end
+
 splitobs(o::Observable{Tuple{}}) = ()
 splitobs(o::Observable{<:Tuple}) = (lift(first, o), splitobs(lift(Base.tail, o))...)
 
