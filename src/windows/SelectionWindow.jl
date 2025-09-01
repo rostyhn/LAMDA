@@ -56,8 +56,13 @@ function setup_selection_window(active_trajectory::Trajectory,
         alpha=([(0.0):0.02:(0.99);] ./ 0.75) .^ 2)
     t3map = vcat(lowmap, himap)
 
-    volume_cmaps = Dict("t1" => resample_cmap(:bam, 100;
-            alpha=([(-0.99):0.02:(0.99);] ./ 0.1) .^ 6),
+    lowmap = reverse(resample_cmap(:RdPu_3, 50;
+        alpha=([(0.0):0.02:(0.99);] ./ 0.3) .^ 2))
+    himap = resample_cmap(:greens, 50;
+        alpha=([(0.0):0.02:(0.99);] ./ 0.3) .^ 2)
+    t1map = vcat(lowmap, himap)
+
+    volume_cmaps = Dict("t1" => t1map,
         "t2" => resample_cmap(:matter, 100;
             alpha=([0:0.01:0.99;] ./ 0.05) .^ 2),
         "t3" => t3map)
@@ -65,9 +70,12 @@ function setup_selection_window(active_trajectory::Trajectory,
     function get_invariant_range(x)
         iv = select_invariant(x)
         vals = values(iv[])
-        absInvMin = minimum(minimum.(vals))
-        absInvMax = maximum(maximum.(vals))
-        return (absInvMin, absInvMax)
+        absInvMin = abs(minimum(minimum.(vals)))
+        absInvMax = abs(maximum(maximum.(vals)))
+
+        # not an ideal solution but it works
+        r = max(absInvMin, absInvMax)
+        return (-r, r)
     end
 
     invariantRanges = Dict("t1" => get_invariant_range("t1"),
@@ -224,8 +232,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         return time, sg
     end
 
-    # could be one func
-    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Superquadric"))
+    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Atom"))
         return setup_menu(figure, SINGLE_TRANSITION_RENDER_OPTIONS, scene_selector; tellwidth=false)
     end
 
@@ -359,15 +366,17 @@ function setup_selection_window(active_trajectory::Trajectory,
             end
             empty!(render_views)
 
-            empty!(window)
-            empty!(settings_window)
-            Makie.free(settings_window.scene)
-            Makie.free(window.scene)
+            if !isnothing(window)
+                empty!(window)
+                empty!(settings_window)
+                Makie.free(settings_window.scene)
+                Makie.free(window.scene)
 
-            select_invariant = nothing
-            settings_window = nothing
-            window = nothing
-            ds = nothing
+                select_invariant = nothing
+                settings_window = nothing
+                window = nothing
+                ds = nothing
+            end
         end
     end
 end
