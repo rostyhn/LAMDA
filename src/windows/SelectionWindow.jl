@@ -111,6 +111,16 @@ function setup_selection_window(active_trajectory::Trajectory,
     #:linear_wcmr_100_45_c42_n256 
     atom_cmap = resample_cmap(:linear_bmy_10_95_c71_n256, 100,
         alpha=range(; start=0.05, stop=1.0, length=100))
+    binary_atomcmap = resample_cmap(:redsblues, 3,
+        alpha=[1.0, 0.1, 1.0])
+
+    function get_atom_cmap(s)
+        if occursin("signed", to_value(s))
+            return binary_atomcmap
+        else
+            return atom_cmap
+        end
+    end
 
     function render_atom_view(scene::Makie.Scene,
         transition::Transition,
@@ -119,12 +129,13 @@ function setup_selection_window(active_trajectory::Trajectory,
         flip::Bool=false)
 
         let scalars = scalars, scalar_ranges = scalar_ranges, atom_cmap = atom_cmap, alignedPositionsMatrices = alignedPositionsMatrices
-            ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
+            #ap = flip ? reverse(alignedPositionsMatrices[transition]) : alignedPositionsMatrices[transition]
+            ap = alignedPositionsMatrices[transition]
             simple_atom_view!(scene,
                 ap,
                 lift(x -> scalars[x][transition], selected_scalar),
                 lift(x -> scalar_ranges[x], selected_scalar),
-                atom_cmap,
+                lift(x -> get_atom_cmap(x), selected_scalar),
                 time
             )
         end

@@ -195,8 +195,8 @@ function build_reduction_window(active_trajectory::Trajectory,
         Observables.clear(cluster_groups)
         Observables.clear(reduced)
         Observables.clear(clustering)
-        Observables.clear(avgs)
-        Observables.clear(reordered_matrix)
+        #Observables.clear(avgs)
+        #Observables.clear(reordered_matrix)
         Observables.clear(h_cutoff)
 
     end

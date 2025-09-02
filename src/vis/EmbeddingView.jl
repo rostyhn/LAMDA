@@ -90,6 +90,14 @@ function embedding_view!(
     highlighted = Ref([])
     frame_widths = Ref([])
 
+    #=
+    r_window = Figure(size=(2 * 1920, 2 * 1920))
+    render_ax = LScene(r_window.scene,
+        show_axis=false,
+        scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, camera=cam3d!, clear=true),
+    )
+    r_window[1, 1] = render_ax=#
+
     function create_scene(d, ms, alignment, render_fn)
         i, t = d
         pos = position_on_plot(nodes, i, apply_transform=false)
@@ -109,10 +117,7 @@ function embedding_view!(
         # for debug purposes only! note that the flip is going to propagate regardless to avoid recalculation
         Makie.onany(ax3d, show_alignment, update=true) do showAlignment
             if showAlignment
-                R, flip = alignment[t]
-                rr = hcat(R, [0, 0, 0])
-                fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
-                ax3d.transformation.model[] = Float64.(fr)
+                apply_alignment_to_scene(ax3d, alignment[t])
             else
                 ax3d.transformation.model[] = Matrix(1.0I, 4, 4)
             end
@@ -133,23 +138,36 @@ function embedding_view!(
             inspectable=false
         )
 
+        flip = alignment[t][2]
         m_events = addmouseevents!(ax3d)
         onmouseover(m_events) do e
+            #@show join(string.(t, base=10), ",")
             hovered[] = t
         end
         onmouseout(m_events) do e
             hovered[] = nothing
             hovered_cluster[] = nothing
         end
+        # screenshot function
+        #=onmousemiddledown(m_events) do e
+            render_ax.scene.visible[] = true
+            foreach(x -> delete!(render_ax.scene, x), render_ax.scene.plots)
+            render_fn(render_ax.scene, t, flip)
+            apply_alignment_to_scene(render_ax.scene, alignment[t])
+            center!(render_ax.scene)
+
+            update_cam!(render_ax.scene, cameracontrols(ax3d))
+            x = "$(join(string.(t, base=10), "_")).png"
+            GLMakie.save(x, r_window, update=false)
+            render_ax.scene.visible[] = false
+        end=#
         onmouseleftdoubleclick(m_events) do e
             on_click(t)
         end
 
         # initial render
-        flip = alignment[t][2]
         render_fn(ax3d, t, flip)
         center!(ax3d)
-        yield()
         push!(views[], Ref(ax3d))
         push!(frame_colors[], frame_color)
         push!(frame_widths[], linewidth)
@@ -214,7 +232,6 @@ function embedding_view!(
         center!(ax3d)
         # block for a millisecond so makie can catch up
         # otherwise it seems like the renderer gets overwhelmed & it just goes oom
-        yield()
     end
 
     Makie.onany(ax.scene, selected_render) do sr
