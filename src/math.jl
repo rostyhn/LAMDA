@@ -147,10 +147,7 @@ function apply_alignment(rot_tuple, ap_tuple)
     s1, s2 = ap_tuple
 
     s1a = s1 * rot
-    #s1 = s1 .- mean(s1, dims=1)
-
     s2a = s2 * rot
-    #s2 = s2 .- mean(s2, dims=1)
 
     init = flip ? s2a : s1a
     final = flip ? s1a : s2a

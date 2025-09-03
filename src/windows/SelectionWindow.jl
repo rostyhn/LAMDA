@@ -172,7 +172,7 @@ function setup_selection_window(active_trajectory::Trajectory,
 
         res = let alignedPositionsMatrices = alignedPositionsMatrices,
             cluster_data = cluster_data,
-            kernelWidth = 1.0
+            kernelWidth = 3.0
 
             posValsTup = map(t -> apply_alignment(alignment[t], alignedPositionsMatrices[t]), ts)
             distances, t_to_mtx, mtx_to_t = get_local_matrix(cluster_data, ts)
