@@ -134,14 +134,12 @@ function scratchpad!(
 
     viewports = Ref([])
     frame_colors = Ref([])
-    scene_listeners = Ref([])
     function delete_obj!(obj, views, obj_to_idx)
         plt_idx = obj_to_idx[][obj]
         v_idx = plt_idx - 1
         scene = views[][v_idx]
         # Makie.free seems to destroy theme object...
         # need to also delete listeners here, will do later
-        off(scene_listeners[][v_idx])
         Makie.free(scene)
         delete!(obj_to_idx[], obj)
 
@@ -165,14 +163,17 @@ function scratchpad!(
             points.val = spring(zeros(length(all_points), length(all_points)); C=0.1, pin=Dict(last_rendered .=> true), initialpos=all_points)
             notify(points)
             notify(obj_to_idx)
+            # only update ax when points are added to avoid bugs
+            autolimits!(ax)
+            center!(ax.scene)
         end
     end
 
     nodes = scatter!(ax, points, marker=:rect, color=:transparent, inspectable=false)
-    on(points, update=true) do _
-        autolimits!(ax)
-        center!(ax.scene)
-    end
+    #on(points, update=true) do _
+    #    autolimits!(ax)
+    #    center!(ax.scene)
+    #end
 
     marker_4d = Point4f(markersize, markersize, 0, 0)
 
@@ -236,16 +237,11 @@ function scratchpad!(
                     camera=cam3d!,
                     size=(ms, ms))
 
-                # translate!(ax3d, 0, 0, 100) ? 
-
-                frame_color = @lift begin
+                frame_color = lift(ax3d, cluster_info) do ci
                     if obj isa Transition
-                        ci = $(cluster_info)
-                        # get the currently assigned color of this transition
-                        return set_color_alpha(cluster_color(ci, cluster_data, rel_t_to_idx, obj), 0.6)
+                        return cluster_color(ci, cluster_data, rel_t_to_idx, obj)
                     else
-                        # gets the assigned cluster color
-                        return set_color_alpha(cluster_data.colors[obj], 0.6)
+                        return cluster_data.colors[obj]
                     end
                 end
 
@@ -262,8 +258,7 @@ function scratchpad!(
                 )
 
                 m_events = addmouseevents!(ax3d)
-
-                mouse_listener = on(m_events.obs, weak=true) do event
+                Makie.onany(ax3d, m_events.obs) do event
                     i = obj_to_idx[][obj]
                     if event.type === MouseEventTypes.over
                         deactivate_interaction!(ax, :create_group)
@@ -303,28 +298,22 @@ function scratchpad!(
                     end
                 end
 
-                push!(scene_listeners[], mouse_listener)
-
                 # move to outside loop, will be far more efficient
                 if obj isa Transition
-                    plt_rendered = []
-                    rs_listener = on(render_selection, weak=true, update=true) do rs
-                        foreach(x -> delete!(ax3d, x), plt_rendered)
-                        empty!(plt_rendered)
+                    Makie.onany(ax3d, render_selection, update=true) do rs
+                        foreach(x -> delete!(ax3d, x),
+                            filter(y -> !(y isa Wireframe), ax3d.plots))
                         if rs == "Atom"
-                            s = render_views["Atom"](ax3d,
+                            render_views["Atom"](ax3d,
                                 obj,
                                 scalar_selection,
                                 atom_time)
-                            plt_rendered = [s]
                         else
-                            il, is, plots = render_views["Superquadric"](ax3d,
+                            render_views["Superquadric"](ax3d,
                                 obj, invariant_selection)
-                            plt_rendered = plots
                         end
                         center!(ax3d)
                     end
-                    push!(scene_listeners[], rs_listener)
                 else
                     # get transitions from general cluster object instead of the current one
                     ts = get_transitions(cluster_data, obj)
@@ -416,7 +405,6 @@ function scratchpad!(
         clear_listener_list(select_listeners)
         clear_listener_list(hv_listeners)
         clear_listener_list(ax_listeners)
-        clear_listener_list(scene_listeners[])
 
         if !isnothing(idx_listener)
             off(idx_listener)
