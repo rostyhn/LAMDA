@@ -101,7 +101,7 @@ function build_cluster_window(
 
     scene_selector, render_menu = widgets["Render"](window)
     scalar_selector, scalar_menu = widgets["Scalar"](window)
-    invariant_selection = Observable("t1")
+    invariant_selection = Observable("K1")
 
     cbar, cbar_listeners = widgets["Colorbar"](window, scene_selector, scalar_selector, invariant_selection)
 

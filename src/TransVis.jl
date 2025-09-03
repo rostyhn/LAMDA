@@ -21,7 +21,7 @@ using FixedPointNumbers
 using MathTeXEngine
 using NetworkLayout
 using Makie: ray_at_cursor, position_on_plot, mouse_in_scene, shift_project, update_tooltip_alignment!, parent_scene, show_data, clear_temporary_plots!, Orthographic, apply_transform_and_model, Makie
-#using CairoMakie # for saving plots w/ SVG
+using CairoMakie # for saving plots w/ SVG
 using GLMakie: Screen, ScreenConfig
 using GLMakie
 using Observables

@@ -24,11 +24,11 @@ function setup_selection_window(active_trajectory::Trajectory,
     ) = active_trajectory
 
     function select_invariant(selection::String)
-        if selection == "t1"
+        if selection == "K1"
             iv = Ref(active_trajectory.t1)
-        elseif selection == "t2"
+        elseif selection == "K2"
             iv = Ref(active_trajectory.t2)
-        elseif selection == "t3"
+        elseif selection == "K3"
             iv = Ref(active_trajectory.t3)
         else
             error("Invalid invariant selected")
@@ -62,10 +62,10 @@ function setup_selection_window(active_trajectory::Trajectory,
         alpha=([(0.0):0.02:(0.99);] ./ 0.3) .^ 2)
     t1map = vcat(lowmap, himap)
 
-    volume_cmaps = Dict("t1" => t1map,
-        "t2" => resample_cmap(:matter, 100;
+    volume_cmaps = Dict("K1" => t1map,
+        "K2" => resample_cmap(:matter, 100;
             alpha=([0:0.01:0.99;] ./ 0.05) .^ 2),
-        "t3" => t3map)
+        "K3" => t3map)
 
     function get_invariant_range(x)
         iv = select_invariant(x)
@@ -78,9 +78,9 @@ function setup_selection_window(active_trajectory::Trajectory,
         return (-r, r)
     end
 
-    invariantRanges = Dict("t1" => get_invariant_range("t1"),
-        "t2" => get_invariant_range("t2"),
-        "t3" => get_invariant_range("t3"))
+    invariantRanges = Dict("K1" => get_invariant_range("K1"),
+        "K2" => get_invariant_range("K2"),
+        "K3" => get_invariant_range("K3"))
 
     # https://docs.julialang.org/en/v1.12-dev/manual/performance-tips/#man-performance-captured
     # convenience function to avoid passing around all the data
@@ -252,11 +252,11 @@ function setup_selection_window(active_trajectory::Trajectory,
         return setup_menu(figure, scalar_opts, scalar_selection)
     end
 
-    SQ_HELP = "T1: x -> -Inf indicates extension; x -> Inf dilation \nT2 - magnitude of distortion \nT3: x-> -1 indicates linear anisotropy (rods); x -> 1 planar anisotropy (disks)"
+    SQ_HELP = "K1: x -> -Inf indicates extension; x -> Inf dilation \nK2 - magnitude of distortion \nK3: x-> -1 indicates linear anisotropy (rods); x -> 1 planar anisotropy (disks)"
     function invariants_menu(figure::Makie.Figure,
-        si::Observable{String}=Observable("t1"))
+        si::Observable{String}=Observable("K1"))
 
-        _, invar_menu = setup_menu(figure, ["t1", "t2", "t3"], si)
+        _, invar_menu = setup_menu(figure, ["K1", "K2", "K3"], si)
         g = hgrid!(invar_menu, inline_image(figure, HELP_ICON, SQ_HELP; tellheight=false))
 
         return si, g
@@ -327,9 +327,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         "CorrThreshold" => correlation_slider)
 
     calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment)
-    # get number of atoms
-    num_atoms = size(Iterators.first(values(alignedPositionsMatrices))[1])[1]
-    settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)), num_atoms)
+    settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)))
 
     final_memory = Sys.free_memory() / 2^20
 
@@ -612,7 +610,7 @@ function selection_window_ui(
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
-    invariant_selection = Observable("t1")
+    invariant_selection = Observable("K1")
 
     time, scratchpad_t_slider = widgets["Movement"](window)
     sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection, invariant_selection)
