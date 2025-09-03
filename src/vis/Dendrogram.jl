@@ -101,22 +101,20 @@ function dendrogram!(ax::Makie.Axis,
     cutoff::Union{Observable{<:AbstractFloat},Observable{Nothing}}=Observable(nothing),
     kwargs...)
 
-
     ax.xgridvisible = false
     ax.ygridvisible = false
-    dendrogram = @lift begin
-        # to get label idx just divide by 2
-        if isnothing($root) && isnothing($cutoff)
+    dendrogram = lift(ax.scene, root, cutoff) do r, c
+        if isnothing(r) && isnothing(c)
             return error("Must specify either root or cutoff to render dendrogram.")
         end
 
-        if !isnothing($cutoff)
-            lines, clusters = treepositions(cluster_data.clustering, $cutoff)
+        if !isnothing(c)
+            lines, clusters = treepositions(cluster_data.clustering, c)
         else
-            lines, clusters = treepositions(cluster_data.clustering, $root)
+            lines, clusters = treepositions(cluster_data.clustering, r)
         end
 
-        # for some reason, width indices are set by point instead of by color?
+        # for some reason, width indices are set by point instead of color?
         c2lx = Dict{ClusterSet,Vector{Int}}()
         x = 1
         for y in clusters
@@ -126,6 +124,7 @@ function dendrogram!(ax::Makie.Axis,
             x += 2
         end
 
+        # to get label idx just divide by 2
         function get_cluster(i)
             return clusters[div(i, 2)]
         end
@@ -145,7 +144,7 @@ function dendrogram!(ax::Makie.Axis,
     end
 
     highlighted = []
-    on(dendrogram) do d
+    Makie.onany(ax.scene, dendrogram) do d
         empty!(highlighted)
     end
 
@@ -168,8 +167,8 @@ function dendrogram!(ax::Makie.Axis,
         return str_limit(s)
     end
 
-    on(hovered) do hov
-        d_width.val[highlighted] .= 1
+    Makie.onany(ax.scene, hovered) do hov
+        d_width[][highlighted] .= 1
         empty!(highlighted)
 
         if !isnothing(hov)
@@ -180,9 +179,8 @@ function dendrogram!(ax::Makie.Axis,
                 ),
                 init=[]
             )
-            d_width.val[highlighted] .= 5
+            d_width[][highlighted] .= 5
         end
-        d_width[] = d_width[]
         notify(d_width)
     end
 
@@ -194,7 +192,7 @@ function dendrogram!(ax::Makie.Axis,
     )
 
     cutoff_line::Observable{Tuple{Vector{Float64},Vector{Float64}}} = Observable(dendrogram[][3])
-    on(dendrogram) do d
+    Makie.onany(ax.scene, dendrogram) do d
         # reset cutoff line
         if cutoff_reset
             cutoff_line[] = (d[3][1], [0, 0])
@@ -216,63 +214,70 @@ function dendrogram!(ax::Makie.Axis,
 
     m_events = addmouseevents!(ax.scene)
 
-    on(m_events.obs) do e
-        if e.type === MouseEventTypes.leftdown
-            if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
-                on_click(hovered[])
-            end
-        elseif e.type == MouseEventTypes.middledown
-            if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
-                on_rmb(hovered[])
-            end
-        elseif e.type === MouseEventTypes.over
-            plot, idx = pick(ax, 10)
-            if isnothing(plot) && !isnothing(hovered[])
-                hovered.val = nothing
-                notify(hovered)
-            end
+    onmouseleftdown(m_events) do e
+        if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
+            on_click(hovered[])
+        end
+    end
 
-            if plot == l
-                cutoff_hovered[] = true
-            else
-                cutoff_hovered[] = false
-            end
-            #= elseif e.type === MouseEventTypes.leftdoubleclick
-                cc = deepcopy(d_colors[])
-                d_colors[] = map(x -> set_color_alpha(x, 1.0), d_colors[])
-                notify(d_colors)
-                save("$(time()).pdf", ax.scene, backend=CairoMakie, update=false)
-                d_colors[] = cc
-                notify(d_colors) =#
-        elseif e.type == MouseEventTypes.out
-            if !isnothing(hovered[])
-                hovered.val = nothing
-                notify(hovered)
-            end
-        elseif e.type == MouseEventTypes.leftdragstart
-            if cutoff_hovered[]
-                dragging[] = true
-            end
-        elseif e.type == MouseEventTypes.leftdrag
-            if dragging[]
-                px, py = float.(mouseposition(ax.scene))
-                y = max(0.0, py)
-                cutoff_line[] = (cutoff_line[][1], [y, y])
-            end
-        elseif e.type == MouseEventTypes.leftdragstop
-            if dragging[]
-                px, py = float.(mouseposition(ax.scene))
+    onmousemiddledown(m_events) do e
+        if !dragging[] && !isnothing(hovered[]) && !cutoff_hovered[]
+            on_rmb(hovered[])
+        end
+    end
 
-                dragging[] = false
-                on_cutoff_line_drag(max(0.0, py))
-            end
+    onmouseover(m_events) do e
+        plot, idx = pick(ax, 10)
+        if isnothing(plot) && !isnothing(hovered[])
+            hovered.val = nothing
+            notify(hovered)
+        end
+
+        if plot == l
+            cutoff_hovered[] = true
+        else
+            cutoff_hovered[] = false
+        end
+    end
+
+    onmouseleftdoubleclick(m_events) do e
+        save("$(time()).pdf", ax.scene, backend=CairoMakie, update=false)
+    end
+
+    onmouseout(m_events) do e
+        if !isnothing(hovered[])
+            hovered.val = nothing
+            notify(hovered)
+        end
+    end
+
+    onmouseleftdragstart(m_events) do e
+        if cutoff_hovered[]
+            dragging[] = true
+        end
+    end
+
+    onmouseleftdrag(m_events) do e
+        if dragging[]
+            px, py = float.(mouseposition(ax.scene))
+            y = max(0.0, py)
+            cutoff_line[] = (cutoff_line[][1], [y, y])
+        end
+    end
+
+    onmouseleftdragstop(m_events) do e
+        if dragging[]
+            px, py = float.(mouseposition(ax.scene))
+
+            dragging[] = false
+            on_cutoff_line_drag(max(0.0, py))
         end
     end
 
     # add listeners to reset limits whenever something changes
-    @lift begin
-        xlo, xhi = $dendrogram[7]
-        ylo, yhi = $dendrogram[8]
+    lift(ax.scene, dendrogram) do den
+        xlo, xhi = den[7]
+        ylo, yhi = den[8]
         xlims!(ax, (xlo - 1), (xhi + 1))
         ylims!(ax, (-5, yhi + 0.1))
     end
