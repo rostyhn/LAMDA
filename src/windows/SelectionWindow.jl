@@ -635,7 +635,7 @@ function selection_window_ui(
         hovered=hovered_transition,
         on_click=on_show_cluster_click)
 
-    SCRATCHPAD_HELP = "MMB and drag - move object\nRMB on object - delete\nLMB and drag - create visual group\nRMB and drag on empty space - pan camera\nDouble LMB - create text annotation"
+    SCRATCHPAD_HELP = "MMB and drag - move object\nRMB on object - delete\nLMB and drag - create visual group\nRMB and drag on empty space - pan camera\nDouble LMB - create text annotation; hold T to make the annotation a title\nDouble LMB on object - open cluster window"
     help_icon(window, tGrid[1, 1], SCRATCHPAD_HELP)
 
     on(export_btn.clicks) do n
