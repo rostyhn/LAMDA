@@ -615,7 +615,10 @@ function selection_window_ui(
     time, scratchpad_t_slider = widgets["Movement"](window)
     sc_cbar, cbar_listeners = widgets["Colorbar"](window, render_selection, scalar_selection, invariant_selection)
 
-    ax, scratchpad_contents, scratchpad_cleanup = scratchpad!(
+    ax,
+    scratchpad_contents,
+    scratchpad_cleanup,
+    scratchpad_hovered = scratchpad!(
         window,
         tGrid[1, 1],
         selected_transitions,
@@ -637,7 +640,9 @@ function selection_window_ui(
 
     SCRATCHPAD_HELP = "MMB and drag - move object\nRMB on object - delete\nLMB and drag - create visual group\nRMB and drag on empty space - pan camera\nDouble LMB - create text annotation; hold T to make the annotation a title\nDouble LMB on object - open cluster window"
     help_icon(window, tGrid[1, 1], SCRATCHPAD_HELP)
-
+    tooltip_ax(tGrid[1, 1], scratchpad_hovered;
+        valign=1.00,
+        halign=0.01)
     on(export_btn.clicks) do n
         # export all clusters on screen
         ep = relative_path("export")

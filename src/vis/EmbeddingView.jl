@@ -36,6 +36,8 @@ function embedding_view!(
     on_click::Function=(x) -> (),
     markersize::Observable{Int}=Observable(100),
 )
+
+    currently_hovered = Observable("")
     # the makie.onany calls here ensure that the listeners are bound to the scene and get gc'd correctly
     ax = Axis(loc, backgroundcolor=:transparent,
         autolimitaspect=1)
@@ -141,12 +143,14 @@ function embedding_view!(
         flip = alignment[t][2]
         m_events = addmouseevents!(ax3d)
         onmouseover(m_events) do e
-            #@show join(string.(t, base=10), ",")
+            #@show 
             hovered[] = t
+            currently_hovered[] = "($(join(string.(t, base=10), ",")))"
         end
         onmouseout(m_events) do e
             hovered[] = nothing
             hovered_cluster[] = nothing
+            currently_hovered[] = ""
         end
         # screenshot function
         #=onmousemiddledown(m_events) do e
@@ -350,5 +354,5 @@ function embedding_view!(
         Makie.free(ax.scene)
     end
 
-    return cleanup
+    return cleanup, currently_hovered
 end

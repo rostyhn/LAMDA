@@ -116,7 +116,7 @@ function build_cluster_window(
         return layout(cd, all_cluster_data[])
     end
 
-    embedding_cleanup = embedding_view!(window[2, 1:2],
+    embedding_cleanup, embedding_hovered = embedding_view!(window[2, 1:2],
         cluster_data,
         embedding,
         scene_selector,
@@ -131,6 +131,9 @@ function build_cluster_window(
 
     EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\n"
     help_icon(window, window[2, 1:2], EMBEDDING_HELP)
+    tooltip_ax(window[2, 1:2], embedding_hovered;
+        valign=1.00,
+        halign=0.01)
 
     mat_grid = GridLayout()
     window[2:3, 3] = mat_grid

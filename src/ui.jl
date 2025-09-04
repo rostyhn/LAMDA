@@ -318,6 +318,18 @@ function inline_image(fig, img, text; kwargs...)
     return ax
 end
 
+function tooltip_ax(loc, txt; kwargs...)
+    ax = Axis(loc; backgroundcolor=:transparent, kwargs...)
+    hidedecorations!(ax)
+    hidespines!(ax)
+    disable_interactions(ax)
+
+    text!(ax, (0, 0); text=txt)
+    #ax.scene.visible[] = false
+
+    return ax
+end
+
 function inset_image(fig, loc, img, text; kwargs...)
     ax = Axis(loc; aspect=AxisAspect(1), kwargs...)
     hidedecorations!(ax)

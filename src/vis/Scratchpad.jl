@@ -44,13 +44,18 @@ function scratchpad!(
     rendered_idxes = Ref(Set{Index}())
     num_objs = Ref(1)
     views = Ref([])
+    currently_hovered = Observable("")
 
     d_start = Point2f(0.0)
     d_end = Point2f(0.0)
     c_bbox = Observable(BBox(0, 0, 0, 0))
     boxes = Ref(Dict{Index,Rect2}())
+    sw = wireframe!(ax.scene,
+        c_bbox,
+        color=:black,
+        inspectable=false,
+        visible=false)
 
-    sw = wireframe!(ax.scene, c_bbox, color=:black, inspectable=false, visible=false)
     register_interaction!(ax, :create_group) do e::MouseEvent, axis
         if e.type === MouseEventTypes.leftdragstart
             d_start = mouseposition(ax.scene)
@@ -121,7 +126,6 @@ function scratchpad!(
 
     onmouserightdown(ax_m_events) do e
         plt, idx = pick(ax.scene)
-        @show plt
         if plt isa Makie.Text
             delete!(ax.scene, plt)
             delete!(txt_to_notes[], idx)
@@ -185,9 +189,10 @@ function scratchpad!(
     end
 
     function obj_to_str(obj)
-        s = string(obj)
         if obj isa ClusterSet
             s = str_limit(get_val(cluster_annotations[], "titles", obj))
+        else
+            s = "($(join(string.(obj, base=10), ",")))"
         end
         return s
     end
@@ -250,9 +255,12 @@ function scratchpad!(
                         else
                             hovered_cluster[] = obj
                         end
+                        currently_hovered[] = obj_to_str(obj)
+
                     elseif event.type === MouseEventTypes.out
                         hovered[] = nothing
                         hovered_cluster[] = nothing
+                        currently_hovered[] = ""
 
                         activate_interaction!(ax, :create_group)
                         activate_interaction!(ax, :create_text)
@@ -400,7 +408,7 @@ function scratchpad!(
         end
     end
 
-    return ax, contents, cleanup
+    return ax, contents, cleanup, currently_hovered
 end
 
 @kwdef struct Scratchpad
@@ -501,7 +509,6 @@ end
 
 function export_scratchpad_children(dpath::String, p, children, cd::ClusterData)
     # write notes in folder
-    @show p
     notes = filter(x -> x isa String, children)
     if !isempty(notes)
         foreach(x -> x * "\n", notes)
@@ -510,12 +517,10 @@ function export_scratchpad_children(dpath::String, p, children, cd::ClusterData)
         write(nf, note)
     end
 
-    @show children
     # concat all children
     clusters = filter(x -> x isa ClusterSet, children)
     transitions = filter(x -> x isa Transition, children)
     ts = vcat(transitions, reduce(vcat, map(x -> get_transitions(cd, x), clusters), init=[]))
-    @show ts
 
     if !isempty(ts)
         export_t = export_transitions()
