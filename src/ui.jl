@@ -1,6 +1,5 @@
 function apply_alignment_to_scene(scene::Makie.Scene, alignment)
     R, flip = alignment
-    # not sure if this should be transposed or not
     rr = hcat(R, [0, 0, 0])
     fr = transpose(vcat(rr, transpose([0; 0; 0; 1])))
     scene.transformation.model[] = Float64.(fr)
@@ -49,6 +48,8 @@ function simple_arrow_view!(scene::Makie.Scene,
         return points, velocities, correlation
     end
 
+    # the api was changed and made it a lot more difficult to get the
+    # arrow sizes right
     h = arrows3d!(scene,
         lift(x -> x[1], d),
         lift(x -> x[2], d);

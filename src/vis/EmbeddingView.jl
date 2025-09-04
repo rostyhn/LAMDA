@@ -114,7 +114,7 @@ function embedding_view!(
             camera=cam3d!,
             size=(ms, ms))
 
-        # for debug purposes only! note that the flip is going to propagate regardless to avoid recalculation
+        # for debug purposes only!
         Makie.onany(ax3d, show_alignment, update=true) do showAlignment
             if showAlignment
                 apply_alignment_to_scene(ax3d, alignment[t])
@@ -258,8 +258,6 @@ function embedding_view!(
         enable_interactions(ax)
     end
 
-
-    #broadcast to try and speed it up a bit
     function shift_point(d, ms::Int)
         i, ptr = d
         scene = ptr[]
@@ -283,7 +281,9 @@ function embedding_view!(
         ax.yaxis.attributes.limits,
         markersize_4d,
         embedding,
-        t_to_pltidx) do xlim, ylim, mkr, p, pindx
+        t_to_pltidx,
+        ax.scene.viewport
+    ) do xlim, ylim, mkr, p, pindx, svp
         if length(views[]) == length(p)
             ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
             shift_point.(enumerate(views[]), Ref(ms))
