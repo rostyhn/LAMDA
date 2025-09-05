@@ -467,8 +467,14 @@ function selection_window_ui(
             on_up=cw_on_up,
             switch_cluster=switch_cluster,
         )
-        s = GLMakie.Screen(title="Cluster $(str_limit(clusters))")
+        s = GLMakie.Screen(title="LAMDA - Cluster Window")
         display(s, w)
+
+        Makie.onany(w.scene, cc, cluster_annotations, update=true) do c, ca
+            title = "LAMDA - Cluster $(str_limit(get_val(ca, "titles", c), len=25))"
+            GLMakie.set_title!(s, title)
+        end
+
 
         # create inspector after render to avoid bugs
         ds = DataInspector(w)
