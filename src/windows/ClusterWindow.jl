@@ -129,7 +129,7 @@ function build_cluster_window(
         colors,
         on_click=on_transition_select)
 
-    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera\n"
+    EMBEDDING_HELP = "PGUP - Increase size of visualizations\nPGDOWN - Decrease size of visualizations\nCTRL + LMB - Reset axis limits, helpful if points seem to disappear\nDouble LMB on transition - Add to scratchpad\nMWHL - Zoom\nRMB + drag on empty space to pan camera"
     help_icon(window, window[2, 1:2], EMBEDDING_HELP)
     tooltip_ax(window[2, 1:2], embedding_hovered;
         valign=1.00,

@@ -254,10 +254,9 @@ function setup_selection_window(active_trajectory::Trajectory,
     SQ_HELP = "K1: x -> -Inf indicates extension; x -> Inf dilation \nK2 - magnitude of distortion \nK3: x-> -1 indicates linear anisotropy (rods); x -> 1 planar anisotropy (disks)"
     function invariants_menu(figure::Makie.Figure,
         si::Observable{String}=Observable("K1"))
-
         _, invar_menu = setup_menu(figure, ["K1", "K2", "K3"], si)
         g = hgrid!(invar_menu, inline_image(figure, HELP_ICON, SQ_HELP; tellheight=false))
-
+        colsize!(g, 2, Relative(0.125))
         return si, g
     end
 
@@ -551,7 +550,7 @@ function selection_window_ui(
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cd.colors[hc], linewidth=3)
+            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cd.colors[hc], linewidth=1)
         end
         return nothing
     end
@@ -568,7 +567,7 @@ function selection_window_ui(
     end
 
     # https://github.com/MakieOrg/Makie.jl/blob/master/src/interaction/inspector.jl
-    last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; width=3)
+    last_bBox::Maybe{Wireframe{Tuple{GeometryBasics.HyperRectangle{2,Float64}}}} = draw_bbox_pixel_space!(hm_ax.scene, 0, 0; linewidth=1)
     Makie.onany(window.scene, hovered_cluster) do hc
         if !isnothing(last_bBox)
             delete!(parent_scene(last_bBox), last_bBox)
