@@ -166,17 +166,15 @@ function superquadrics_view!(scene::Makie.Scene,
 
 end
 
-function draw_bbox_pixel_space!(scene, lo, hi; color=:red, width::Int=1)
+function draw_bbox_pixel_space!(scene, lo, hi; kwargs...)
     bbox = Rect2(lo - 0.5, lo - 0.5, (hi - lo) + 1, (hi - lo) + 1)
-
     p = wireframe!(
         scene,
-        bbox,
-        color=color,
+        bbox;
         visible=true,
         inspectable=false,
         depth_shift=-1.0f-3,
-        linewidth=width
+        kwargs...
     )
     return p
 end

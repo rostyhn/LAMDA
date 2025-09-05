@@ -91,11 +91,12 @@ function build_reduction_window(active_trajectory::Trajectory,
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     # draw clusters on screen and also calculate some stats on each group
-    rendered_clusters = []
+    rendered_clusters = Ref([])
     avgs = lift(window.scene, cluster_groups, reordered_matrix) do cg, rm
-        foreach(x -> delete!(parent_scene(x), x), rendered_clusters)
+        foreach(x -> delete!(parent_scene(x), x), rendered_clusters[])
         cmap = CLUSTER_COLORMAP
         avgs = Array{Float32}(undef, length(keys(cg)))
+        pos = Vector{Tuple{Int,Int}}(undef, length(keys(cg)))
 
         for (i, (c, ts_idx)) in enumerate(cg)
             idx_to_mtx = rm[2]
@@ -103,14 +104,18 @@ function build_reduction_window(active_trajectory::Trajectory,
 
             lo = minimum(m_idx)
             hi = maximum(m_idx)
-
-            p = draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cmap[mod1(c, length(cmap))])
             vals = view(rm[1], m_idx, m_idx)
             utri = triu!(trues(size(vals)))
             avgs[i] = mean(vec(vals[utri]))
-
-            push!(rendered_clusters, p)
+            pos[i] = (lo, hi)
         end
+
+        avgrng = extrema(avgs)
+        rendered_clusters[] = map(x -> draw_bbox_pixel_space!(hm_ax.scene, x[1][1], x[1][2];
+                colormap=:binary,
+                colorrange=avgrng,
+                color=x[2]), collect(zip(pos, avgs)))
+
         return avgs
     end
     hist!(hist_ax, avgs,
@@ -191,8 +196,7 @@ function build_reduction_window(active_trajectory::Trajectory,
             Makie.free(window.scene)
             window = nothing
         end
-
-        empty!(rendered_clusters)
+        empty!(rendered_clusters[])
 
         Observables.clear(selected_dm)
         Observables.clear(cluster_groups)

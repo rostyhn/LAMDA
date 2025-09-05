@@ -551,7 +551,7 @@ function selection_window_ui(
             lo = minimum(m_idx)
             hi = maximum(m_idx)
 
-            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cd.colors[hc], width=3)
+            return draw_bbox_pixel_space!(hm_ax.scene, lo, hi; color=cd.colors[hc], linewidth=3)
         end
         return nothing
     end
