@@ -142,17 +142,18 @@ function superquadric(scale::AbstractFloat,
 end
 
 
-function apply_alignment(rot_tuple, ap_tuple)
+function apply_alignment(rot_tuple::Tuple{Matrix{Float32},Bool}, ap_tuple::Tuple{Matrix{Float32},Matrix{Float32}})
     rot, flip = rot_tuple
     s1, s2 = ap_tuple
 
-    s1a = s1 * rot
-    s2a = s2 * rot
+    s1a = rot * s1'
+    s2a = rot * s2'
 
     init = flip ? s2a : s1a
     final = flip ? s1a : s2a
 
-    return (init, final)
+    # can we do this without a copy?
+    return (Matrix(init'), Matrix(final'))
 end
 
 function angle(a, b)
