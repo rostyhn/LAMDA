@@ -165,6 +165,10 @@ function build_reduction_window(active_trajectory::Trajectory,
         colorrange=lift(x -> x[3], reordered_matrix),
         colormap=DISTANCE_MATRIX_COLORMAP)
 
+    Makie.on(window.scene, reduced) do r
+        autolimits!(red_hm_ax)
+    end
+
     Makie.onany(window.scene, go_btn.clicks) do n
         screen = window.scene.current_screens[1]
         @time setup_selection_window(active_trajectory,
@@ -173,7 +177,6 @@ function build_reduction_window(active_trajectory::Trajectory,
             reduced[][2],
             reduced[][3],
             selected_dm[],
-            h_cutoff[],
             dataPath;
             kwargs...)
         empty!(window)

@@ -7,7 +7,6 @@ function setup_selection_window(active_trajectory::Trajectory,
     transitionSequence::Vector{Transition},
     clustering::Clustering.Hclust{Float32},
     selected_dm_name::String,
-    init_h_cutoff::AbstractFloat,
     dataPath::String,
     align_with::Maybe{String}=nothing;
     sq_resolution=0.5)
@@ -38,7 +37,7 @@ function setup_selection_window(active_trajectory::Trajectory,
     end
 
     rel_t_to_idx::Dict{Transition,Int} = Dict(reverse.(collect(enumerate(transitionSequence))))
-    h_cutoff::Observable{Float32} = Observable(Float32(init_h_cutoff))
+    h_cutoff::Observable{Float32} = Observable(Float32(0.0))
 
     rm = view(dm, clustering.order, clustering.order)
     cluster_data = ClusterData(clustering, transitionSequence, rm)
