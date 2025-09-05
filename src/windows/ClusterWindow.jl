@@ -112,13 +112,8 @@ function build_cluster_window(
         hovered_transition[] = cluster_data[].ref_t
     end
 
-    embedding = lift(window.scene, cluster_data) do cd
-        return layout(cd, all_cluster_data[])
-    end
-
     embedding_cleanup, embedding_hovered = embedding_view!(window[2, 1:2],
         cluster_data,
-        embedding,
         scene_selector,
         scalar_selector,
         invariant_selection,
@@ -273,7 +268,6 @@ function build_cluster_window(
         update_colors = nothing
         clear_listener_list(cbar_listeners)
 
-        Observables.clear(embedding)
         Observables.clear(correlation)
         Observables.clear(colors)
         Observables.clear(title)
@@ -295,26 +289,4 @@ function build_cluster_window(
     end
 
     return window, cluster_cleanup
-end
-
-
-function layout(cluster_data::SingleClusterData, all_cluster_data::ClusterData)::Vector{Point2f}
-    cd = all_cluster_data
-    scd = cluster_data
-    ts = scd.ts
-
-    leaf_order = dfs_leaves(cd, scd.cluster)
-    t_order = reduce(vcat, get_transitions.(Ref(cd), leaf_order))
-
-    # could potentially use sqrt_int to build a perfect rect
-    # but may be a.) lopsided and b.) the library says it may be buggy
-    s = Int(ceil(sqrt(length(ts))))
-    H = gilbertindices((s, s))
-
-    points = Dict()
-    for (i, t) in enumerate(t_order)
-        points[t] = Point2f(Tuple(H[i])...)
-    end
-
-    return collect(map(x -> points[x], ts))
 end

@@ -1,30 +1,6 @@
-function get_extents(p, size)
-    return p[1] - size / 2, p[1] + size / 2, p[2] - size / 2, p[2] + size / 2
-end
-
-function clear_listeners!(d, t)
-    bound = get(d, t, nothing)
-    if !isnothing(bound)
-        for x in bound[1]
-            off(x)
-            x = nothing
-        end
-        empty!(bound[1])
-
-        for y in bound[2]
-            Observables.clear(y)
-            y = nothing
-        end
-        empty!(bound[2])
-
-        delete!(d, t)
-    end
-end
-
 function embedding_view!(
     loc,
     cluster_data::Observable{SingleClusterData},
-    embedding::Observable{Vector{Point2f}},
     selected_render::Observable{String},
     selected_scalar::Observable{String},
     invariant_selection::Observable{String},
@@ -50,18 +26,11 @@ function embedding_view!(
 
     # debug vars
     show_alignment = Observable(true)
-    resolve_overlap = Observable(true)
-
     nodes = scatter!(ax,
-        embedding,
+        lift(x -> x.embedding, cluster_data),
         marker=:rect,
         color=:transparent,
         inspector_label=(ins, idx, pos) -> join(string.(cluster_data[].ts[idx], base=10), ","))
-
-    Makie.onany(ax.scene, embedding, update=true) do e
-        autolimits!(ax)
-        center!(ax.scene)
-    end
 
     on(events(ax.scene).keyboardbutton) do event
         if ispressed(ax.scene, Exclusively(Keyboard.page_up))
@@ -76,17 +45,9 @@ function embedding_view!(
                 println("identity")
             end
             return Consume(true)
-        elseif ispressed(ax.scene, Exclusively(Keyboard.o))
-            resolve_overlap[] = !resolve_overlap[]
-            if resolve_overlap[]
-                println("fixing overlap")
-            else
-                println("not fixing overlap")
-            end
         end
     end
 
-    ins = DataInspector()
     frame_colors = Ref([])
     views::Base.RefValue{Vector{Base.RefValue{Makie.Scene}}} = Ref(Base.RefValue{Makie.Scene}[])
     highlighted = Ref([])
@@ -102,7 +63,8 @@ function embedding_view!(
 
     function create_scene(d, ms, alignment, render_fn)
         i, t = d
-        pos = position_on_plot(nodes, i, apply_transform=false)
+        pos = cluster_data[].embedding[i]
+        #pos = position_on_plot(nodes, i, apply_transform=false)
         # x, y is in global pixel coords
         x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
         # calculate shifted size of marker
@@ -143,7 +105,6 @@ function embedding_view!(
         flip = alignment[t][2]
         m_events = addmouseevents!(ax3d)
         onmouseover(m_events) do e
-            #@show 
             hovered[] = t
             currently_hovered[] = "($(join(string.(t, base=10), ",")))"
         end
@@ -179,6 +140,8 @@ function embedding_view!(
 
     t_to_pltidx = lift(ax.scene, cluster_data) do cd
         @debug "Rendering embedding"
+        autolimits!(ax)
+        center!(ax.scene)
         disable_interactions(ax)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
@@ -217,8 +180,6 @@ function embedding_view!(
 
         ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
         create_scene.(enumerate(ts), Ref(ms), Ref(alignment), Ref(render_fn))
-
-        center!(ax.scene)
         hovered[] = nothing
         enable_interactions(ax)
         return t_to_pltidx
@@ -231,41 +192,37 @@ function embedding_view!(
         flip = alignment[t][2]
         foreach(x -> delete!(ax3d, x),
             filter(y -> !(y isa Wireframe), ax3d.plots))
-
         render_fn(ax3d, t, flip)
         center!(ax3d)
-        # block for a millisecond so makie can catch up
-        # otherwise it seems like the renderer gets overwhelmed & it just goes oom
     end
 
     Makie.onany(ax.scene, selected_render) do sr
         disable_interactions(ax)
-        if length(views[]) == length(embedding[])
-            ts = cluster_data[].ts
-            alignment = cluster_data[].alignment
-            sr = selected_render[]
-            render_fn = (sr == "Atom") ? (x, y, z) ->
-                render_views["Atom"](
-                    x,
-                    y,
-                    selected_scalar,
-                    atom_time,
-                    z
-                ) : (x, y, z) ->
-                render_views["Superquadric"](x,
-                    y,
-                    invariant_selection,
-                    z)
-            update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr), Ref(render_fn))
-            GC.gc(true)
-        end
+        ts = cluster_data[].ts
+        alignment = cluster_data[].alignment
+        sr = selected_render[]
+        render_fn = (sr == "Atom") ? (x, y, z) ->
+            render_views["Atom"](
+                x,
+                y,
+                selected_scalar,
+                atom_time,
+                z
+            ) : (x, y, z) ->
+            render_views["Superquadric"](x,
+                y,
+                invariant_selection,
+                z)
+        update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr), Ref(render_fn))
+        GC.gc(true)
         enable_interactions(ax)
     end
 
     function shift_point(d, ms::Int)
         i, ptr = d
         scene = ptr[]
-        pos = position_on_plot(nodes, i, apply_transform=false)
+        pos = cluster_data[].embedding[i]
+
         x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
 
         vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
@@ -281,15 +238,13 @@ function embedding_view!(
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
     Makie.onany(ax.scene,
-        ax.xaxis.attributes.limits,
-        ax.yaxis.attributes.limits,
+        ax.scene.camera.projectionview,
         markersize_4d,
-        embedding,
         t_to_pltidx,
         ax.scene.viewport
-    ) do xlim, ylim, mkr, p, pindx, svp
-        if length(views[]) == length(p)
-            ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
+    ) do pv, mkr, pindx, svp
+        if length(cluster_data[].embedding) == length(views[])
+            ms = Int.(round.(pv * mkr))[1]
             shift_point.(enumerate(views[]), Ref(ms))
         end
     end

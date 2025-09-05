@@ -263,6 +263,7 @@ end
     mtx_to_t::Dict{Index,Transition}
     rel_ts::Vector{Index} # absolute indices into matrix
     alignment::Dict{Transition,Tuple{Matrix{Float32},Bool}}
+    embedding::Vector{Point2f}
 end
 
 function buildSingleClusterData(; cluster::ClusterSet,
@@ -276,7 +277,7 @@ function buildSingleClusterData(; cluster::ClusterSet,
     rel_ts = map(x -> rel_t_to_idx[x], ts)
     colors = map(x -> cluster_data.colors[Set(UInt16(x))], rel_ts)
     mat, t_to_mtx, mtx_to_t = get_local_matrix(cluster_data, ts)
-
+    embedding = layout(cluster, ts, cluster_data)
     return SingleClusterData(cluster=cluster,
         ts=ts,
         ref_t=ref_t,
@@ -285,10 +286,30 @@ function buildSingleClusterData(; cluster::ClusterSet,
         t_to_mtx=t_to_mtx,
         mtx_to_t=mtx_to_t,
         alignment=alignment,
+        embedding=embedding,
         rel_ts=rel_ts)
 end
 
-function get_cluster_of_transition(cd::SingleClusterData, i::Index)::Set{UInt16}
+function layout(root::ClusterSet, ts::AbstractArray{Transition}, all_cluster_data::ClusterData)::Vector{Point2f}
+    cd = all_cluster_data
+
+    leaf_order = dfs_leaves(cd, root)
+    t_order = reduce(vcat, get_transitions.(Ref(cd), leaf_order))
+
+    # could potentially use sqrt_int to build a perfect rect
+    # but may be a.) lopsided and b.) the library says it may be buggy
+    s = Int(ceil(sqrt(length(ts))))
+    H = gilbertindices((s, s))
+
+    points = Dict()
+    for (i, t) in enumerate(t_order)
+        points[t] = Point2f(Tuple(H[i])...)
+    end
+
+    return collect(map(x -> points[x], ts))
+end
+
+function get_cluster_of_transition(cd::SingleClusterData, i::Index)::Maybe{ClusterSet}
     if i > length(cd.rel_ts)
         @warn "tried to get non-existent index to get cluster for transition!"
         return nothing
