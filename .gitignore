@@ -2,8 +2,10 @@ cache/
 *.DS_Store
 .git/
 data/
+build/
 
 export/
+export_old/
 .ipynb_checkpoints
 .venv/
 poetry.lock

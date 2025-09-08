@@ -1,214 +1,255 @@
 function embedding_view!(
     loc,
-    data,
-    selected_render,
-    selected_scalar,
-    atom_time,
-    render_views,
-    hovered,
-    hovered_cluster,
-    colors,
-    cluster_info;
-    highlight_borders=Observable(false),
-    on_click=(x) -> (),
-    markersize=Observable(100),
+    cluster_data::Observable{SingleClusterData},
+    selected_render::Observable{String},
+    selected_scalar::Observable{String},
+    invariant_selection::Observable{String},
+    atom_time::Observable{Float32},
+    render_views::Dict{String,Function},
+    hovered::MaybeObservable{Transition},
+    hovered_cluster::MaybeObservable{ClusterSet},
+    colors::Observable{Vector{RGBAf}};
+    on_click::Function=(x) -> (),
+    markersize::Observable{Int}=Observable(100),
 )
-    ax = Axis(loc, backgroundcolor=:transparent)
-    #=on(highlight_borders, update=true) do hb
-        border_color = to_color(:black)
-        if hb
-            border_color = to_color(:red)
-        end
-        ax.topspinecolor[] = border_color
-        ax.bottomspinecolor[] = border_color
-        ax.leftspinecolor[] = border_color
-        ax.rightspinecolor[] = border_color
-    end=#
+
+    currently_hovered = Observable("")
+    # the makie.onany calls here ensure that the listeners are bound to the scene and get gc'd correctly
+    ax = Axis(loc, backgroundcolor=:transparent,
+        autolimitaspect=1)
     deregister_interaction!(ax, :rectanglezoom)
     hidedecorations!(ax)
     campixel!(ax.scene)
 
     # invisible scatter plot to set up camera
-    umap_nodes = scatter!(ax,
-        lift(x -> x[3], data),
+    markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
+
+    # debug vars
+    show_alignment = Observable(true)
+    nodes = scatter!(ax,
+        lift(x -> x.embedding, cluster_data),
         marker=:rect,
         color=:transparent,
-        inspector_label=(ins, idx, pos) -> string(data[][1][idx]))
-
-    markersize_4d = lift(x -> Point4f(x, x, 0, 0), markersize)
+        inspector_label=(ins, idx, pos) -> join(string.(cluster_data[].ts[idx], base=10), ","))
 
     on(events(ax.scene).keyboardbutton) do event
         if ispressed(ax.scene, Exclusively(Keyboard.page_up))
             markersize[] = markersize[] + 25
-            notify(markersize)
         elseif ispressed(ax.scene, Exclusively(Keyboard.page_down))
             markersize[] = markersize[] - 25
-            notify(markersize)
+        elseif ispressed(ax.scene, Exclusively(Keyboard.a))
+            show_alignment[] = !show_alignment[]
+            if show_alignment[]
+                println("aligned")
+            else
+                println("identity")
+            end
+            return Consume(true)
         end
     end
 
-    ins = DataInspector(umap_nodes)
-    t_to_pltidx = Observable(Dict(reverse.(enumerate(data[][1]))))
-
     frame_colors = Ref([])
-    views = Observable([])
+    views::Base.RefValue{Vector{Base.RefValue{Makie.Scene}}} = Ref(Base.RefValue{Makie.Scene}[])
+    highlighted = Ref([])
+    frame_widths = Ref([])
 
-    @lift begin
-        @show "re-rendering"
+    #=
+    r_window = Figure(size=(2 * 1920, 2 * 1920))
+    render_ax = LScene(r_window.scene,
+        show_axis=false,
+        scenekw=(backgroundcolor=EMBEDDED_SCENE_BACKGROUND, camera=cam3d!, clear=true),
+    )
+    r_window[1, 1] = render_ax=#
+
+    function create_scene(d, ms, alignment, render_fn)
+        i, t = d
+        pos = cluster_data[].embedding[i]
+        #pos = position_on_plot(nodes, i, apply_transform=false)
+        # x, y is in global pixel coords
+        x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
+        # calculate shifted size of marker
+        vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
+
+        ax3d = Scene(ax.scene,
+            show_axis=false,
+            viewport=vp,
+            backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
+            clear=true,
+            camera=cam3d!,
+            size=(ms, ms))
+
+        # for debug purposes only!
+        Makie.onany(ax3d, show_alignment, update=true) do showAlignment
+            if showAlignment
+                apply_alignment_to_scene(ax3d, alignment[t])
+            else
+                ax3d.transformation.model[] = Matrix(1.0I, 4, 4)
+            end
+        end
+
+        frame_color = Observable(colors[][i])
+        linewidth = Observable(3)
+
+        wireframe!(
+            ax3d,
+            Rect2f(-1, -1, 2, 2),
+            transformation=(:xy, 0),
+            color=frame_color,
+            overdraw=true,
+            linewidth=linewidth,
+            space=:clip,
+            depth_shift=1.0e-3,
+            inspectable=false
+        )
+
+        flip = alignment[t][2]
+        m_events = addmouseevents!(ax3d)
+        onmouseover(m_events) do e
+            hovered[] = t
+            currently_hovered[] = "($(join(string.(t, base=10), ",")))"
+        end
+        onmouseout(m_events) do e
+            hovered[] = nothing
+            hovered_cluster[] = nothing
+            currently_hovered[] = ""
+        end
+        # screenshot function
+        #=onmousemiddledown(m_events) do e
+            render_ax.scene.visible[] = true
+            foreach(x -> delete!(render_ax.scene, x), render_ax.scene.plots)
+            render_fn(render_ax.scene, t, flip)
+            apply_alignment_to_scene(render_ax.scene, alignment[t])
+            center!(render_ax.scene)
+
+            update_cam!(render_ax.scene, cameracontrols(ax3d))
+            x = "$(join(string.(t, base=10), "_")).png"
+            GLMakie.save(x, r_window, update=false)
+            render_ax.scene.visible[] = false
+        end=#
+        onmouseleftdoubleclick(m_events) do e
+            on_click(t)
+        end
+
+        # initial render
+        render_fn(ax3d, t, flip)
+        center!(ax3d)
+        push!(views[], Ref(ax3d))
+        push!(frame_colors[], frame_color)
+        push!(frame_widths[], linewidth)
+    end
+
+    t_to_pltidx = lift(ax.scene, cluster_data) do cd
+        @debug "Rendering embedding"
+        autolimits!(ax)
+        center!(ax.scene)
         disable_interactions(ax)
-        hovered[] = nothing
-        notify(hovered)
 
         # instead of clearing everything, why don't we keep them and only delete non-existing ones?
         for ax3d in views[]
-            Makie.free(ax3d)
+            s = ax3d[]
+            empty!(s)
+            Makie.free(s)
+            s = nothing
+            ax3d = nothing
         end
-        empty!(views.val)
+
+        empty!(views[])
+        empty!(frame_widths[])
         empty!(frame_colors[]) # update frame colors
+        empty!(highlighted[])
         GC.gc(true)
 
-        reset_limits!(ax)
-        center!(ax.scene)
+        ts = cd.ts
+        alignment = cd.alignment
 
-        alignment = Observable(data[][2])
-        for (i, t) in enumerate($data[1])
-            pos = position_on_plot(umap_nodes, i, apply_transform=false)
-            # x, y is in global pixel coords
-            x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
-            # calculate shifted size of marker
-            ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
-            vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
+        t_to_pltidx = Dict(reverse.(enumerate(ts)))
 
-            ax3d = Scene(ax.scene,
-                show_axis=false,
-                viewport=vp,
-                backgroundcolor=EMBEDDED_SCENE_BACKGROUND,
-                clear=true,
-                size=(ms, ms))
-            cam3d!(ax3d)
+        sr = selected_render[]
+        render_fn = (sr == "Atom") ? (x, y, z) ->
+            render_views["Atom"](
+                x,
+                y,
+                selected_scalar,
+                atom_time,
+                z
+            ) : (x, y, z) ->
+            render_views["Superquadric"](x,
+                y,
+                invariant_selection,
+                z)
 
-            # sets to color of original leaves
-            frame_color = Observable(colors[][i])
-            # sets to color of assignment 
-            # set_color_alpha(cluster_color(cluster_info, t), 0.6))
-
-            wireframe!(
-                ax3d,
-                Rect2f(-1, -1, 2, 2),
-                transformation=(:xy, 0),
-                color=frame_color,
-                overdraw=true,
-                linewidth=10,
-                space=:clip,
-                depth_shift=1.0e-3,
-                inspectable=false
-            )
-
-            m_events = addmouseevents!(ax3d)
-            on(m_events.obs) do event
-                if event.type === MouseEventTypes.over
-                    #show_data(ins, umap_nodes, i)
-                    hovered[] = t
-                    notify(hovered)
-
-                    c = get_cluster_of_transition(cluster_info, t)
-                    hovered_cluster[] = c
-                    notify(hovered_cluster)
-                elseif event.type === MouseEventTypes.out
-                    hovered[] = nothing
-                    notify(hovered)
-
-                    hovered_cluster[] = nothing
-                    notify(hovered_cluster)
-                elseif event.type === MouseEventTypes.leftdoubleclick
-                    on_click(t)
-                end
-            end
-
-            # initial render
-            sr = selected_render[]
-            if sr == "Volume"
-                render_views[sr](ax3d, t)
-            elseif sr == "Atom"
-                render_views["Atom"](ax3d,
-                    Observable(t),
-                    selected_scalar,
-                    atom_time,
-                    alignment)
-            else
-                inspector = DataInspector(ax3d)
-                render_views["Superquadric"](ax3d,
-                    Observable(t),
-                    inspector,
-                    alignment)
-            end
-            center!(ax3d)
-            yield()
-
-            push!(views.val, ax3d)
-            push!(frame_colors[], frame_color)
-        end
-        t_to_pltidx[] = Dict(reverse.(enumerate(data[][1])))
-        notify(views)
+        ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
+        create_scene.(enumerate(ts), Ref(ms), Ref(alignment), Ref(render_fn))
+        hovered[] = nothing
         enable_interactions(ax)
-
+        return t_to_pltidx
     end
 
-    on(selected_render) do sr
+    function update_scene(d, ts, alignment, sr, render_fn)
+        i, ptr = d
+        ax3d = ptr[]
+        t = ts[i]
+        flip = alignment[t][2]
+        foreach(x -> delete!(ax3d, x),
+            filter(y -> !(y isa Wireframe), ax3d.plots))
+        render_fn(ax3d, t, flip)
+        center!(ax3d)
+    end
+
+    Makie.onany(ax.scene, selected_render) do sr
         disable_interactions(ax)
-        if length(views[]) == length(data[][3])
-            alignment = Observable(data[][2])
-            for (i, ax3d) in enumerate(views[])
-                t = data[][1][i]
-                foreach(x -> delete!(ax3d, x), filter(y -> !(y isa Wireframe), ax3d.plots))
-                if sr == "Volume"
-                    render_views[sr](ax3d, Observable(t))
-                elseif sr == "Atom"
-                    render_views["Atom"](ax3d,
-                        Observable(t),
-                        selected_scalar,
-                        atom_time,
-                        alignment)
-                else
-                    inspector = DataInspector(ax3d)
-                    render_views["Superquadric"](ax3d,
-                        Observable(t),
-                        inspector,
-                        alignment)
-                end
-                center!(ax3d)
-                # block for a millisecond so makie can catch up
-                # otherwise it seems like the renderer gets overwhelmed & it just goes oom
-                yield()
-            end
-            GC.gc(true)
-        end
+        ts = cluster_data[].ts
+        alignment = cluster_data[].alignment
+        sr = selected_render[]
+        render_fn = (sr == "Atom") ? (x, y, z) ->
+            render_views["Atom"](
+                x,
+                y,
+                selected_scalar,
+                atom_time,
+                z
+            ) : (x, y, z) ->
+            render_views["Superquadric"](x,
+                y,
+                invariant_selection,
+                z)
+        update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr), Ref(render_fn))
+        GC.gc(true)
         enable_interactions(ax)
+    end
+
+    function shift_point(d, ms::Int)
+        i, ptr = d
+        scene = ptr[]
+        pos = cluster_data[].embedding[i]
+
+        x, y = shift_project(ax.scene, apply_transform_and_model(nodes, pos))
+
+        vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
+        vp = GeometryBasics.intersect(vp, ax.scene.viewport[])
+        vw = widths(vp)
+
+        if any(w -> w <= 0, vw)
+            vp = Rect2i(0, 0, 0, 0)
+        end
+
+        scene.viewport[] = vp
     end
 
     #https://github.com/MakieOrg/Makie.jl/blob/381cf4a1ade5bf1a36b254ce6daccb5cbc71939e/GLMakie/assets/shader/dots.vert#L55
-    onany(ax.xaxis.attributes.limits, ax.yaxis.attributes.limits, markersize_4d) do xlim, ylim, mkr
-        if length(views[]) == length(data[][3])
-            ms = Int.(round.(ax.scene.camera.projectionview[] * mkr))[1]
-            for (i, scene) in enumerate(views[])
-                pos = position_on_plot(umap_nodes, i, apply_transform=false)
-                x, y = shift_project(ax.scene, apply_transform_and_model(umap_nodes, pos))
-
-                vp = Rect2i(x - (ms / 2), y - (ms / 2), ms, ms)
-                vp = GeometryBasics.intersect(vp, ax.scene.viewport[])
-                vw = widths(vp)
-
-                if any(w -> w <= 0, vw)
-                    vp = Rect2i(0, 0, 0, 0)
-                end
-
-                scene.viewport[] = vp
-            end
+    Makie.onany(ax.scene,
+        ax.scene.camera.projectionview,
+        markersize_4d,
+        t_to_pltidx,
+        ax.scene.viewport
+    ) do pv, mkr, pindx, svp
+        if length(cluster_data[].embedding) == length(views[])
+            ms = Int.(round.(pv * mkr))[1]
+            shift_point.(enumerate(views[]), Ref(ms))
         end
     end
 
-    highlighted = Ref([])
-    c_listener = on(colors) do c_list
+    Makie.onany(ax.scene, colors) do c_list
         if length(c_list) == length(frame_colors[])
             empty!(highlighted[])
             for (i, c) in enumerate(c_list)
@@ -217,55 +258,56 @@ function embedding_view!(
         end
     end
 
-    hover_listener = onany(hovered, hovered_cluster) do hov, hc
-        if isnothing(hov) && isnothing(hc)
-            for (v_idx, ogColor) in highlighted[]
-                frame_colors[][v_idx][] = set_color_alpha(ogColor, 0.6)
-            end
-            empty!(highlighted[])
-        end
 
-        if !isnothing(hov) && hov in data[][1]
-            v_idx = t_to_pltidx[][hov]
-            ogColor = frame_colors[][v_idx][]
-            frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-            push!(highlighted[], (v_idx, ogColor))
+    # converts hovered into its cluster
+    # since you can't hover both a cluster and a transition simultaneously, this frees up the logic underneath
+    Makie.onany(ax.scene, hovered) do hov
+        pindx = to_value(t_to_pltidx)
+        if !isnothing(hov) && haskey(pindx, hov)
+            c = get_cluster_of_transition(cluster_data[], pindx[hov])
+            hovered_cluster[] = c
         end
+    end
+
+    Makie.onany(ax.scene, hovered_cluster) do hc
+        for v_idx in highlighted[]
+            frame_widths[][v_idx][] = 3
+        end
+        empty!(highlighted[])
 
         if !isnothing(hc)
-            ts = collect(keys(t_to_pltidx[]))
-            for t in ts
-                c = get_cluster_of_transition(cluster_info, t)
-                if length(intersect(c, hc)) > 0
-                    v_idx = t_to_pltidx[][t]
-                    ogColor = frame_colors[][v_idx][]
-                    frame_colors[][v_idx][] = set_color_alpha(ogColor, 1.0)
-                    push!(highlighted[], (v_idx, ogColor))
+            for i in values(to_value(t_to_pltidx))
+                c = get_cluster_of_transition(cluster_data[], i)
+                if !isnothing(c) && length(intersect(c, hc)) > 0
+                    if i <= length(frame_widths[])
+                        frame_widths[][i][] = 10
+                        push!(highlighted[], i)
+                    end
                 end
             end
         end
     end
 
-    # if I wanted to do this I could just write C
-    on(events(ax.scene).window_open) do e
-        if !e
-            for l in hover_listener
-                off(l)
-                l = nothing
-            end
-            empty!(hover_listener)
-            #off(c_listener)
-            c_listener = nothing
 
-            for ax3d in views[]
-                empty!(ax3d)
-                Makie.free(ax3d)
-            end
-            empty!(views[])
-            empty!(frame_colors[]) # update frame colors
-            GC.gc(true)
+    # if I wanted to do this I could just write C
+    cleanup = function ()
+        @debug "kill embedding"
+        for ptr in views[]
+            ax3d = ptr[]
+            empty!(ax3d)
+            Makie.free(ax3d)
+            ax3d = nothing
+            ptr = nothing
         end
+
+        empty!(views[])
+        Observables.clear.(frame_colors[])
+        empty!(frame_colors[]) # update frame colors
+        empty!(frame_widths[])
+
+        empty!(ax.scene)
+        Makie.free(ax.scene)
     end
 
-    return umap_nodes
+    return cleanup, currently_hovered
 end
