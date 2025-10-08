@@ -31,7 +31,7 @@ trajectory_name/ # used as input to go()
         - some_distance_metric/
             - dm.pickle # distance matrix defined for all transitions; Matrix{Float}
     alignment/
-        - some_features.pickle # alignment features; Dict{Tuple{Int, Int}, Tuple{Matrix{Float}, Matrix{Float}}
+        - some_features.pickle # alignment features; Dict{Int, Matrix{Float}}
     scalars/ # optional
         - some_scalar.pickle # per-atom scalar values; Dict{Tuple{Int,Int}, Vector{Float}}
     per_t_scalars/ # optional
