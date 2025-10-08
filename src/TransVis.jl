@@ -30,6 +30,7 @@ using Clustering: Clustering, hclust, cutree, kmedoids
 using NearestNeighbors
 using MultivariateStats
 using GilbertCurves
+using Random
 
 include("constants.jl")
 include("data_types.jl")
@@ -64,11 +65,63 @@ function __init__()
     GLMakie.activate!()
 end
 
-export go
+export go, compare_matrices
 
 function julia_main()::Cint
     go(ARGS[1])
     return 0
+end
+
+function compare_matrices(trajectory_name::String; cachePath::String=default_cache())
+    # script that compares clusters
+    dataPath = abspath(trajectory_name)
+
+    active_trajectory = get_data_alt(dataPath, cachePath)
+    set_theme!(UI_THEME)
+
+    dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
+
+    # https://strehl.com/diss/node80.html
+    clusterings = Dict()
+    for (x, xm) in dms
+        c = hclust(xm; linkage=:ward, branchorder=:barjoseph)
+        clusterings[x] = c
+    end
+
+    fms = Dict()
+    for (x, c) in clusterings
+        for (y, cc) in clusterings
+            if x != y
+                fm_vals = []
+                for k in collect(2:50)
+                    fm = fowlkes_mallows_index(cutree(c, k=k), cutree(cc, k=k))
+                    @show x, y, k, fm
+                    push!(fm_vals, fm)
+                end
+                fms[x*"_"*y] = fm_vals
+            end
+        end
+    end
+
+    n = length(active_trajectory.transitions)
+    m = zeros(Float32, n, n)
+    for (x, c) in clusterings
+        m += labels_to_similarity_mat(cutree(c, k=10))
+    end
+    m = m ./ length(keys(clusterings))
+
+    heatmap(m)
+    #=
+    for (x, xm) in dms
+        xmr = to_ranked(xm)
+        for (y, ym) in dms
+            if x != y
+                ymr = to_ranked(ym)
+                @show x, y, corspearman(xmr, ymr)
+            end
+        end
+    end
+    =#
 end
 
 function go(trajectory_name::String; cachePath::String=default_cache(), kwargs...)::Int

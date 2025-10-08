@@ -262,3 +262,67 @@ function int_sqrt(x)
     m = div(x, n)
     return m, n
 end
+
+function labels_to_similarity_mat(labels)
+    m = zeros(length(labels), length(labels))
+    u = get_indices_of_unique_elements(labels)
+    for (i, x) in enumerate(labels)
+        m[i, u[x]] .= 1
+    end
+    return m
+end
+
+function get_indices_of_unique_elements(arr)
+    unique_indices = Dict{eltype(arr),Vector{Int}}()
+    for (index, value) in enumerate(arr)
+        if haskey(unique_indices, value)
+            push!(unique_indices[value], index)
+        else
+            unique_indices[value] = [index]
+        end
+    end
+    return unique_indices
+end
+
+
+function fowlkes_mallows_index(labels1::Vector{T}, labels2::Vector{T}) where {T}
+    # Ensure label vectors have the same length
+    if length(labels1) != length(labels2)
+        throw(ArgumentError("Label vectors must have the same length"))
+    end
+
+    n = length(labels1)
+    if n < 2
+        return 1.0 # Or throw an error, depending on desired behavior for trivial cases
+    end
+
+    # Create a contingency matrix
+    contingency_matrix = StatsBase.counts(labels1, labels2)
+
+    # Calculate agreements
+    # TP: Number of pairs of points that are in the same cluster in both labels.
+    # This is the sum of n_ij * (n_ij - 1) / 2 for all cells in the contingency matrix.
+    sum_contingency = sum(n * (n - 1) / 2 for n in contingency_matrix)
+
+    # Sums for each label vector
+    sum1 = sum(c * (c - 1) / 2 for c in sum(contingency_matrix, dims=2))
+    sum2 = sum(c * (c - 1) / 2 for c in sum(contingency_matrix, dims=1))
+
+    # Calculate the index components
+    TP = sum_contingency
+    FP = sum1 - TP
+    FN = sum2 - TP
+
+    # Compute the Fowlkes-Mallows Index
+    # Handle the case of zero denominator
+    denominator = sqrt(TP + FP) * sqrt(TP + FN)
+    if denominator == 0
+        return 0.0
+    else
+        return TP / denominator
+    end
+end
+
+function to_ranked(m)
+    return denserank(vec(m))
+end

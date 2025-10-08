@@ -10,6 +10,23 @@ function build_reduction_window(active_trajectory::Trajectory,
     top_bar(window, "Reduction", 2)
     # only need transitions and distance matrix
     dms::Dict{String,Matrix{Float32}} = active_trajectory.dms
+
+    clusterings = Dict()
+    for (x, xm) in dms
+        c = hclust(xm; linkage=:ward, branchorder=:barjoseph)
+        clusterings[x] = c
+    end
+
+    n = length(active_trajectory.transitions)
+    m = zeros(Float32, n, n)
+    for (x, c) in clusterings
+        m += labels_to_similarity_mat(cutree(c, k=10))
+    end
+    m = m ./ length(keys(clusterings))
+
+    dms["consensus"] = 1 .- m
+
+
     transitionSequence::Vector{Transition} = active_trajectory.transitions
     t_to_idx::Dict{Transition,Int} = active_trajectory.t_to_idx
 
@@ -118,6 +135,7 @@ function build_reduction_window(active_trajectory::Trajectory,
 
         return avgs
     end
+
     hist!(hist_ax, avgs,
         strokewidth=1,
         strokecolor=:black,
