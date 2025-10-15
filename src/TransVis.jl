@@ -26,7 +26,7 @@ using GLMakie: Screen, ScreenConfig
 using GLMakie
 using Observables
 
-using Clustering: Clustering, hclust, cutree, kmedoids
+using Clustering: Clustering, hclust, cutree, kmedoids, clustering_quality
 using NearestNeighbors
 using MultivariateStats
 using GilbertCurves
@@ -84,33 +84,36 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
     # https://strehl.com/diss/node80.html
     clusterings = Dict()
     for (x, xm) in dms
-        c = hclust(xm; linkage=:ward, branchorder=:barjoseph)
-        clusterings[x] = c
+        clustering = hclust(xm; linkage=:ward, branchorder=:barjoseph)
+        # find optimal K 
+        #k = get_optimal_k(clustering, xm)
+        #@show x, k
+        clusterings[x] = clustering#cutree(clustering, k=k)
     end
 
-    fms = Dict()
+    #=fms = Dict()
     for (x, c) in clusterings
         for (y, cc) in clusterings
             if x != y
                 fm_vals = []
-                for k in collect(2:50)
-                    fm = fowlkes_mallows_index(cutree(c, k=k), cutree(cc, k=k))
-                    @show x, y, k, fm
-                    push!(fm_vals, fm)
-                end
+                fm = fowlkes_mallows_index(c, cc)
+                @show x, y, fm
+                push!(fm_vals, fm)
                 fms[x*"_"*y] = fm_vals
             end
         end
-    end
+    end=#
 
     n = length(active_trajectory.transitions)
     m = zeros(Float32, n, n)
     for (x, c) in clusterings
-        m += labels_to_similarity_mat(cutree(c, k=10))
+        for k in collect(2:50)
+            m += labels_to_similarity_mat(cutree(c, k=k))
+        end
     end
-    m = m ./ length(keys(clusterings))
+    m = m ./ (length(keys(clusterings)) * length(collect(2:50)))
 
-    heatmap(m)
+    heatmap(1 .- m)
     #=
     for (x, xm) in dms
         xmr = to_ranked(xm)

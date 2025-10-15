@@ -326,3 +326,18 @@ end
 function to_ranked(m)
     return denserank(vec(m))
 end
+
+
+function get_optimal_k(clustering, dm)
+    ss = []
+    dd = []
+    for k in collect(2:50)
+        labels = cutree(clustering, k=k)
+        s = clustering_quality(labels, dm; quality_index=:silhouettes)
+        d = clustering_quality(labels, dm; quality_index=:dunn)
+        push!(ss, s)
+        push!(dd, d)
+    end
+
+    return argmax(dd) + 1
+end

@@ -20,10 +20,11 @@ function build_reduction_window(active_trajectory::Trajectory,
     n = length(active_trajectory.transitions)
     m = zeros(Float32, n, n)
     for (x, c) in clusterings
-        m += labels_to_similarity_mat(cutree(c, k=10))
+        for k in collect(2:50)
+            m += labels_to_similarity_mat(cutree(c, k=k))
+        end
     end
-    m = m ./ length(keys(clusterings))
-
+    m = m ./ (length(keys(clusterings)) * length(collect(2:50)))
     dms["consensus"] = 1 .- m
 
 
@@ -152,7 +153,6 @@ function build_reduction_window(active_trajectory::Trajectory,
         red_t_list = Vector{Transition}(undef, n)
         red_t_to_idx = Dict{Transition,Index}()
         idxes = Vector{Index}(undef, n)
-
         m = dms[sel]
         for (i, (clusterIdx, g)) in enumerate(cg)
             # find reference t
@@ -170,10 +170,14 @@ function build_reduction_window(active_trajectory::Trajectory,
             idxes[i] = mtx_idx
         end
 
+        xmr = to_ranked(m)
+        xmr = Float32.(reshape(xmr, size(m)))
+
         redmat = view(reo[1], idxes, idxes)
+        rredmat = view(reo[1], idxes, idxes)
 
         # should just do this here and pass it down to main instead of doing it twice
-        cluster = hclust(redmat, linkage=:ward, branchorder=:barjoseph)
+        cluster = hclust(rredmat, linkage=:ward, branchorder=:barjoseph)
         return redmat, red_t_list, cluster
     end
 
