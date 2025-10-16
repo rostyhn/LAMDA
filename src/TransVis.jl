@@ -99,8 +99,6 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
     dms["consensus"] = 1 .- m
     clusterings["consensus"] = hclust(1 .- m; linkage=:ward, branchorder=:barjoseph)
 
-    #heatmap(1 .- m)
-
     fms = Dict()
     for (x, c) in clusterings
         for (y, cc) in clusterings
@@ -115,19 +113,24 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
         end
     end
 
-    for name in keys(clusterings)
-        f = Figure(size=(1920, 1080))
-        ks = filter(x -> name in x, keys(fms))
-        Label(f[1, 1], text=name, tellwidth=false, tellheight=false)
-        for (i, k) in enumerate(ks)
-            other = (k[2] == name) ? k[1] : k[2]
-            ax = Axis(f[i+1, 1], title=other)
-            v = fms[k]
-            lines!(ax, collect(2:length(v)+1), v, color=(other == "consensus") ? :red : :blue)
-            ylims!(ax, 0.0, 1.0)
+    f = Figure(size=(1920, 1080))
+    order = sort(collect(keys(clusterings)))
+    for (j, name) in enumerate(order)
+        Label(f[1, j], text=name, tellwidth=false, tellheight=false)
+        for (i, k) in enumerate(order)
+            ax = Axis(f[i+1, j], title=k)
+            if k != name
+                v = get(fms, (name, k), nothing)
+                if isnothing(v)
+                    v = fms[(k, name)]
+                end
+                lines!(ax, collect(2:length(v)+1), v, color=(k == "consensus") ? :red : :blue)
+                ylims!(ax, 0.0, 1.0)
+            end
         end
-        GLMakie.save(name * "_FM.png", f)
     end
+    GLMakie.save("FM.png", f)
+    @info "Saved FM charts as FM.png"
 
     for (x, xm) in dms
         xmr = to_ranked(xm)

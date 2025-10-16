@@ -11,3 +11,4 @@ export_old/
 poetry.lock
 
 .pdf
+*.png
