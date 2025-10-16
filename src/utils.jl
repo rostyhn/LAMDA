@@ -1,16 +1,34 @@
-function unix_default_cache_dir()
-
-end
-
 function default_cache()::String
     if Sys.iswindows()
-        error("Not implemented for Window yet")
+        error("Not implemented for Windows yet.")
     else
         hdir = abspath(homedir())
         p = joinpath([hdir, ".cache", "LAMDA"])
         mkpath(p)
         return p
     end
+end
+
+function random_string()
+    u = uuid4()
+    ui = reinterpret(UInt128, u)
+    return uint128_to_base36(ui)
+end
+
+function uint128_to_base36(n::UInt128)
+    if n == 0
+        return "0"
+    end
+
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    result = ""
+
+    while n > 0
+        n, remainder = divrem(n, 36)
+        result = digits[Int(remainder)+1] * result
+    end
+
+    return result
 end
 
 function clear_listener_list(xs)

@@ -13,7 +13,7 @@ function build_reduction_window(active_trajectory::Trajectory,
 
     clusterings = Dict()
     for (x, xm) in dms
-        c = hclust(xm; linkage=:ward, branchorder=:barjoseph)
+        c = hclust(to_ranked_mat(xm); linkage=:ward, branchorder=:barjoseph)
         clusterings[x] = c
     end
 
@@ -26,7 +26,7 @@ function build_reduction_window(active_trajectory::Trajectory,
     end
     m = m ./ (length(keys(clusterings)) * length(collect(2:50)))
     dms["consensus"] = 1 .- m
-
+    clusterings["consensus"] = hclust(to_ranked_mat(1 .- m); linkage=:ward, branchorder=:barjoseph)
 
     transitionSequence::Vector{Transition} = active_trajectory.transitions
     t_to_idx::Dict{Transition,Int} = active_trajectory.t_to_idx
@@ -35,10 +35,8 @@ function build_reduction_window(active_trajectory::Trajectory,
 
     selected_dm::Observable{String} = Observable((isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix, ignore_equal_values=true)
 
-    clustering::Observable{Clustering.Hclust{Float32}} = lift(window.scene, selected_dm) do sel
-        @info "Clustering $sel"
-        res = hclust(dms[sel], linkage=:ward, branchorder=:barjoseph)
-        return res
+    clustering::Observable{Clustering.Hclust{<:AbstractFloat}} = lift(window.scene, selected_dm) do sel
+        return clusterings[sel]
     end
 
     cluster_groups::Observable{Dict{Int,Vector{Int}}} = lift(window.scene, clustering, h_cutoff) do clus, cutoff
@@ -112,7 +110,6 @@ function build_reduction_window(active_trajectory::Trajectory,
     rendered_clusters = Ref([])
     avgs = lift(window.scene, cluster_groups, reordered_matrix) do cg, rm
         foreach(x -> delete!(parent_scene(x), x), rendered_clusters[])
-        cmap = CLUSTER_COLORMAP
         avgs = Array{Float32}(undef, length(keys(cg)))
         pos = Vector{Tuple{Int,Int}}(undef, length(keys(cg)))
 
@@ -170,14 +167,11 @@ function build_reduction_window(active_trajectory::Trajectory,
             idxes[i] = mtx_idx
         end
 
-        xmr = to_ranked(m)
-        xmr = Float32.(reshape(xmr, size(m)))
-
         redmat = view(reo[1], idxes, idxes)
         rredmat = view(reo[1], idxes, idxes)
 
         # should just do this here and pass it down to main instead of doing it twice
-        cluster = hclust(rredmat, linkage=:ward, branchorder=:barjoseph)
+        cluster = hclust(to_ranked_mat(rredmat), linkage=:ward, branchorder=:barjoseph)
         return redmat, red_t_list, cluster
     end
 

@@ -31,6 +31,7 @@ using NearestNeighbors
 using MultivariateStats
 using GilbertCurves
 using Random
+using UUIDs
 
 include("constants.jl")
 include("data_types.jl")
@@ -72,7 +73,7 @@ function julia_main()::Cint
     return 0
 end
 
-function compare_matrices(trajectory_name::String; cachePath::String=default_cache())
+function compare_matrices(trajectory_name::String; id::String=random_string(), cachePath::String=default_cache())
     # script that compares clusters
     dataPath = abspath(trajectory_name)
 
@@ -84,7 +85,7 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
     # https://strehl.com/diss/node80.html
     clusterings = Dict()
     for (x, xm) in dms
-        clustering = hclust(xm; linkage=:ward, branchorder=:barjoseph)
+        clustering = hclust(to_ranked_mat(xm); linkage=:ward, branchorder=:barjoseph)
         clusterings[x] = clustering
     end
     n = length(active_trajectory.transitions)
@@ -129,8 +130,8 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
             end
         end
     end
-    GLMakie.save("FM.png", f)
-    @info "Saved FM charts as FM.png"
+    GLMakie.save("FM_$(id).png", f)
+    @info "Saved FM charts as FM_$(id).png"
 
     for (x, xm) in dms
         xmr = to_ranked(xm)

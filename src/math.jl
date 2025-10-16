@@ -327,6 +327,10 @@ function to_ranked(m)
     return denserank(vec(m))
 end
 
+function to_ranked_mat(m)
+    ranks = denserank(vec(m))
+    return Float32.(reshape(ranks, size(m)))
+end
 
 function get_optimal_k(clustering, dm)
     ss = []
