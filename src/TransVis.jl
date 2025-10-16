@@ -85,25 +85,8 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
     clusterings = Dict()
     for (x, xm) in dms
         clustering = hclust(xm; linkage=:ward, branchorder=:barjoseph)
-        # find optimal K 
-        #k = get_optimal_k(clustering, xm)
-        #@show x, k
-        clusterings[x] = clustering#cutree(clustering, k=k)
+        clusterings[x] = clustering
     end
-
-    #=fms = Dict()
-    for (x, c) in clusterings
-        for (y, cc) in clusterings
-            if x != y
-                fm_vals = []
-                fm = fowlkes_mallows_index(c, cc)
-                @show x, y, fm
-                push!(fm_vals, fm)
-                fms[x*"_"*y] = fm_vals
-            end
-        end
-    end=#
-
     n = length(active_trajectory.transitions)
     m = zeros(Float32, n, n)
     for (x, c) in clusterings
@@ -113,8 +96,39 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
     end
     m = m ./ (length(keys(clusterings)) * length(collect(2:50)))
 
-    heatmap(1 .- m)
-    #=
+    dms["consensus"] = 1 .- m
+    clusterings["consensus"] = hclust(1 .- m; linkage=:ward, branchorder=:barjoseph)
+
+    #heatmap(1 .- m)
+
+    fms = Dict()
+    for (x, c) in clusterings
+        for (y, cc) in clusterings
+            if x != y && !((x, y) in keys(fms)) && !((y, x) in keys(fms))
+                fm_vals = []
+                for k in collect(2:50)
+                    fm = fowlkes_mallows_index(cutree(c, k=k), cutree(cc, k=k))
+                    push!(fm_vals, fm)
+                end
+                fms[(x, y)] = fm_vals
+            end
+        end
+    end
+
+    for name in keys(clusterings)
+        f = Figure(size=(1920, 1080))
+        ks = filter(x -> name in x, keys(fms))
+        Label(f[1, 1], text=name, tellwidth=false, tellheight=false)
+        for (i, k) in enumerate(ks)
+            other = (k[2] == name) ? k[1] : k[2]
+            ax = Axis(f[i+1, 1], title=other)
+            v = fms[k]
+            lines!(ax, collect(2:length(v)+1), v, color=(other == "consensus") ? :red : :blue)
+            ylims!(ax, 0.0, 1.0)
+        end
+        GLMakie.save(name * "_FM.png", f)
+    end
+
     for (x, xm) in dms
         xmr = to_ranked(xm)
         for (y, ym) in dms
@@ -124,7 +138,6 @@ function compare_matrices(trajectory_name::String; cachePath::String=default_cac
             end
         end
     end
-    =#
 end
 
 function go(trajectory_name::String; cachePath::String=default_cache(), kwargs...)::Int
