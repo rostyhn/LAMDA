@@ -264,7 +264,7 @@ function int_sqrt(x)
 end
 
 function labels_to_similarity_mat(labels)
-    m = zeros(length(labels), length(labels))
+    m = zeros(Int, length(labels), length(labels))
     u = get_indices_of_unique_elements(labels)
     for (i, x) in enumerate(labels)
         m[i, u[x]] .= 1
@@ -275,11 +275,7 @@ end
 function get_indices_of_unique_elements(arr)
     unique_indices = Dict{eltype(arr),Vector{Int}}()
     for (index, value) in enumerate(arr)
-        if haskey(unique_indices, value)
-            push!(unique_indices[value], index)
-        else
-            unique_indices[value] = [index]
-        end
+        push!(get!(unique_indices, value, Vector{Int}()), index)
     end
     return unique_indices
 end

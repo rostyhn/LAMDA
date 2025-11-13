@@ -647,6 +647,7 @@ function selection_window_ui(
     tooltip_ax(tGrid[1, 1], scratchpad_hovered;
         valign=1.00,
         halign=0.01)
+
     on(export_btn.clicks) do n
         # export all clusters on screen
         ep = relative_path("export")

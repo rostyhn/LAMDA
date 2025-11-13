@@ -37,15 +37,28 @@ function embedding_view!(
             markersize[] = markersize[] + 25
         elseif ispressed(ax.scene, Exclusively(Keyboard.page_down))
             markersize[] = markersize[] - 25
-        elseif ispressed(ax.scene, Exclusively(Keyboard.a))
+        #= elseif ispressed(ax.scene, Keyboard.w) 
+            @show ax.scene.camera 
+            proj = ax.scene.camera.projection[]
+            proj[2,2] += 0.1
+            Makie.set_proj_view!(ax.scene.camera, proj, Makie.Mat4f(Makie.I))
+
+            # translate_cam!(ax.scene, [1,0])
+        elseif ispressed(ax.scene, Keyboard.s) 
+            translate_cam!(ax.scene, [-1,0])
+        elseif ispressed(ax.scene, Keyboard.a) 
+            translate_cam!(ax.scene, [0,-1])
+        elseif ispressed(ax.scene, Keyboard.d) 
+            translate_cam!(ax.scene, [0,1])=#
+        elseif ispressed(ax.scene, Exclusively(Keyboard.p))
             show_alignment[] = !show_alignment[]
             if show_alignment[]
                 println("aligned")
             else
                 println("identity")
             end
-            return Consume(true)
         end
+        return Consume(true)
     end
 
     frame_colors = Ref([])
