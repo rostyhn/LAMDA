@@ -596,9 +596,13 @@ function selection_window_ui(
 
     export_btn = Button(window, label="Export", halign=:right)
     export_menu = Menu(window, options=["Scratchpad", "Cutoff", "All"], default="Scratchpad", tellwidth=false, halign=:right)
+
+
     menu_bar[1, 3] = export_btn
     menu_bar[1, 4] = export_menu
-    menu_bar[1, 5] = settings_btn
+    leaves_only_cb = Toggle(menu_bar[1, 5], active=false)
+    menu_bar[1, 6] = Label(window, "Leaves only", halign=:left)
+    menu_bar[1, 7] = settings_btn
 
     dGrid[3, 1] = Colorbar(window,
         vertical=false,
@@ -667,6 +671,7 @@ function selection_window_ui(
                 ep,
                 dataPath;
                 overwrite=true,
+                leaves_only=leaves_only_cb.active[],
                 use_cutoff=false)
         elseif export_menu.selection[] == "Cutoff"
             @time export_all(trajectory_name,
@@ -676,6 +681,7 @@ function selection_window_ui(
                 ep,
                 dataPath;
                 overwrite=true,
+                leaves_only=leaves_only_cb.active[],
                 use_cutoff=true)
         else
             @time export_scratchpad(scratchpad_contents(), cluster_data, ep, dataPath)

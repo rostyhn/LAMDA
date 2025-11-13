@@ -10,4 +10,6 @@ export_old/
 .venv/
 poetry.lock
 
+charts/
+old_data/
 .pdf
