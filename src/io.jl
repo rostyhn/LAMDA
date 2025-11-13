@@ -230,9 +230,10 @@ function export_cluster(trajectory_name::String,
             end
         end
         ts = get_transitions(cd, cluster)
+        ref_t = find_group_centroid(ts, cd)
         dpath = joinpath(dataPath, "t_ase_dict.pickle")
         export_t = export_transitions()
-        export_t(dpath, cp, ts)
+        export_t(dpath, cp, ts, ref_t)
     end
 end
 
@@ -241,13 +242,14 @@ function export_transitions()
     import pickle
     from ase.io import extxyz
 
-    def export_transitions(dpath, cp, ts): 
+    def export_transitions(dpath, cp, ts, ref_t): 
         with open(dpath, "rb") as f:
             d = pickle.load(f)
         for t in ts:
             s1, s2 = t
             s1a, s2a = d[t]
-            extxyz.write_extxyz(open(f"{cp}/%i-%i.xyz"%(s1,s2),'w'), [s1a,s2a], columns=['symbols', 'positions', 'tags'])
+            centroid_str = "centroid_" if t == ref_t else ""
+            extxyz.write_extxyz(open(f"{cp}/{centroid_str}%i-%i.xyz"%(s1,s2),'w'), [s1a,s2a], columns=['symbols', 'positions', 'tags'])
     """
     return py"export_transitions"
 end

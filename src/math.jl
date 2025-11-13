@@ -188,15 +188,14 @@ function pure_align(P, Q)
     return R, norm(P - Q * R)
 end
 
-# finds the centroid between a group of clusters
-function find_group_centroid(clusters::Set{Int}, cd::ClusterData, t_list::Vector{Transition})
-    ts = get_transitions(cd, clusters)
+# finds the centroid for a set of transitions 
+function find_group_centroid(ts::Vector{Transition}, cd::ClusterData)
     mtx_idx = map(x -> cd.t_to_mtx[x], ts)
 
     dist_sum = map(x -> sum(view(cd.matrix, x, mtx_idx)), mtx_idx)
     ref_t_idx = mtx_idx[argmin(dist_sum)]
 
-    return t_list[cd.clustering.order[ref_t_idx]]
+    return cd.ts[][cd.clustering.order[ref_t_idx]]
 end
 
 function split_delta(d)
