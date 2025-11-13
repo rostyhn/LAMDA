@@ -194,7 +194,8 @@ function export_cluster(trajectory_name::String,
     cluster::ClusterSet,
     ca::ClusterAnnotation,
     cd::ClusterData,
-    ci::ClusterInfo;
+    ci::ClusterInfo,
+    render_fn;
     leaves_only::Bool=false,
     use_cutoff::Bool=false)
 
@@ -219,8 +220,8 @@ function export_cluster(trajectory_name::String,
     children = get_children(cd, cluster)
     if (!isnothing(children) && (use_cutoff && all(map(x -> cd.heights[x] > ci.cutoff, collect(children))))) || (!isnothing(children) && !use_cutoff)
         lc, rc = children
-        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci; leaves_only=leaves_only, use_cutoff=use_cutoff)
-        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci; leaves_only=leaves_only, use_cutoff=use_cutoff)
+        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci, render_fn; leaves_only=leaves_only, use_cutoff=use_cutoff)
+        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci, render_fn; leaves_only=leaves_only, use_cutoff=use_cutoff)
     else
         if leaves_only
             dname = filesafestr(cluster_name)
@@ -231,9 +232,16 @@ function export_cluster(trajectory_name::String,
         end
         ts = get_transitions(cd, cluster)
         ref_t = find_group_centroid(ts, cd)
+
         dpath = joinpath(dataPath, "t_ase_dict.pickle")
         export_t = export_transitions()
         export_t(dpath, cp, ts, ref_t)
+
+        for t in ts
+            centroid_str = (ref_t == t) ? "centroid_" : ""
+            fpath = joinpath(cp, "$(centroid_str)$(join(string.(t, base=10), "_")).png")
+            screenshot_3d!(render_fn, fpath, t)
+        end
     end
 end
 
@@ -254,14 +262,18 @@ function export_transitions()
     return py"export_transitions"
 end
 
+# dynamic dispatch is so stupid that using kwargs breaks this since render_fn isn't typed...
 function export_all(trajectory_name::String,
     ci::ClusterInfo,
     cd::ClusterData,
     ca::ClusterAnnotation,
     exportPath::String,
-    dataPath::String;
+    dataPath::String,
+    render_fn;
     overwrite=false,
-    kwargs...)
+    leaves_only=false,
+    use_cutoff=false)
+
 
     if !isdir(exportPath)
         mkdir(exportPath)
@@ -272,5 +284,5 @@ function export_all(trajectory_name::String,
         end
     end
 
-    export_cluster(trajectory_name, dataPath, exportPath, cd.root, ca, cd, ci; kwargs...)
+    export_cluster(trajectory_name, dataPath, exportPath, cd.root, ca, cd, ci, render_fn; leaves_only=leaves_only, use_cutoff=use_cutoff)
 end

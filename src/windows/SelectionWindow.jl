@@ -662,6 +662,15 @@ function selection_window_ui(
             mkdir(ep)
         end
 
+        render_fn = (x, y) ->
+            render_views["Atom"](
+                x,
+                y,
+                scalar_selection,
+                Observable(Float32(0.0)),
+                false
+            )
+
         if export_menu.selection[] == "All"
             @info "Beginning full export"
             @time export_all(trajectory_name,
@@ -669,7 +678,8 @@ function selection_window_ui(
                 cluster_data,
                 cluster_annotations[],
                 ep,
-                dataPath;
+                dataPath,
+                render_fn;
                 overwrite=true,
                 leaves_only=leaves_only_cb.active[],
                 use_cutoff=false)
@@ -679,7 +689,8 @@ function selection_window_ui(
                 cluster_data,
                 cluster_annotations[],
                 ep,
-                dataPath;
+                dataPath,
+                render_fn;
                 overwrite=true,
                 leaves_only=leaves_only_cb.active[],
                 use_cutoff=true)
