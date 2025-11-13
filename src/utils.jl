@@ -1,7 +1,3 @@
-function unix_default_cache_dir()
-
-end
-
 function default_cache()::String
     if Sys.iswindows()
         error("Not implemented for Window yet")

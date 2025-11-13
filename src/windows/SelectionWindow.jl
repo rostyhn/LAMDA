@@ -595,7 +595,7 @@ function selection_window_ui(
     end
 
     export_btn = Button(window, label="Export", halign=:right)
-    export_menu = Menu(window, options=["Scratchpad", "All"], default="Scratchpad", tellwidth=false, halign=:right)
+    export_menu = Menu(window, options=["Scratchpad", "Cutoff", "All"], default="Scratchpad", tellwidth=false, halign=:right)
     menu_bar[1, 3] = export_btn
     menu_bar[1, 4] = export_menu
     menu_bar[1, 5] = settings_btn
@@ -664,7 +664,19 @@ function selection_window_ui(
                 cluster_info[],
                 cluster_data,
                 cluster_annotations[],
-                ep, dataPath; overwrite=true)
+                ep,
+                dataPath;
+                overwrite=true,
+                use_cutoff=false)
+        elseif export_menu.selection[] == "Cutoff"
+            @time export_all(trajectory_name,
+                cluster_info[],
+                cluster_data,
+                cluster_annotations[],
+                ep,
+                dataPath;
+                overwrite=true,
+                use_cutoff=true)
         else
             @time export_scratchpad(scratchpad_contents(), cluster_data, ep, dataPath)
         end

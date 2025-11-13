@@ -194,15 +194,21 @@ function export_cluster(trajectory_name::String,
     cluster::ClusterSet,
     ca::ClusterAnnotation,
     cd::ClusterData,
-    ci::ClusterInfo)
+    ci::ClusterInfo;
+    leaves_only::Bool=false,
+    use_cutoff::Bool=false)
 
     cluster_name = get_val(ca, "titles", cluster)
     cluster_notes = get(ca["notes"], cluster, nothing)
 
-    dname = filesafestr(cluster_name)
-    cp = joinpath(exportPath, dname)
-    if !isdir(cp)
-        mkdir(cp)
+    if !leaves_only
+        dname = filesafestr(cluster_name)
+        cp = joinpath(exportPath, dname)
+        if !isdir(cp)
+            mkdir(cp)
+        end
+    else
+        cp = exportPath
     end
 
     if !isnothing(cluster_notes)
@@ -211,11 +217,18 @@ function export_cluster(trajectory_name::String,
     end
 
     children = get_children(cd, cluster)
-    if !isnothing(children) && all(map(x -> cd.heights[x] > ci.cutoff, collect(children)))
+    if (!isnothing(children) && (use_cutoff && all(map(x -> cd.heights[x] > ci.cutoff, collect(children))))) || (!isnothing(children) && !use_cutoff)
         lc, rc = children
-        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci)
-        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci)
+        export_cluster(trajectory_name, dataPath, cp, lc, ca, cd, ci; leaves_only=leaves_only, use_cutoff=use_cutoff)
+        export_cluster(trajectory_name, dataPath, cp, rc, ca, cd, ci; leaves_only=leaves_only, use_cutoff=use_cutoff)
     else
+        if leaves_only
+            dname = filesafestr(cluster_name)
+            cp = joinpath(exportPath, dname)
+            if !isdir(cp)
+                mkdir(cp)
+            end
+        end
         ts = get_transitions(cd, cluster)
         dpath = joinpath(dataPath, "t_ase_dict.pickle")
         export_t = export_transitions()
@@ -245,7 +258,8 @@ function export_all(trajectory_name::String,
     ca::ClusterAnnotation,
     exportPath::String,
     dataPath::String;
-    overwrite=false)
+    overwrite=false,
+    kwargs...)
 
     if !isdir(exportPath)
         mkdir(exportPath)
@@ -256,5 +270,5 @@ function export_all(trajectory_name::String,
         end
     end
 
-    export_cluster(trajectory_name, dataPath, exportPath, cd.root, ca, cd, ci)
+    export_cluster(trajectory_name, dataPath, exportPath, cd.root, ca, cd, ci; kwargs...)
 end
