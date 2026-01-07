@@ -12,5 +12,5 @@ println("Updating Python environment...")
 Pkg.build("PyCall")
 Pkg.precompile()
 
-using TransVis
+using LAMDA
 create_app(".", "build")

@@ -1,4 +1,4 @@
-module TransVis
+module LAMDA
 
 using PyCall
 using Base.Threads
