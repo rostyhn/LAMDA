@@ -85,17 +85,17 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
     # https://strehl.com/diss/node80.html
     clusterings = Dict()
     for (x, xm) in dms
-        clustering = hclust(to_ranked_mat(xm); linkage=:ward, branchorder=:barjoseph)
+        clustering = hclust(xm; linkage=:ward, branchorder=:barjoseph)
         clusterings[x] = clustering
     end
 
-    k_end = 50
-    cms = Dict()
     n = length(active_trajectory.transitions)
+    k_end = n
+    cms = Dict()
     m = zeros(Float32, n, n)
     for (x, c) in clusterings
-        cm = zeros(Int, n, n)
-        for k in collect(2:k_end)
+        cm = zeros(Int, n, k_end)
+        for k in collect(2:n)
             v = labels_to_similarity_mat(cutree(c, k=k))
             m += v
             cm += v
@@ -105,7 +105,7 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
     m = m ./ (length(keys(clusterings)) * length(collect(2:k_end)))
     cms["consensus"] = m
     dms["consensus"] = 1 .- m
-    clusterings["consensus"] = hclust(to_ranked_mat(1 .- m); linkage=:ward, branchorder=:barjoseph)
+    clusterings["consensus"] = hclust(1 .- m; linkage=:ward, branchorder=:barjoseph)
 
     fms = Dict()
     sils = Dict()
@@ -118,8 +118,8 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
                 sil_vals = []
                 dunn_vals = []
                 for k in collect(2:k_end)
-                    push!(sil_vals, mean(silhouettes(cutree(c,k=k), dms[x]; metric= nothing)))
-                    push!(dunn_vals, mean(clustering_quality(cutree(c,k=k), dms[x];quality_index=:dunn)))
+                    push!(sil_vals, mean(silhouettes(cutree(c, k=k), dms[x]; metric=nothing)))
+                    push!(dunn_vals, mean(clustering_quality(cutree(c, k=k), dms[x]; quality_index=:dunn)))
                 end
                 sils[x] = sil_vals
                 dunns[x] = dunn_vals
@@ -130,7 +130,7 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
                 for k in collect(2:k_end)
                     fm = fowlkes_mallows_index(cutree(c, k=k), cutree(cc, k=k))
                     mi = mutualinfo(cutree(c, k=k), cutree(cc, k=k))
-                    vi = varinfo(cutree(c, k=k), cutree(cc, k=k)) 
+                    vi = varinfo(cutree(c, k=k), cutree(cc, k=k))
                     push!(mi_vals, mi)
                     push!(fm_vals, fm)
                     push!(vi_vals, vi)
@@ -141,12 +141,12 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
             end
         end
     end
-    
+
     order = sort(collect(keys(clusterings)))
     f = Figure(size=(1920, 1080))
     for (i, name) in enumerate(order)
         ax = Axis(f[1, i], title=name)
-        v = sils[name] 
+        v = sils[name]
         lines!(ax, collect(2:length(v)+1), v)
         ylims!(ax, -1.0, 1.0)
     end
@@ -156,13 +156,13 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
     f = Figure(size=(1920, 1080))
     for (i, name) in enumerate(order)
         ax = Axis(f[1, i], title=name)
-        v = dunns[name] 
+        v = dunns[name]
         lines!(ax, collect(2:length(v)+1), v)
         ylims!(ax, -0.01, 1.0)
     end
     GLMakie.save("dunns_$(id).png", f)
     @info "Saved Dunn index charts as dunns_$(id).png"
-    
+
     f = Figure(size=(1920, 1080))
     for (j, name) in enumerate(order)
         Label(f[1, j], text=name, tellwidth=false, tellheight=false)
@@ -192,7 +192,7 @@ function compare_matrices(trajectory_name::String; id::String=random_string(), c
                     v = vis[(k, name)]
                 end
                 lines!(ax, collect(2:length(v)+1), v, color=(k == "consensus") ? :red : :blue)
-               # ylims!(ax, -0.01, 1.0)
+                # ylims!(ax, -0.01, 1.0)
             end
         end
     end
