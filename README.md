@@ -1,4 +1,6 @@
 # LAMDA - LAMDA Aids Molecular Displacement Analysis
+Source code for the paper "LAMDA: Aiding Visual Exploration of Atomic Displacements in Molecular Dynamics Simulations". 
+
 Uses julia `1.11.4`.
 
 ## Compiling 
@@ -43,3 +45,19 @@ You also need a folder called `dms`, with subfolders corresponding to distance m
 You will also need an `alignment` folder containing pickles with dictionaries of tuples to tuples of matrices that will be used to perform intra-cluster alignments with a variant of the [Kabsch algorithm](https://en.wikipedia.org/wiki/Kabsch_algorithm). Since each matrix should have signs, the initial state should have positive values & the final negative. Each matrix should be \[num_atoms * num_features\]. LAMDA will calculate the center of charge for each feature and then align each transition using these centers of charge. We found the [bispectrum descriptor](https://www.nature.com/articles/s41524-022-00847-y) to be effective in aligning transitions, but in principle any descriptor can be used provided it returns the per-atom features in order.
 
 You can optionally visualize per-atom scalars by placing dictionaries in the `scalars` folder and per-transition scalars in the `per_t_scalars`. The per-atom scalars must be dictionaries keyed by transition ids (i.e. (state1, state2)); the values of the dictionary are 1D arrays corresponding to each atom (Vector{Float}). `per_t_scalars` is accessed the same way, but contains per transition values.
+
+## Citation
+If you use this program or parts of its code in your research, please use the following citation:
+```
+@ARTICLE{Hnatyshyn2026-lp,
+  title    = "{LAMDA}: Aiding visual exploration of atomic displacements in
+              molecular dynamics simulations",
+  author   = "Hnatyshyn, Rostyslav and Perez, Danny and Scheuermann, Gerik and
+              Maciejewski, Ross and Nsonga, Baldwin",
+  journal  = "IEEE Trans. Vis. Comput. Graph.",
+  volume   = "PP",
+  month    =  jan,
+  year     =  2026,
+  language = "en"
+}
+```
