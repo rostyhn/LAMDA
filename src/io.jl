@@ -58,7 +58,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
             # if any do not exist, compute them in python before continuing
             if any(x -> !isfile(x), data_pickles)
                 @info "Processing ASE data..."
-                py"process_dataset"(transitions, ase_pickle, t)
+                py"process_dataset"(transitions, ase_pickle, dataPath)
             end
 
             load_pickle = py"load_pickle"o
