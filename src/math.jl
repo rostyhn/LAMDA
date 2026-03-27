@@ -238,8 +238,19 @@ function calculate_alignment(ref_t::Transition,
             t_s2_shift = mean(t_s2_com, dims=1)
             t_s2_com = t_s2_com .- t_s2_shift
 
-            R1, res1 = pure_align(ref_s1_com, t_s1_com)
-            R2, res2 = pure_align(ref_s1_com, t_s2_com)
+            R1, res1 = Matrix{Float32}(I, 3, 3), 0.0
+            try
+                R1, res1 = pure_align(ref_s1_com, t_s1_com)
+            catch e
+                @debug "Failed to align $t, using identity."
+            end
+
+            R2, res2 = Matrix{Float32}(I, 3, 3), 0.0
+            try
+                R2, res2 = pure_align(ref_s1_com, t_s2_com)
+            catch e
+                @debug "Failed to align $t, using identity."
+            end
 
             R = (res1 < res2) ? R1 : R2
             rot[t] = (R, res1 > res2)
