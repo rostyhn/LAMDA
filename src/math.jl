@@ -242,14 +242,14 @@ function calculate_alignment(ref_t::Transition,
             try
                 R1, res1 = pure_align(ref_s1_com, t_s1_com)
             catch e
-                @debug "Failed to align $t, using identity."
+                @debug "Failed to align $(Tuple(Int.(t))), using identity."
             end
 
             R2, res2 = Matrix{Float32}(I, 3, 3), 0.0
             try
                 R2, res2 = pure_align(ref_s1_com, t_s2_com)
             catch e
-                @debug "Failed to align $t, using identity."
+                @debug "Failed to align $(Tuple(Int.(t))), using identity."
             end
 
             R = (res1 < res2) ? R1 : R2
