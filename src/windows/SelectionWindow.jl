@@ -113,7 +113,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         alpha=range(; start=0.05, stop=1.0, length=100))
     binary_atomcmap = resample_cmap(:redsblues, 3,
         alpha=[1.0, 0.1, 1.0])
-
+    bond_cmap = resample_cmap(:diverging_bkr_55_10_c35_n256, 100)
     function get_atom_cmap(s)
         if occursin("signed", to_value(s))
             return binary_atomcmap
@@ -304,6 +304,9 @@ function setup_selection_window(active_trajectory::Trajectory,
             if rs == "Superquadric"
                 currentRange[] = vr
                 currentCMap[] = vc
+            elseif rs == "Bonds"
+                currentRange[] = (-1.0, 1.0)
+                currentCMap[] = bond_cmap#:diverging_bkr_55_10_c35_n256
             else
                 currentRange[] = sr
                 currentCMap[] = atom_cmap
@@ -352,19 +355,24 @@ function setup_selection_window(active_trajectory::Trajectory,
             let alignedPositionsMatrices = alignedPositionsMatrices, bonds = bonds
                 ap = alignedPositionsMatrices[transition]
                 s1, s2 = transition
-                render_data = lift(selected_bond, showFinal) do sb, sf
+                render_data = lift(selected_bond) do sb
                     bond_dict = bonds[sb]
 
                     b1 = get(bond_dict, s1, null_mat)
                     b2 = get(bond_dict, s2, null_mat)
-                    pts = sf ? Point3f.(eachrow(ap[2])) : Point3f.(eachrow(ap[1]))
-                    seg = _segments(pts, sf ? b2 : b1)
 
-                    (pts, seg)
+                    bd = b2 .- b1
+                    bu = (b1 .!= 0) .| (b2 .!= 0)
+                    pts = Point3f.(eachrow(ap[1]))
+                    seg, segvals = _segments(pts, bu, bd)
+
+                    (pts, seg, segvals)
                 end
                 bondview!(scene,
                     lift(x -> x[1], render_data),
-                    lift(x -> x[2], render_data))
+                    lift(x -> x[2], render_data),
+                    lift(x -> x[3], render_data)
+                )
             end
         end
 

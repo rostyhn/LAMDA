@@ -343,7 +343,7 @@ function help_icon(fig, loc, txt)
     inset_image(fig, loc, HELP_ICON, txt; width=Makie.Fixed(15), height=Makie.Fixed(15), halign=1.0, valign=1.0, tellwidth=false, tellheight=false)
 end
 
-function bondview!(scene, pts, seg)
+function bondview!(scene, pts, seg, segvals)
 
     meshscatter!(scene, pts;
         markersize=0.3,
@@ -355,7 +355,9 @@ function bondview!(scene, pts, seg)
 
     linesegments!(scene,
         seg;
-        color=:red,
+        color=segvals,
+        colormap=:diverging_bkr_55_10_c35_n256,
+        colorrange=(-1.0f0, 1.0f0),
         inspectable=false,
         linewidth=2.0)
 
@@ -363,17 +365,19 @@ function bondview!(scene, pts, seg)
 end
 
 
-function _segments(points, bonds)
+function _segments(points, bonds, delta)
     topology = findall(!iszero, bonds)
 
     segpts = Vector{Point3f}(undef, 2length(topology))
+    segvals = Vector{Float32}(undef, length(topology))
     k = 1
     for (i, j) in [Tuple(I) for I in topology]
         segpts[k] = points[i]
         segpts[k+1] = points[j]
+        segvals[(k+1)÷2] = delta[i, j]
         k += 2
     end
 
-    return segpts
+    return segpts, segvals
 end
 
