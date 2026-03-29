@@ -160,6 +160,7 @@ end
     t2::Dict{Transition,Vector{Float32}}
     t3::Dict{Transition,Vector{Float32}}
     stretchedPrincipalAxes::Dict{Transition,Vector{Vector{Vec3f}}}
+    bonds::Union{Nothing,Dict{String,Dict{State,Matrix{Float32}}}}
     dms::Dict{String,Matrix{Float32}}
     scalars::Dict{String,Dict{Transition,Array{Float32}}}
     scalar_ranges::Dict{String,Tuple{Float32,Float32}}

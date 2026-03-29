@@ -20,6 +20,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         alignedPositionsMatrices,
         alignments,
         name,
+        bonds,
     ) = active_trajectory
 
     function select_invariant(selection::String)
@@ -112,7 +113,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         alpha=range(; start=0.05, stop=1.0, length=100))
     binary_atomcmap = resample_cmap(:redsblues, 3,
         alpha=[1.0, 0.1, 1.0])
-
+    bond_cmap = resample_cmap(:diverging_bkr_55_10_c35_n256, 100)
     function get_atom_cmap(s)
         if occursin("signed", to_value(s))
             return binary_atomcmap
@@ -242,7 +243,8 @@ function setup_selection_window(active_trajectory::Trajectory,
         return time, sg
     end
 
-    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Atom"))
+
+    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Bonds"))
         return setup_menu(figure, SINGLE_TRANSITION_RENDER_OPTIONS, scene_selector; tellwidth=false)
     end
 
@@ -259,6 +261,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         colsize!(g, 2, Relative(0.125))
         return si, g
     end
+
 
     function correlation_slider(figure::Makie.Figure, correlationThreshold::Observable{Float32}=Observable(Float32(0.7)))
         c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=correlationThreshold[])
@@ -301,6 +304,9 @@ function setup_selection_window(active_trajectory::Trajectory,
             if rs == "Superquadric"
                 currentRange[] = vr
                 currentCMap[] = vc
+            elseif rs == "Bonds"
+                currentRange[] = (-1.0, 1.0)
+                currentCMap[] = bond_cmap#:diverging_bkr_55_10_c35_n256
             else
                 currentRange[] = sr
                 currentCMap[] = atom_cmap
@@ -323,6 +329,48 @@ function setup_selection_window(active_trajectory::Trajectory,
         "Scalar" => scalar_menu,
         "Colorbar" => embed_colorbar,
         "CorrThreshold" => correlation_slider)
+
+    if !isnothing(bonds)
+        bond_opts = sort(collect(keys(bonds)))
+
+        function bonds_menu(figure::Makie.Figure, bond_selection::Observable{String}=Observable(first(bond_opts)))
+            return setup_menu(figure, bond_opts, bond_selection)
+        end
+
+        # TODO: get number of atoms from somewhere dynamically
+        num_atoms = 147
+        null_mat = Matrix{Float32}(zeros(num_atoms, num_atoms))
+        function render_bonds(scene::Makie.Scene,
+            transition::Transition,
+            selected_bond::Observable{String})
+
+            let alignedPositionsMatrices = alignedPositionsMatrices, bonds = bonds
+                ap = alignedPositionsMatrices[transition]
+                s1, s2 = transition
+                render_data = lift(selected_bond) do sb
+                    bond_dict = bonds[sb]
+
+                    b1 = get(bond_dict, s1, null_mat)
+                    b2 = get(bond_dict, s2, null_mat)
+
+                    bd = b2 .- b1
+                    bu = (b1 .!= 0) .| (b2 .!= 0)
+                    pts = Point3f.(eachrow(ap[1]))
+                    seg, segvals = _segments(pts, bu, bd)
+
+                    (pts, seg, segvals)
+                end
+                bondview!(scene,
+                    lift(x -> x[1], render_data),
+                    lift(x -> x[2], render_data),
+                    lift(x -> x[3], render_data)
+                )
+            end
+        end
+
+        widgets["Bonds"] = bonds_menu
+        render_views["Bonds"] = render_bonds
+    end
 
     calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment)
     settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)))
@@ -618,6 +666,8 @@ function selection_window_ui(
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
+    bond_selection, bond_menu = widgets["Bonds"](window)
+
     invariant_selection = Observable("K1")
 
     time, scratchpad_t_slider = widgets["Movement"](window)
@@ -635,6 +685,7 @@ function selection_window_ui(
         render_views,
         render_selection,
         scalar_selection,
+        bond_selection,
         invariant_selection,
         time,
         selected_clusters,
@@ -706,8 +757,7 @@ function selection_window_ui(
 
     scg[1, 1] = scratchpad_render_menu
     g = GridLayout()
-    g[1, 1] = scalar_menu
-    g[1, 2] = scratchpad_t_slider
+    g[1, 1:2] = bond_menu
     scg[1, 2] = g
 
     Makie.onany(window.scene, render_selection) do x
@@ -717,6 +767,9 @@ function selection_window_ui(
             _, ts = widgets["Movement"](window, time)
             g[1, 1] = m
             g[1, 2] = ts
+        elseif x == "Bonds"
+            _, m = widgets["Bonds"](window, bond_selection)
+            g[1, 1:2] = m
         else
             _, m = widgets["Invariant"](window, invariant_selection)
             g[1, 1:2] = m

@@ -10,6 +10,7 @@ function scratchpad!(
     render_views::Dict{String,Function},
     render_selection::Observable{String},
     scalar_selection::Observable{String},
+    bond_selection::Observable{String},
     invariant_selection::Observable{String},
     atom_time::Observable{Float32},
     selected_clusters::Observable{Set{ClusterSet}},
@@ -297,6 +298,9 @@ function scratchpad!(
                                 obj,
                                 scalar_selection,
                                 atom_time)
+                        elseif rs == "Bonds"
+                            render_views["Bonds"](ax3d,
+                                obj, bond_selection)
                         else
                             render_views["Superquadric"](ax3d,
                                 obj, invariant_selection)

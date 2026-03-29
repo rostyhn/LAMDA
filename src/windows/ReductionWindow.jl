@@ -17,9 +17,10 @@ function build_reduction_window(active_trajectory::Trajectory,
 
     selected_dm::Observable{String} = Observable((isnothing(distance_matrix)) ? first(keys(dms)) : distance_matrix, ignore_equal_values=true)
 
+    # TODO: should be able to select linkage method
     clustering::Observable{Clustering.Hclust{Float32}} = lift(window.scene, selected_dm) do sel
         @info "Clustering $sel"
-        res = hclust(dms[sel], linkage=:ward, branchorder=:barjoseph)
+        res = hclust(dms[sel], linkage=:average, branchorder=:barjoseph)
         return res
     end
 

@@ -342,3 +342,42 @@ function help_icon(fig, loc, txt)
     # places help icon in top right corner
     inset_image(fig, loc, HELP_ICON, txt; width=Makie.Fixed(15), height=Makie.Fixed(15), halign=1.0, valign=1.0, tellwidth=false, tellheight=false)
 end
+
+function bondview!(scene, pts, seg, segvals)
+
+    meshscatter!(scene, pts;
+        markersize=0.3,
+        alpha=0.4,
+        ssao=true,
+        transparency=true,
+        inspectable=false,
+        color=:gray)
+
+    linesegments!(scene,
+        seg;
+        color=segvals,
+        colormap=:diverging_bkr_55_10_c35_n256,
+        colorrange=(-1.0f0, 1.0f0),
+        inspectable=false,
+        linewidth=2.0)
+
+    update_cam!(scene)
+end
+
+
+function _segments(points, bonds, delta)
+    topology = findall(!iszero, bonds)
+
+    segpts = Vector{Point3f}(undef, 2length(topology))
+    segvals = Vector{Float32}(undef, length(topology))
+    k = 1
+    for (i, j) in [Tuple(I) for I in topology]
+        segpts[k] = points[i]
+        segpts[k+1] = points[j]
+        segvals[(k+1)÷2] = delta[i, j]
+        k += 2
+    end
+
+    return segpts, segvals
+end
+
