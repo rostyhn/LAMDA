@@ -101,6 +101,9 @@ function build_cluster_window(
 
     scene_selector, render_menu = widgets["Render"](window)
     scalar_selector, scalar_menu = widgets["Scalar"](window)
+    bond_selector, bonds_menu = widgets["Bonds"](window)
+    showFinal, toggle = widgets["BondToggle"](window)
+
     invariant_selection = Observable("K1")
 
     cbar, cbar_listeners = widgets["Colorbar"](window, scene_selector, scalar_selector, invariant_selection)
@@ -116,6 +119,8 @@ function build_cluster_window(
         cluster_data,
         scene_selector,
         scalar_selector,
+        bond_selector,
+        showFinal,
         invariant_selection,
         time,
         render_views,
@@ -195,6 +200,11 @@ function build_cluster_window(
         if x == "Atom"
             _, m = widgets["Scalar"](window, scalar_selector)
             _, ts = widgets["Movement"](window, time)
+            g[1, 1] = m
+            g[1, 2] = ts
+        elseif x == "Bonds"
+            _, m = widgets["Bonds"](window, bond_selector)
+            _, ts = widgets["BondToggle"](window, showFinal)
             g[1, 1] = m
             g[1, 2] = ts
         else

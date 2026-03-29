@@ -46,6 +46,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
             cache_file = joinpath(cachePath, "$(t).jdl2")
             @debug cache_file
 
+            # pretty sure the pickle library is behind the nasty memory leaks...
             transitions_pickle = joinpath(dataPath, "transitions.pickle")
             transitions::Vector{Transition} = Vector{Transition}(Pickle.npyload(transitions_pickle))
 
@@ -161,6 +162,29 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                 return error("Alignment folder not found in $(dataPath).")
             end
 
+            # load in bond information
+            bondf = joinpath(dataPath, "bonds")
+            bonds = Dict{String,Dict{State,Matrix{Float32}}}()
+            if isdir(bondf)
+                println("Loading bonds...")
+                for bf in readdir(bondf, join=true)
+                    fname, ext = splitext(bf)
+                    bond_name = basename(fname)
+                    try
+                        bonds[bond_name] = Dict{State,Matrix{Float32}}(Pickle.npyload(bf))
+                    catch e
+                        @warn "Bond $(bf) failed to load: $(e)"
+                    end
+                end
+            else
+                @warn "Bond directory not found."
+            end
+
+            if isempty(bonds)
+                @warn "No bonds loaded. Bond visualization will be disabled."
+                bonds = nothing
+            end
+
             trajectory_data = Trajectory(name=t,
                 transitions=transitions,
                 alignedPositionsMatrices=alignedPositionsMatrices,
@@ -172,6 +196,7 @@ function get_data_alt(dataPath::String, cachePath::String)::Trajectory
                 scalars=scalars,
                 scalar_ranges=scalar_ranges,
                 alignments=alignments,
+                bonds=bonds,
                 t_to_idx=Dict(reverse.(collect(enumerate(transitions)))))
         else
             return error("Supplied folder $(dataPath) does not contain transitions or state information.")

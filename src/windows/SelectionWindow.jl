@@ -20,6 +20,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         alignedPositionsMatrices,
         alignments,
         name,
+        bonds,
     ) = active_trajectory
 
     function select_invariant(selection::String)
@@ -242,6 +243,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         return time, sg
     end
 
+
     function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Atom"))
         return setup_menu(figure, SINGLE_TRANSITION_RENDER_OPTIONS, scene_selector; tellwidth=false)
     end
@@ -259,6 +261,7 @@ function setup_selection_window(active_trajectory::Trajectory,
         colsize!(g, 2, Relative(0.125))
         return si, g
     end
+
 
     function correlation_slider(figure::Makie.Figure, correlationThreshold::Observable{Float32}=Observable(Float32(0.7)))
         c_slider = Slider(figure, range=0.0:0.01:1.0, startvalue=correlationThreshold[])
@@ -323,6 +326,45 @@ function setup_selection_window(active_trajectory::Trajectory,
         "Scalar" => scalar_menu,
         "Colorbar" => embed_colorbar,
         "CorrThreshold" => correlation_slider)
+
+    if !isnothing(bonds)
+        bond_opts = sort(collect(keys(bonds)))
+
+        function bonds_menu(figure::Makie.Figure, bond_selection::Observable{String}=Observable(first(bond_opts)))
+            return setup_menu(figure, bond_opts, bond_selection)
+        end
+
+        function initial_final_toggle(fig::Makie.Figure, toggle::Observable{Bool}=Observable(false))
+            t = Toggle(fig)
+            on(t.active) do state
+                toggle[] = state
+            end
+            return toggle, t
+        end
+
+        num_atoms = 147
+        null_mat = Matrix{Float32}(zeros(num_atoms, num_atoms))
+        function render_bonds(scene::Makie.Scene,
+            transition::Transition,
+            selected_bond::Observable{String},
+            showFinal::Observable{Bool})
+
+            let alignedPositionsMatrices = alignedPositionsMatrices, bonds = bonds
+                ap = alignedPositionsMatrices[transition]
+                s1, s2 = transition
+                selBonds = Observable((null_mat, null_mat))
+                Makie.onany(scene, selected_bond) do sb
+                    bond_dict = bonds[sb]
+                    selBonds[] = (get(bond_dict, s1, null_mat), get(bond_dict, s2, null_mat))
+                end
+                bondview!(scene, ap, selBonds, showFinal)
+            end
+        end
+
+        widgets["BondToggle"] = initial_final_toggle
+        widgets["Bonds"] = bonds_menu
+        render_views["Bonds"] = render_bonds
+    end
 
     calculators::Dict{String,Function} = Dict{String,Function}("Alignment" => calc_alignment)
     settings_window = build_settings_menu(selected_alignment, collect(keys(alignments)))

@@ -3,6 +3,8 @@ function embedding_view!(
     cluster_data::Observable{SingleClusterData},
     selected_render::Observable{String},
     selected_scalar::Observable{String},
+    selected_bonds::Observable{String},
+    showFinal::Observable{Bool},
     invariant_selection::Observable{String},
     atom_time::Observable{Float32},
     render_views::Dict{String,Function},
@@ -165,18 +167,30 @@ function embedding_view!(
         t_to_pltidx = Dict(reverse.(enumerate(ts)))
 
         sr = selected_render[]
-        render_fn = (sr == "Atom") ? (x, y, z) ->
+        # x is scene, y is transition, z is flip
+        render_fn = (x, y, z) ->
             render_views["Atom"](
                 x,
                 y,
                 selected_scalar,
                 atom_time,
                 z
-            ) : (x, y, z) ->
-            render_views["Superquadric"](x,
-                y,
-                invariant_selection,
-                z)
+            )
+        if sr == "Superquadric"
+            render_fn = (x, y, z) ->
+                render_views["Superquadric"](x,
+                    y,
+                    invariant_selection,
+                    z)
+        end
+
+        if sr == "Bonds"
+            render_fn = (x, y, z) ->
+                render_views["Bonds"](x,
+                    y,
+                    selected_bonds,
+                    showFinal)
+        end
 
         ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
         create_scene.(enumerate(ts), Ref(ms), Ref(alignment), Ref(render_fn))
@@ -201,18 +215,31 @@ function embedding_view!(
         ts = cluster_data[].ts
         alignment = cluster_data[].alignment
         sr = selected_render[]
-        render_fn = (sr == "Atom") ? (x, y, z) ->
+
+        render_fn = (x, y, z) ->
             render_views["Atom"](
                 x,
                 y,
                 selected_scalar,
                 atom_time,
                 z
-            ) : (x, y, z) ->
-            render_views["Superquadric"](x,
-                y,
-                invariant_selection,
-                z)
+            )
+        if sr == "Superquadric"
+            render_fn = (x, y, z) ->
+                render_views["Superquadric"](x,
+                    y,
+                    invariant_selection,
+                    z)
+        end
+
+        if sr == "Bonds"
+            render_fn = (x, y, z) ->
+                render_views["Bonds"](x,
+                    y,
+                    selected_bonds,
+                    showFinal)
+        end
+
         update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr), Ref(render_fn))
         GC.gc(true)
         enable_interactions(ax)
