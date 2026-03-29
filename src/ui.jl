@@ -343,31 +343,9 @@ function help_icon(fig, loc, txt)
     inset_image(fig, loc, HELP_ICON, txt; width=Makie.Fixed(15), height=Makie.Fixed(15), halign=1.0, valign=1.0, tellwidth=false, tellheight=false)
 end
 
-#=function bondview!(scene, positions, bonds, showFinal)
+function bondview!(scene, pts, seg)
 
-    p1, p2 = positions
-    pts1 = Point3f.(eachrow(p1))
-    pts2 = Point3f.(eachrow(p2))
-
-    pts = lift(showFinal) do sf
-        sf ? pts2 : pts1
-    end
-
-    seg = lift(bonds, showFinal) do (b1, b2), sf
-        sf ? _segments(pts2, b2) : _segments(pts1, b1)
-    end
-
-    meshscatter!(scene, pts, markersize=0.3, color=:gray)
-    linesegments!(scene, seg, color=:red, linewidth=2.0)
-end=#
-
-function bondview!(scene, positions, bonds, showFinal)
-    p1, p2 = positions
-
-    pts_obs = Observable(Point3f.(eachrow(p1)))
-    seg_obs = Observable(_segments(pts_obs[], first(bonds[])))
-
-    meshscatter!(scene, pts_obs;
+    meshscatter!(scene, pts;
         markersize=0.3,
         alpha=0.4,
         ssao=true,
@@ -375,18 +353,13 @@ function bondview!(scene, positions, bonds, showFinal)
         inspectable=false,
         color=:gray)
 
-    linesegments!(scene, seg_obs;
+    linesegments!(scene,
+        seg;
         color=:red,
+        inspectable=false,
         linewidth=2.0)
 
-    Makie.onany(scene, bonds, showFinal) do b, sf
-        pts = sf ? Point3f.(eachrow(p2)) : Point3f.(eachrow(p1))
-        bondmat = sf ? b[2] : b[1]
-        pts_obs[] = pts
-        seg_obs[] = _segments(pts, bondmat)
-    end
-
-    return nothing
+    update_cam!(scene)
 end
 
 

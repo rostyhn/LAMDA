@@ -102,7 +102,7 @@ function build_cluster_window(
     scene_selector, render_menu = widgets["Render"](window)
     scalar_selector, scalar_menu = widgets["Scalar"](window)
     bond_selector, bonds_menu = widgets["Bonds"](window)
-    showFinal, toggle = widgets["BondToggle"](window)
+    showFinal, bond_toggle = widgets["BondToggle"](window)
 
     invariant_selection = Observable("K1")
 
@@ -192,8 +192,8 @@ function build_cluster_window(
         colormap=DISTANCE_MATRIX_COLORMAP)
 
     g = GridLayout()
-    g[1, 1] = scalar_menu
-    g[1, 2] = t_slider
+    g[1, 1] = bonds_menu#scalar_menu
+    g[1, 2] = bond_toggle#t_slider
 
     Makie.onany(window.scene, scene_selector) do x
         clear_layout(g)

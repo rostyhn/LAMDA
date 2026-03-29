@@ -244,7 +244,7 @@ function setup_selection_window(active_trajectory::Trajectory,
     end
 
 
-    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Atom"))
+    function render_menu(figure::Makie.Figure, scene_selector::Observable{String}=Observable("Bonds"))
         return setup_menu(figure, SINGLE_TRANSITION_RENDER_OPTIONS, scene_selector; tellwidth=false)
     end
 
@@ -352,12 +352,19 @@ function setup_selection_window(active_trajectory::Trajectory,
             let alignedPositionsMatrices = alignedPositionsMatrices, bonds = bonds
                 ap = alignedPositionsMatrices[transition]
                 s1, s2 = transition
-                selBonds = Observable((null_mat, null_mat))
-                Makie.onany(scene, selected_bond) do sb
+                render_data = lift(selected_bond, showFinal) do sb, sf
                     bond_dict = bonds[sb]
-                    selBonds[] = (get(bond_dict, s1, null_mat), get(bond_dict, s2, null_mat))
+
+                    b1 = get(bond_dict, s1, null_mat)
+                    b2 = get(bond_dict, s2, null_mat)
+                    pts = sf ? Point3f.(eachrow(ap[2])) : Point3f.(eachrow(ap[1]))
+                    seg = _segments(pts, sf ? b2 : b1)
+
+                    (pts, seg)
                 end
-                bondview!(scene, ap, selBonds, showFinal)
+                bondview!(scene,
+                    lift(x -> x[1], render_data),
+                    lift(x -> x[2], render_data))
             end
         end
 
