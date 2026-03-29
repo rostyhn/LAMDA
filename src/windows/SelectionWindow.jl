@@ -337,20 +337,12 @@ function setup_selection_window(active_trajectory::Trajectory,
             return setup_menu(figure, bond_opts, bond_selection)
         end
 
-        function initial_final_toggle(fig::Makie.Figure, toggle::Observable{Bool}=Observable(false))
-            t = Toggle(fig)
-            on(t.active) do state
-                toggle[] = state
-            end
-            return toggle, t
-        end
-
+        # TODO: get number of atoms from somewhere dynamically
         num_atoms = 147
         null_mat = Matrix{Float32}(zeros(num_atoms, num_atoms))
         function render_bonds(scene::Makie.Scene,
             transition::Transition,
-            selected_bond::Observable{String},
-            showFinal::Observable{Bool})
+            selected_bond::Observable{String})
 
             let alignedPositionsMatrices = alignedPositionsMatrices, bonds = bonds
                 ap = alignedPositionsMatrices[transition]
@@ -376,7 +368,6 @@ function setup_selection_window(active_trajectory::Trajectory,
             end
         end
 
-        widgets["BondToggle"] = initial_final_toggle
         widgets["Bonds"] = bonds_menu
         render_views["Bonds"] = render_bonds
     end
@@ -675,6 +666,8 @@ function selection_window_ui(
 
     render_selection, scratchpad_render_menu = widgets["Render"](window)
     scalar_selection, scalar_menu = widgets["Scalar"](window)
+    bond_selection, bond_menu = widgets["Bonds"](window)
+
     invariant_selection = Observable("K1")
 
     time, scratchpad_t_slider = widgets["Movement"](window)
@@ -692,6 +685,7 @@ function selection_window_ui(
         render_views,
         render_selection,
         scalar_selection,
+        bond_selection,
         invariant_selection,
         time,
         selected_clusters,
@@ -763,8 +757,7 @@ function selection_window_ui(
 
     scg[1, 1] = scratchpad_render_menu
     g = GridLayout()
-    g[1, 1] = scalar_menu
-    g[1, 2] = scratchpad_t_slider
+    g[1, 1:2] = bond_menu
     scg[1, 2] = g
 
     Makie.onany(window.scene, render_selection) do x
@@ -774,6 +767,9 @@ function selection_window_ui(
             _, ts = widgets["Movement"](window, time)
             g[1, 1] = m
             g[1, 2] = ts
+        elseif x == "Bonds"
+            _, m = widgets["Bonds"](window, bond_selection)
+            g[1, 1:2] = m
         else
             _, m = widgets["Invariant"](window, invariant_selection)
             g[1, 1:2] = m

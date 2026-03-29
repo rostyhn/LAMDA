@@ -4,7 +4,6 @@ function embedding_view!(
     selected_render::Observable{String},
     selected_scalar::Observable{String},
     selected_bonds::Observable{String},
-    showFinal::Observable{Bool},
     invariant_selection::Observable{String},
     atom_time::Observable{Float32},
     render_views::Dict{String,Function},
@@ -188,8 +187,7 @@ function embedding_view!(
             render_fn = (x, y, z) ->
                 render_views["Bonds"](x,
                     y,
-                    selected_bonds,
-                    showFinal)
+                    selected_bonds)
         end
 
         ms = Int.(round.(ax.scene.camera.projectionview[] * markersize_4d[]))[1]
@@ -236,8 +234,7 @@ function embedding_view!(
             render_fn = (x, y, z) ->
                 render_views["Bonds"](x,
                     y,
-                    selected_bonds,
-                    showFinal)
+                    selected_bonds)
         end
 
         update_scene.(enumerate(views[]), Ref(ts), Ref(alignment), Ref(sr), Ref(render_fn))
